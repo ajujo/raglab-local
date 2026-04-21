@@ -1,0 +1,115 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/ajujo/Lab/Projectos/RAG-Lab
+plugins: anyio-4.13.0, timeout-2.4.0
+timeout: 15.0s
+timeout method: signal
+timeout func_only: False
+collected 115 items
+
+tests/test_chunking/test_parser.py ..............                        [ 12%]
+tests/test_chunking/test_splitter.py ................................F.  [ 41%]
+tests/test_cli/test_cli_commands.py ..                                   [ 43%]
+tests/test_generation/test_llm_client.py ......F.                        [ 50%]
+tests/test_generation/test_prompt_builder.py ...F..                      [ 55%]
+tests/test_generation/test_verifier.py ....                              [ 59%]
+tests/test_ingest/test_cleaner.py ..F.                                   [ 62%]
+tests/test_ingest/test_manifest.py FF                                    [ 64%]
+tests/test_retrieval/test_hybrid_search.py .....F..                      [ 71%]
+tests/test_retrieval/test_query_processor.py .....F...F.                 [ 80%]
+tests/test_storage/test_docstore.py .......                              [ 86%]
+tests/test_storage/test_sparse_store.py .F..F....                        [ 94%]
+tests/test_storage/test_vector_store.py ......                           [100%]
+
+=================================== FAILURES ===================================
+_____________________ TestChunkDocument.test_custom_params _____________________
+tests/test_chunking/test_splitter.py:282: in test_custom_params
+    chunks = chunk_document(text, "doc", max_tokens=100, overlap=20)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+rag_lab/chunking/splitter.py:226: in chunk_document
+    chunks = _create_chunks(
+rag_lab/chunking/splitter.py:434: in _create_chunks
+    chunks.append(Chunk(
+<string>:2: in __init__
+    ???
+E   Failed: Timeout (>15.0s) from pytest-timeout.
+__________ TestExtractAnswerFromReasoning.test_with_numbered_section ___________
+tests/test_generation/test_llm_client.py:63: in test_with_numbered_section
+    assert "5. **Check**" not in result
+E   AssertionError: assert '5. **Check**' not in 'Answer here...next section'
+E     
+E     '5. **Check**' is contained here:
+E       Answer here
+E       
+E       5. **Check** next section
+______________________ TestBuildPrompt.test_system_prompt ______________________
+tests/test_generation/test_prompt_builder.py:48: in test_system_prompt
+    assert "citations" in system.lower() or "cite" in system.lower()
+E   AssertionError: assert ('citations' in 'eres un asistente especializado en estándares sdmx. responde únicamente basándote en los fragmentos de documentos pro...- si un fragmento citado no contiene la respuesta, indícalo\n- responde en el mismo idioma que la pregunta del usuario' or 'cite' in 'eres un asistente especializado en estándares sdmx. responde únicamente basándote en los fragmentos de documentos pro...- si un fragmento citado no contiene la respuesta, indícalo\n- responde en el mismo idioma que la pregunta del usuario')
+E    +  where 'eres un asistente especializado en estándares sdmx. responde únicamente basándote en los fragmentos de documentos pro...- si un fragmento citado no contiene la respuesta, indícalo\n- responde en el mismo idioma que la pregunta del usuario' = <built-in method lower of str object at 0x5563636705b0>()
+E    +    where <built-in method lower of str object at 0x5563636705b0> = 'Eres un asistente especializado en estándares SDMX. Responde ÚNICAMENTE basándote en los fragmentos de documentos pro...- Si un fragmento citado no contiene la respuesta, indícalo\n- Responde en el mismo idioma que la pregunta del usuario'.lower
+E    +  and   'eres un asistente especializado en estándares sdmx. responde únicamente basándote en los fragmentos de documentos pro...- si un fragmento citado no contiene la respuesta, indícalo\n- responde en el mismo idioma que la pregunta del usuario' = <built-in method lower of str object at 0x5563636705b0>()
+E    +    where <built-in method lower of str object at 0x5563636705b0> = 'Eres un asistente especializado en estándares SDMX. Responde ÚNICAMENTE basándote en los fragmentos de documentos pro...- Si un fragmento citado no contiene la respuesta, indícalo\n- Responde en el mismo idioma que la pregunta del usuario'.lower
+_________________ TestCleanDocument.test_clean_document_empty __________________
+tests/test_ingest/test_cleaner.py:38: in test_clean_document_empty
+    result = clean_document(test_file)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+rag_lab/ingest/cleaner.py:71: in clean_document
+    reduction = (1 - cleaned_size / original_size) * 100
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ZeroDivisionError: division by zero
+___________________ TestCreateManifest.test_create_manifest ____________________
+tests/test_ingest/test_manifest.py:21: in test_create_manifest
+    manifest_path = create_manifest(source, cleaned, output_dir=tmp_path / "manifests")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: create_manifest() got an unexpected keyword argument 'output_dir'
+____________________ TestCreateManifest.test_force_recreate ____________________
+tests/test_ingest/test_manifest.py:35: in test_force_recreate
+    create_manifest(source, cleaned, output_dir=tmp_path / "manifests")
+E   TypeError: create_manifest() got an unexpected keyword argument 'output_dir'
+_____________________ TestHybridSearch.test_hybrid_search ______________________
+tests/test_retrieval/test_hybrid_search.py:98: in test_hybrid_search
+    assert len(result) == 2
+E   AssertionError: assert 3 == 2
+E    +  where 3 = len([{'chunk_id': 'chunk1', 'text': 'Text 1'}, {'chunk_id': 'chunk2', 'text': 'Text 2'}, {'chunk_id': 'chunk3', 'text': 'Text 3'}])
+__________________ TestGenerateHypotheticalAnswer.test_basic ___________________
+tests/test_retrieval/test_query_processor.py:48: in test_basic
+    assert "SDMX" in result
+E   AssertionError: assert 'SDMX' in 'This question is about what is sdmx?. The answer involves technical specifications and implementation details related to the topic.'
+_________________ TestGenerateQueryVariant.test_no_stop_words __________________
+tests/test_retrieval/test_query_processor.py:66: in test_no_stop_words
+    assert result == "Hello world"
+E   AssertionError: assert 'hello world' == 'Hello world'
+E     
+E     - Hello world
+E     ? ^
+E     + hello world
+E     ? ^
+____________________ TestSparseStore.test_load_nonexistent _____________________
+tests/test_storage/test_sparse_store.py:30: in test_load_nonexistent
+    assert store.count() == 0
+E   assert 48 == 0
+E    +  where 48 = count()
+E    +    where count = <rag_lab.storage.sparse_store.SparseStore object at 0x7f5a9fb23190>.count
+__________________________ TestSparseStore.test_query __________________________
+tests/test_storage/test_sparse_store.py:59: in test_query
+    assert results[0]["id"] == "id2"
+E   AssertionError: assert 'id1' == 'id2'
+E     
+E     - id2
+E     + id1
+=========================== short test summary info ============================
+FAILED tests/test_chunking/test_splitter.py::TestChunkDocument::test_custom_params
+FAILED tests/test_generation/test_llm_client.py::TestExtractAnswerFromReasoning::test_with_numbered_section
+FAILED tests/test_generation/test_prompt_builder.py::TestBuildPrompt::test_system_prompt
+FAILED tests/test_ingest/test_cleaner.py::TestCleanDocument::test_clean_document_empty
+FAILED tests/test_ingest/test_manifest.py::TestCreateManifest::test_create_manifest
+FAILED tests/test_ingest/test_manifest.py::TestCreateManifest::test_force_recreate
+FAILED tests/test_retrieval/test_hybrid_search.py::TestHybridSearch::test_hybrid_search
+FAILED tests/test_retrieval/test_query_processor.py::TestGenerateHypotheticalAnswer::test_basic
+FAILED tests/test_retrieval/test_query_processor.py::TestGenerateQueryVariant::test_no_stop_words
+FAILED tests/test_storage/test_sparse_store.py::TestSparseStore::test_load_nonexistent
+FAILED tests/test_storage/test_sparse_store.py::TestSparseStore::test_query
+======================= 11 failed, 104 passed in 15.65s ========================
+ERROR conda.cli.main_run:execute(127): `conda run python -m pytest tests/ --tb=short --timeout=15` failed. (See above for error)
+
