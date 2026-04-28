@@ -383,11 +383,13 @@ def _create_chunks(
     if not text or not text.strip():
         return []
 
-    # Check for tables — keep them whole
+    # Check for tables — if the section contains table lines, keep table content whole
     text_lines = text.split('\n')
     non_empty_lines = [l for l in text_lines if l.strip()]
-    if non_empty_lines and _is_table_line(non_empty_lines[0]):
-        # This section starts with a table — keep as single chunk
+    has_table = any(_is_table_line(l) for l in non_empty_lines)
+
+    if has_table:
+        # This section contains a table — keep as single chunk
         chunk_id = hashlib.md5(text[:100].encode()).hexdigest()[:12]
         return [Chunk(
             chunk_id=chunk_id,

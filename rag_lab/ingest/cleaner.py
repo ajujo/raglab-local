@@ -51,6 +51,10 @@ def clean_document(
     # Read source
     raw_text = source_path.read_text(encoding="utf-8")
 
+    # Validate: reject empty documents
+    if not raw_text.strip():
+        raise DocumentIngestionError("Source document is empty")
+
     # Check for base64 images
     base64_matches = _BASE64_PATTERN.findall(raw_text)
     if base64_matches:

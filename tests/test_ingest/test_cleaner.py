@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from rag_lab.ingest.cleaner import clean_document
+from rag_lab.exceptions import DocumentIngestionError
 
 
 class TestCleanDocument:
@@ -16,7 +17,7 @@ class TestCleanDocument:
         # Create a test file with base64 image
         test_file = tmp_path / "test.md"
         test_file.write_text("# Header\n\nSome text\n\n![image](data:image/png;base64,ABC123)")
-        
+
         result = clean_document(test_file)
         assert result.exists()
         assert "base64" not in result.read_text()
@@ -25,18 +26,18 @@ class TestCleanDocument:
         # Create a test file without base64 images
         test_file = tmp_path / "test.md"
         test_file.write_text("# Header\n\nSome text without images")
-        
+
         result = clean_document(test_file)
         assert result.exists()
         assert "Some text without images" in result.read_text()
 
     def test_clean_document_empty(self, tmp_path):
-        # Create an empty test file
+        # Create an empty test file — should raise an error
         test_file = tmp_path / "test.md"
         test_file.write_text("")
-        
-        result = clean_document(test_file)
-        assert result.exists()
+
+        with pytest.raises(DocumentIngestionError):
+            clean_document(test_file)
 
     def test_clean_document_large(self, tmp_path):
         # Create a test file with multiple base64 images

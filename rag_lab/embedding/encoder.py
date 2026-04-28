@@ -5,6 +5,7 @@ Handles both dense and sparse embeddings for all chunks.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -15,7 +16,7 @@ from rag_lab.config import (
     EMBEDDING_DEVICE,
     EMBEDDING_MAX_LENGTH,
     EMBEDDING_MODEL,
-    STORAGE_DIR,
+    SPARSE_INDEX_PATH,
 )
 from rag_lab.exceptions import EmbeddingError
 
@@ -51,16 +52,34 @@ def load_embedding_model(device: str = "cpu") -> object:
     """
     global _model_cache
 
+    # If device differs from cached model, force reload
+    if _model_cache is not None:
+        # Check if cached model is on the same device
+        cached_device = _model_cache.device
+        if str(cached_device) != device:
+            _model_cache = None
+
     if _model_cache is not None:
         return _model_cache
 
     try:
         from FlagEmbedding import BGEM3FlagModel
+        
+        # When device="cpu", hide GPU entirely to prevent any GPU memory allocation
+        original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+        if device == "cpu":
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        
         _model_cache = BGEM3FlagModel(
             EMBEDDING_MODEL,
-            use_fp16=True,
+            use_fp16=(device != "cpu"),
             device=device,
         )
+        
+        # Restore CUDA_VISIBLE_DEVICES only if it was originally set
+        if original_cuda_devices is not None and original_cuda_devices != "":
+            os.environ["CUDA_VISIBLE_DEVICES"] = original_cuda_devices
+        
         logger.info(f"Loaded BGE-M3 model on {device}")
         return _model_cache
     except Exception as e:
@@ -165,7 +184,7 @@ def save_sparse_index(
     Returns:
         Path to the saved file.
     """
-    output_path = output_path or (STORAGE_DIR / "sparse_index.json")
+    output_path = output_path or SPARSE_INDEX_PATH
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w", encoding="utf-8") as f:

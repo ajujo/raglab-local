@@ -11,6 +11,7 @@ import numpy as np
 
 from rag_lab.config import RRF_K, RETRIEVAL_TOP_K, STORAGE_DIR
 from rag_lab.embedding.encoder import load_embedding_model, encode_chunks
+from rag_lab.exceptions import RetrievalError
 from rag_lab.storage.docstore import DocStore
 from rag_lab.storage.sparse_store import SparseStore
 from rag_lab.storage.vector_store import VectorStore

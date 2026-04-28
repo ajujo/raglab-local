@@ -1,9 +1,10 @@
 """Shared fixtures and configuration for all tests.
 
 This module ensures that:
-1. Embedding and reranker caches are reset before each test
-2. The embedding and reranker models run on CPU for tests to avoid OOM on GPU
-3. Test assets directory is available
+1. GPU is hidden during tests (CUDA_VISIBLE_DEVICES="")
+2. Embedding and reranker caches are reset before each test
+3. The embedding and reranker models run on CPU for tests to avoid OOM on GPU
+4. Test assets directory is available
 
 Usage:
     pytest tests/ -v
@@ -11,6 +12,9 @@ Usage:
 
 import os
 import pytest
+
+# Hide GPU entirely during tests to prevent any GPU memory allocation
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Force CPU for all ML models in tests to avoid OOM on GPU
 os.environ["EMBEDDING_DEVICE"] = "cpu"

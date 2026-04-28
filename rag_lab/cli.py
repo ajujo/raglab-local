@@ -5,6 +5,7 @@ Provides commands for ingesting documents and querying the system.
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -14,13 +15,15 @@ from rich.console import Console
 from rag_lab.config import (
     CHUNK_MAX_TOKENS,
     CHUNK_OVERLAP,
+    DATA_DIR,
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_DEVICE,
     RETRIEVAL_TOP_K,
     RERANK_TOP_K,
+    SOURCES,
     STORAGE_DIR,
 )
-from rag_lab.exceptions import RAGLabError
+from rag_lab.exceptions import RAGLabError, RetrievalError, LLMConnectionError
 from rag_lab.ingest.cleaner import clean_document
 from rag_lab.ingest.manifest import create_manifest
 from rag_lab.chunking.splitter import chunk_document
@@ -48,78 +51,100 @@ console = Console()
 @app.command()
 def ingest(
     doc: str = typer.Option(
-        "Notas_Tecnicas_SDMX_2.1.md",
+        None,
         "--doc",
-        help="Path to the source document.",
+        help="Path to a single source document. If not specified, ingests all SOURCES.",
     ),
     force: bool = typer.Option(
         False,
         "--force",
         help="Force re-ingestion even if already ingested.",
     ),
+    cpu_embedding: bool = typer.Option(
+        False,
+        "--cpu-embedding",
+        help="Run embedding model on CPU to free GPU VRAM.",
+    ),
 ) -> None:
-    """Ingest a document: clean, chunk, embed, and store."""
+    """Ingest one or more documents: clean, chunk, embed, and store."""
     setup_logging("INFO")
     logger = logging.getLogger("rag_lab")
-    console.print("[bold cyan]📥 Ingesting document...[/bold cyan]")
 
-    source_path = Path(doc)
-    if not source_path.exists():
-        raise RAGLabError(f"Source file not found: {source_path}")
+    # Determine embedding device
+    device = "cpu" if cpu_embedding else EMBEDDING_DEVICE
 
-    # Phase 1: Clean document
-    cleaned_path = clean_document(source_path)
-    create_manifest(source_path, cleaned_path, force=force)
+    # Decide which documents to process
+    if doc is not None:
+        # Single document mode
+        paths_to_process = [Path(doc)]
+    else:
+        # Multi-document mode: process all SOURCES
+        paths_to_process = list(SOURCES)
 
-    # Phase 2: Chunking
-    logger.info("Starting chunking...")
-    cleaned_text = cleaned_path.read_text(encoding="utf-8")
-    chunks = chunk_document(
-        cleaned_text,
-        doc_id=source_path.stem,
-        max_tokens=CHUNK_MAX_TOKENS,
-        overlap=CHUNK_OVERLAP,
-    )
-    logger.info(f"Created {len(chunks)} chunks")
+    total_chunks = 0
+    for source_path in paths_to_process:
+        console.print(f"[bold cyan]📥 Ingesting: {source_path.name}[/bold cyan]")
 
-    # Save chunks to JSONL
-    chunks_path = Path("data/chunks.jsonl")
-    chunks_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(chunks_path, "w", encoding="utf-8") as f:
-        for chunk in chunks:
-            f.write(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n")
+        if not source_path.exists():
+            logger.warning(f"Source file not found: {source_path} — skipping")
+            continue
 
-    # Phase 3: Embedding
-    logger.info("Generating embeddings...")
-    chunk_dicts = [chunk.to_dict() for chunk in chunks]
-    dense_embeddings, sparse_embeddings = encode_chunks(
-        chunk_dicts,
-        batch_size=EMBEDDING_BATCH_SIZE,
-        device=EMBEDDING_DEVICE,
-    )
+        # Phase 1: Clean document
+        cleaned_path = clean_document(source_path)
+        create_manifest(source_path, cleaned_path, force=force)
 
-    # Phase 4: Storage
-    logger.info("Storing embeddings...")
-    vector_store = VectorStore()
-    vector_store.initialize()
-    vector_store.add(
-        ids=[c.get("chunk_id", "") for c in chunk_dicts],
-        embeddings=dense_embeddings,
-        documents=[c.get("text", "") for c in chunk_dicts],
-        metadatas=[{"heading_path": c.get("heading_path", "")} for c in chunk_dicts],
-    )
+        # Phase 2: Chunking
+        logger.info("Starting chunking...")
+        cleaned_text = cleaned_path.read_text(encoding="utf-8")
+        chunks = chunk_document(
+            cleaned_text,
+            doc_id=source_path.stem,
+            max_tokens=CHUNK_MAX_TOKENS,
+            overlap=CHUNK_OVERLAP,
+        )
+        logger.info(f"Created {len(chunks)} chunks from {source_path.name}")
+        total_chunks += len(chunks)
 
-    sparse_store = SparseStore()
-    sparse_store.add(
-        ids=[c.get("chunk_id", "") for c in chunk_dicts],
-        sparse_vectors=list(sparse_embeddings.values()),
-    )
-    sparse_store.save()
+        # Save chunks to JSONL (append mode for multi-doc)
+        chunks_path = DATA_DIR / "chunks.jsonl"
+        chunks_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(chunks_path, "a", encoding="utf-8") as f:
+            for chunk in chunks:
+                f.write(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n")
 
-    doc_store = DocStore()
-    doc_store.add(chunk_dicts)
+        # Phase 3: Embedding
+        logger.info(f"Generating embeddings on {device}...")
+        chunk_dicts = [chunk.to_dict() for chunk in chunks]
+        dense_embeddings, sparse_embeddings = encode_chunks(
+            chunk_dicts,
+            batch_size=EMBEDDING_BATCH_SIZE,
+            device=device,
+        )
 
-    console.print(f"[bold green]✅ Ingested {len(chunks)} chunks[/bold green]")
+        # Phase 4: Storage
+        logger.info("Storing embeddings...")
+        vector_store = VectorStore()
+        vector_store.initialize()
+        vector_store.add(
+            ids=[c.get("chunk_id", "") for c in chunk_dicts],
+            embeddings=dense_embeddings,
+            documents=[c.get("text", "") for c in chunk_dicts],
+            metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
+        )
+
+        sparse_store = SparseStore()
+        sparse_store.add(
+            ids=[c.get("chunk_id", "") for c in chunk_dicts],
+            sparse_vectors=list(sparse_embeddings.values()),
+        )
+        sparse_store.save()
+
+        doc_store = DocStore()
+        doc_store.add(chunk_dicts)
+
+        console.print(f"[bold green]✅ Ingested {len(chunks)} chunks from {source_path.name}[/bold green]")
+
+    console.print(f"[bold green]🎉 Total: {total_chunks} chunks ingested[/bold green]")
 
 
 @app.command()
@@ -128,6 +153,16 @@ def query(
     hyde: bool = typer.Option(False, "--hyde", help="Enable HyDE."),
     fast: bool = typer.Option(False, "--fast", help="Skip reranking."),
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
+    cpu_embedding: bool = typer.Option(
+        False,
+        "--cpu-embedding",
+        help="Run embedding model on CPU to free GPU VRAM.",
+    ),
+    cpu_reranker: bool = typer.Option(
+        False,
+        "--cpu-reranker",
+        help="Run reranker on CPU to free GPU VRAM.",
+    ),
 ) -> None:
     """Query the RAG system with a natural language question."""
     setup_logging("INFO")
@@ -136,6 +171,10 @@ def query(
 
     console.print(f"[bold cyan]❓ Query:[/bold cyan] {question}")
 
+    # Determine devices
+    emb_device = "cpu" if cpu_embedding else EMBEDDING_DEVICE
+    rerank_device = "cpu" if cpu_reranker else os.getenv("RERANKER_DEVICE", "cuda")
+
     # Process query
     queries = process_query(question, use_hyde=hyde)
 
@@ -143,7 +182,7 @@ def query(
     # encode_chunks returns (dense_embeddings: np.ndarray, sparse_embeddings: Dict)
     all_query_data = []
     for q in queries:
-        dense_emb, sparse_dict = encode_chunks([{"text": q["text"]}], batch_size=1)
+        dense_emb, sparse_dict = encode_chunks([{"text": q["text"]}], batch_size=1, device=emb_device)
         # dense_emb is shape (1, 1024), take first element
         query_dense = dense_emb[0]
         # sparse_dict maps chunk_id -> {token_idx: weight}, get first (and only) entry
@@ -185,6 +224,7 @@ def query(
             question,
             unique_results[:20],
             top_k=min(top_k * 2, len(unique_results)),
+            device=rerank_device,
         )
 
     # Generate response
@@ -197,8 +237,12 @@ def query(
             else:
                 verified = verify_citations(response, unique_results)
                 console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verified}")
+        except LLMConnectionError as e:
+            console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        except RAGLabError as e:
+            console.print(f"[bold red]RAG-Lab Error:[/bold red] {e}")
         except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] {e}")
+            console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
     else:
         console.print("[bold yellow]⚠️ No results found.[/bold yellow]")
 
