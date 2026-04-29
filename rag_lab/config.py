@@ -173,11 +173,33 @@ Eres un asistente de análisis documental. Tu única fuente de verdad son los fr
 
 # Plantilla del prompt del usuario — Se llena con {context} y {question}
 USER_PROMPT_TEMPLATE = """\
-## Fragmentos de referencia
+## Fragmentos recuperados
+
+A continuación se presentan los fragmentos del documento más relevantes para tu consulta.
+
+Cada fragmento incluye su fuente, sección y rango de líneas de origen.
+
+
 {context}
 
+
+---
+
+
 ## Pregunta
+
 {question}
+
+
+---
+
+## Instrucción
+
+Responde a la pregunta basándote ÚNICAMENTE en los fragmentos anteriores.
+
+Cita usando el formato: [[N] Fuente: <doc_id> | Sección: <heading_path> | Líneas: <line_start>-<line_end>]
+
+Si la respuesta no está en los fragmentos, indícalo explícitamente.
 """
 
 LOG_LEVEL = "INFO"
