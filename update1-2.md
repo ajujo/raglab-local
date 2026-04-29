@@ -19,14 +19,15 @@ Nueva fase de desarrollo para el sistema RAG-Lab. Este documento registra las me
 - **Impacto**: El sistema ahora puede usarse con cualquier colección de documentos, no solo SDMX. Las reglas de citación ahora usan el formato con rango de líneas.
 
 ### 3. Actualización del User Prompt y Verificador
-- **Archivos modificados**: `rag_lab/config.py`, `rag_lab/generation/verifier.py`
+- **Archivos modificados**: `rag_lab/config.py`, `rag_lab/generation/verifier.py`, `rag_lab/storage/docstore.py`
 - **Descripción**: 
   - Se actualizó `USER_PROMPT_TEMPLATE` con una estructura más clara y explícita sobre el formato de citas.
-  - Se actualizó el verificador para soportar **ambos formatos** de citas (legacy `[DOC: ...]` y nuevo `[[N] Fuente: ...]`).
+  - Se unificó el formato de citas en `[[N] Fuente: ... | Líneas: ...]` eliminando el soporte legacy.
+  - Se actualizaron las tablas de `DocStore` para incluir `line_start` y `line_end`.
 - **Por qué se actualizó**: 
-  - El nuevo system prompt instruía al LLM a usar `[[N] Fuente: ...]`, pero el verificador solo buscaba `[DOC: ...]`. Esto causaba que el verificador reportara "0 citas verificadas".
-  - La actualización permite que el verificador reconozca y valide citas en el nuevo formato, manteniendo la compatibilidad con el formato antiguo.
-- **Impacto**: Las citas ahora se verifican correctamente, mejorando la confianza en las respuestas del LLM.
+  - El nuevo system prompt instruía al LLM a usar el formato unificado, pero el verificador y el docstore no lo soportaban completamente.
+  - La actualización asegura que toda la cadena (chunking → almacenamiento → prompts → verificación) use el mismo formato con rangos de líneas.
+- **Impacto**: Las citas ahora incluyen rangos de líneas exactos (ej. `Líneas: 18-25`), permitiendo localización precisa en el documento fuente. El código es más limpio al eliminar el soporte legacy.
 
 ## Notas
 - Fecha de inicio: 2026-04-28
