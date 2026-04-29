@@ -25,8 +25,12 @@ def verify_citations(
         The verified response text.
     """
     # Extract all citations from the response
-    citation_pattern = r'\[DOC:\s*([^,\]]+),\s*Sección:\s*([^\]]+)\]'
-    citations = re.findall(citation_pattern, response)
+    # Support both legacy format [DOC: ..., Sección: ...] and new format [[N] Fuente: ...]
+    legacy_pattern = r'\[DOC:\s*([^,\]]+),\s*Sección:\s*([^\]]+)\]'
+    new_pattern = r'\[\[(\d+)\]\s*Fuente:\s*([^|]+)\|\s*Sección:\s*([^|]+)\|\s*Líneas:\s*(\d+)-(\d+)\]'
+    
+    legacy_citations = re.findall(legacy_pattern, response)
+    new_citations = re.findall(new_pattern, response)
 
     # Get valid chunk IDs and heading paths
     valid_ids = {c.get("doc_id", "") for c in valid_chunks}
@@ -40,7 +44,29 @@ def verify_citations(
     valid_count = 0
     invalid_count = 0
 
-    for doc_id, heading_path in citations:
+    # Process legacy citations [DOC: ..., Sección: ...]
+    for doc_id, heading_path in legacy_citations:
+        doc_id = doc_id.strip()
+        heading_path = heading_path.strip()
+
+        # Verify doc_id
+        if doc_id not in valid_ids:
+            logger.warning(f"Invalid citation DOC: {doc_id}")
+            invalid_count += 1
+            continue
+
+        # Verify heading_path with fuzzy matching against metadata paths
+        if _fuzzy_match_path(heading_path, valid_paths):
+            valid_count += 1
+        # Fallback: check if the cited section appears inside any chunk's text
+        elif _found_in_chunk_text(heading_path, chunk_texts):
+            valid_count += 1
+        else:
+            logger.warning(f"Invalid citation: Sección:{heading_path}")
+            invalid_count += 1
+
+    # Process new citations [[N] Fuente: ...]
+    for index, doc_id, heading_path, line_start, line_end in new_citations:
         doc_id = doc_id.strip()
         heading_path = heading_path.strip()
 
