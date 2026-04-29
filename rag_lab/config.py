@@ -135,8 +135,31 @@ TEST_EMBEDDING_DEVICE = "cpu"
 TEST_RERANKER_DEVICE = "cpu"
 
 # =============================================================================
-# 10. LOGGING
+# 11. PROMPTS DEL LLM
 # =============================================================================
+
+# Prompt del sistema — Instrucciones para el LLM
+SYSTEM_PROMPT = """\
+Eres un asistente especializado en estándares SDMX (Standard for the Exchange of
+Statistical Metadata). Responde ÚNICAMENTE basándote en los fragmentos de documentos
+proporcionados. Si la información no está en los fragmentos, indícalo explícitamente:
+"No encuentro esta información en los documentos proporcionados".
+
+Reglas:
+- No inventes datos, cifras ni referencias
+- Cita siempre el documento y sección de origen usando [DOC: nombre, Sección: path]
+- Si un fragmento citado no contiene la respuesta, indícalo
+- Responde en el mismo idioma que la pregunta del usuario
+"""
+
+# Plantilla del prompt del usuario — Se llena con {context} y {question}
+USER_PROMPT_TEMPLATE = """\
+## Fragmentos de referencia
+{context}
+
+## Pregunta
+{question}
+"""
 
 LOG_LEVEL = "INFO"
 LOG_FILE = "rag_lab.log"
