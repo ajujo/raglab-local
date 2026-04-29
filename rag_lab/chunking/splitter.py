@@ -32,6 +32,8 @@ class Chunk:
     tipo: str  # "texto", "tabla", "formula"
     posicion_relativa: float
     n_tokens: int = 0
+    line_start: int = 0
+    line_end: int = 0
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -43,6 +45,8 @@ class Chunk:
             "tipo": self.tipo,
             "posicion_relativa": self.posicion_relativa,
             "n_tokens": self.n_tokens,
+            "line_start": self.line_start,
+            "line_end": self.line_end,
         }
 
 
@@ -211,6 +215,8 @@ def chunk_document(
             'relative_pos': relative_pos,
             'level': heading.level,
             'parent_id': id(parent_map.get(id(heading))),
+            'line_start': start_line + 1,  # 1-based line numbers
+            'line_end': end_line,
         })
 
     # Step 2: Merge small sibling sections into combined chunks.
@@ -226,6 +232,8 @@ def chunk_document(
         chunks = _create_chunks(
             section['text'], doc_id, section['heading_path'],
             section['relative_pos'], max_tokens, overlap,
+            line_start=section['line_start'],
+            line_end=section['line_end'],
         )
         all_chunks.extend(chunks)
 
@@ -310,6 +318,8 @@ def _merge_sibling_sections(
                 'relative_pos': group[0]['relative_pos'],
                 'level': current['level'],
                 'parent_id': current['parent_id'],
+                'line_start': group[0].get('line_start', 0),
+                'line_end': group[-1].get('line_end', 0),
             })
             logger.debug(
                 f"Merged {len(group)} sibling sections: {merged_path} "
@@ -366,6 +376,8 @@ def _create_chunks(
     posicion_relativa: float,
     max_tokens: int,
     overlap: int,
+    line_start: int = 0,
+    line_end: int = 0,
 ) -> List[Chunk]:
     """Create chunks from text, respecting token limits with real overlap.
 
@@ -376,6 +388,8 @@ def _create_chunks(
         posicion_relativa: Relative position in document.
         max_tokens: Max tokens per chunk.
         overlap: Overlap between chunks in tokens.
+        line_start: Starting line number in the source document.
+        line_end: Ending line number in the source document.
 
     Returns:
         List of Chunk objects.
@@ -399,6 +413,8 @@ def _create_chunks(
             tipo="tabla",
             posicion_relativa=posicion_relativa,
             n_tokens=_count_tokens(text),
+            line_start=line_start,
+            line_end=line_end,
         )]
 
     # If the whole section fits in one chunk, return it directly
@@ -413,6 +429,8 @@ def _create_chunks(
             tipo="texto",
             posicion_relativa=posicion_relativa,
             n_tokens=total_tokens,
+            line_start=line_start,
+            line_end=line_end,
         )]
 
     # Split into overlapping chunks
@@ -423,6 +441,11 @@ def _create_chunks(
     current_segments = []
     current_tokens = 0
 
+    # Calculate line offset per segment for accurate line tracking
+    total_segments = len(segments)
+    segment_line_range = max(1, line_end - line_start)
+    lines_per_segment = segment_line_range / total_segments
+
     i = 0
     while i < len(segments):
         seg = segments[i]
@@ -432,6 +455,13 @@ def _create_chunks(
             # Emit current chunk
             chunk_text = '\n'.join(current_segments).strip()
             if chunk_text:
+                # Calculate line range for this chunk
+                seg_index = len(chunks) * len(segments) // max(len(chunks), 1)
+                chunk_line_start = line_start + int(seg_index * lines_per_segment)
+                chunk_line_end = chunk_line_start + int(lines_per_segment)
+                # Ensure we don't exceed the total line range
+                chunk_line_end = min(chunk_line_end, line_end)
+
                 chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
                 chunks.append(Chunk(
                     chunk_id=chunk_id,
@@ -441,6 +471,8 @@ def _create_chunks(
                     tipo="texto",
                     posicion_relativa=posicion_relativa,
                     n_tokens=_count_tokens(chunk_text),
+                    line_start=chunk_line_start,
+                    line_end=chunk_line_end,
                 ))
 
             # Backtrack for overlap: keep the last N tokens worth of segments
@@ -471,6 +503,10 @@ def _create_chunks(
     if current_segments:
         chunk_text = '\n'.join(current_segments).strip()
         if chunk_text:
+            # Calculate line range for the last chunk
+            chunk_line_start = line_start + int(len(chunks) * lines_per_segment)
+            chunk_line_end = min(chunk_line_start + int(lines_per_segment), line_end)
+
             chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
             chunks.append(Chunk(
                 chunk_id=chunk_id,
@@ -480,6 +516,8 @@ def _create_chunks(
                 tipo="texto",
                 posicion_relativa=posicion_relativa,
                 n_tokens=_count_tokens(chunk_text),
+                line_start=chunk_line_start,
+                line_end=chunk_line_end,
             ))
 
     return chunks

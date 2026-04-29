@@ -29,7 +29,9 @@ def build_prompt(
     for i, chunk in enumerate(chunks, 1):
         heading = chunk.get("heading_path", "Sin encabezado")
         text = chunk.get("text", "")
-        context_parts.append(f"[{i}] Fuente: {chunk.get('doc_id', 'N/A')} | Sección: {heading}\n---\n{text}\n")
+        line_start = chunk.get("line_start", "N/A")
+        line_end = chunk.get("line_end", "N/A")
+        context_parts.append(f"[{i}] Fuente: {chunk.get('doc_id', 'N/A')} | Sección: {heading} | Líneas: {line_start}-{line_end}\n---\n{text}\n")
     context = "".join(context_parts)
 
     # Build user prompt from template
