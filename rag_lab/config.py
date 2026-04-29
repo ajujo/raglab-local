@@ -206,6 +206,23 @@ LOG_LEVEL = "INFO"
 LOG_FILE = "rag_lab.log"
 
 # =============================================================================
+# VERIFICACIÓN
+# =============================================================================
+
+# Activar/desactivar el self-consistency check
+ENABLE_CONSISTENCY_CHECK = True
+
+# Ponderaciones del scoring
+WEIGHT_CITATION = 0.35
+WEIGHT_RETRIEVAL = 0.30
+WEIGHT_CONSISTENCY = 0.25
+WEIGHT_COVERAGE = 0.10
+
+# Umbrales de confianza
+CONFIDENCE_HIGH = 0.75
+CONFIDENCE_MEDIUM = 0.50
+
+# =============================================================================
 # CONFIGURACIÓN DE TESTS
 # =============================================================================
 
