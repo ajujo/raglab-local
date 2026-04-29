@@ -388,8 +388,8 @@ def _create_chunks(
         posicion_relativa: Relative position in document.
         max_tokens: Max tokens per chunk.
         overlap: Overlap between chunks in tokens.
-        line_start: Starting line number in the source document.
-        line_end: Ending line number in the source document.
+        line_start: Starting line number in the source document (1-based).
+        line_end: Ending line number in the source document (1-based).
 
     Returns:
         List of Chunk objects.
@@ -437,14 +437,15 @@ def _create_chunks(
     # Work with sentences/paragraphs for cleaner boundaries
     segments = _split_into_segments(text)
 
-    chunks = []
-    current_segments = []
-    current_tokens = 0
-
-    # Calculate line offset per segment for accurate line tracking
+    # Pre-calculate line offset per segment for accurate line tracking
     total_segments = len(segments)
     segment_line_range = max(1, line_end - line_start)
     lines_per_segment = segment_line_range / total_segments
+
+    chunks = []
+    current_segments = []
+    current_tokens = 0
+    current_seg_start = 0  # Track which segment index we're on
 
     i = 0
     while i < len(segments):
@@ -455,11 +456,11 @@ def _create_chunks(
             # Emit current chunk
             chunk_text = '\n'.join(current_segments).strip()
             if chunk_text:
-                # Calculate line range for this chunk
-                seg_index = len(chunks) * len(segments) // max(len(chunks), 1)
-                chunk_line_start = line_start + int(seg_index * lines_per_segment)
-                chunk_line_end = chunk_line_start + int(lines_per_segment)
-                # Ensure we don't exceed the total line range
+                # Calculate line range based on segment indices
+                chunk_line_start = line_start + int(current_seg_start * lines_per_segment)
+                chunk_line_end = line_start + int(i * lines_per_segment)
+                # Clamp to valid range
+                chunk_line_start = max(chunk_line_start, line_start)
                 chunk_line_end = min(chunk_line_end, line_end)
 
                 chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
@@ -478,20 +479,25 @@ def _create_chunks(
             # Backtrack for overlap: keep the last N tokens worth of segments
             overlap_segments = []
             overlap_tokens = 0
+            overlap_seg_start = len(current_segments)
             for seg_back in reversed(current_segments):
                 seg_back_tokens = _count_tokens(seg_back)
                 if overlap_tokens + seg_back_tokens > overlap:
+                    overlap_seg_start -= 1
                     break
                 overlap_segments.insert(0, seg_back)
                 overlap_tokens += seg_back_tokens
+                overlap_seg_start -= 1
 
             if len(overlap_segments) == len(current_segments):
                 # Ensure we make progress if overlap covers all current segments
                 overlap_segments = overlap_segments[1:]
                 overlap_tokens = sum(_count_tokens(s) for s in overlap_segments)
+                overlap_seg_start = 1
 
             current_segments = overlap_segments
             current_tokens = overlap_tokens
+            current_seg_start = overlap_seg_start
             # Don't increment i — reprocess the current segment
             continue
 
@@ -504,8 +510,8 @@ def _create_chunks(
         chunk_text = '\n'.join(current_segments).strip()
         if chunk_text:
             # Calculate line range for the last chunk
-            chunk_line_start = line_start + int(len(chunks) * lines_per_segment)
-            chunk_line_end = min(chunk_line_start + int(lines_per_segment), line_end)
+            chunk_line_start = line_start + int(current_seg_start * lines_per_segment)
+            chunk_line_end = line_end
 
             chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
             chunks.append(Chunk(
