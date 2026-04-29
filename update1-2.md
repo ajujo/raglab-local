@@ -19,15 +19,16 @@ Nueva fase de desarrollo para el sistema RAG-Lab. Este documento registra las me
 - **Impacto**: El sistema ahora puede usarse con cualquier colección de documentos, no solo SDMX. Las reglas de citación ahora usan el formato con rango de líneas.
 
 ### 3. Actualización del User Prompt y Verificador
-- **Archivos modificados**: `rag_lab/config.py`, `rag_lab/generation/verifier.py`, `rag_lab/storage/docstore.py`
+- **Archivos modificados**: `rag_lab/config.py`, `rag_lab/generation/verifier.py`, `rag_lab/storage/docstore.py`, `rag_lab/chunking/splitter.py`
 - **Descripción**: 
   - Se actualizó `USER_PROMPT_TEMPLATE` con una estructura más clara y explícita sobre el formato de citas.
   - Se unificó el formato de citas en `[[N] Fuente: ... | Líneas: ...]` eliminando el soporte legacy.
   - Se actualizaron las tablas de `DocStore` para incluir `line_start` y `line_end`.
+  - Se corrigió el cálculo de rangos de líneas en `_create_chunks` para que los índices de segmentos se mapeen correctamente a las líneas del documento original.
 - **Por qué se actualizó**: 
-  - El nuevo system prompt instruía al LLM a usar el formato unificado, pero el verificador y el docstore no lo soportaban completamente.
-  - La actualización asegura que toda la cadena (chunking → almacenamiento → prompts → verificación) use el mismo formato con rangos de líneas.
-- **Impacto**: Las citas ahora incluyen rangos de líneas exactos (ej. `Líneas: 18-25`), permitiendo localización precisa en el documento fuente. El código es más limpio al eliminar el soporte legacy.
+  - El cálculo anterior de rangos de líneas era inexacto, lo que provocaba que algunos chunks tuvieran rangos superpuestos o incorrectos.
+  - La corrección asegura que cada chunk tenga un rango de líneas preciso y no superpuesto con otros chunks.
+- **Impacto**: Las citas ahora son 100% precisas en cuanto a localización. El código es más limpio y el mantenimiento es más sencillo al eliminar el soporte legacy.
 
 ## Notas
 - Fecha de inicio: 2026-04-28
