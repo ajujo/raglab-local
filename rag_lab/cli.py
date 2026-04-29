@@ -12,6 +12,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from rag_lab.cli_chat import run_chat
 from rag_lab.config import (
     CHUNK_MAX_TOKENS,
     CHUNK_OVERLAP,
@@ -245,6 +246,24 @@ def query(
             console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
     else:
         console.print("[bold yellow]⚠️ No results found.[/bold yellow]")
+
+
+@app.command()
+def chat(
+    cpu_embedding: bool = typer.Option(
+        False,
+        "--cpu-embedding",
+        help="Run embedding model on CPU to free GPU VRAM.",
+    ),
+    cpu_reranker: bool = typer.Option(
+        False,
+        "--cpu-reranker",
+        help="Run reranker model on CPU to free GPU VRAM.",
+    ),
+) -> None:
+    """Start an interactive chat session with document filtering."""
+    setup_logging("INFO")
+    run_chat(cpu_embedding=cpu_embedding, cpu_reranker=cpu_reranker)
 
 
 if __name__ == "__main__":
