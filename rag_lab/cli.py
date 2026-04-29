@@ -37,7 +37,8 @@ from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.reranker import rerank
 from rag_lab.generation.prompt_builder import build_prompt
 from rag_lab.generation.llm_client import generate_response
-from rag_lab.generation.verifier import verify_citations
+from rag_lab.verification.pipeline import verify_and_score
+from rag_lab.verification.scoring import ConfidenceLevel
 from rag_lab.logging_config import setup_logging
 
 app = typer.Typer(
@@ -236,8 +237,29 @@ def query(
             if not response:
                 console.print("\n[bold yellow]⚠️ El LLM no devolvió respuesta.[/bold yellow]")
             else:
-                verified = verify_citations(response, unique_results)
-                console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verified}")
+                # Extract retrieval scores from results
+                retrieval_scores = [r.get("score", 0.5) for r in unique_results[:RERANK_TOP_K]]
+
+                # Run verification pipeline
+                from rag_lab.config import ENABLE_CONSISTENCY_CHECK
+                verification = verify_and_score(
+                    response,
+                    unique_results[:RERANK_TOP_K],
+                    retrieval_scores,
+                    enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
+                )
+
+                # Print response with verification block
+                console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verification.response}")
+
+                # Print warnings if any
+                warnings = verification.get_warnings()
+                for warning in warnings:
+                    console.print(f"[bold yellow]⚠️ {warning}[/bold yellow]")
+
+                # Print verification block
+                console.print(f"\n{verification.format_verification_block()}")
+
         except LLMConnectionError as e:
             console.print(f"[bold red]LLM Error:[/bold red] {e}")
         except RAGLabError as e:

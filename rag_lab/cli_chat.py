@@ -34,7 +34,8 @@ from rag_lab.config import (
 from rag_lab.embedding.encoder import encode_chunks
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.generation.prompt_builder import build_prompt
-from rag_lab.generation.verifier import verify_citations
+from rag_lab.verification.pipeline import verify_and_score
+from rag_lab.config import ENABLE_CONSISTENCY_CHECK
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.reranker import rerank
@@ -143,7 +144,16 @@ class ChatSession:
         # Extraer fuentes
         sources = list({r.get("doc_id", "desconocido") for r in unique_results[:self.rerank_top_k]})
 
-        return response or "No se pudo generar una respuesta.", sources
+        # Ejecutar pipeline de verificación
+        retrieval_scores = [r.get("score", 0.5) for r in unique_results[:self.rerank_top_k]]
+        verification = verify_and_score(
+            response or "No se pudo generar una respuesta.",
+            unique_results[:self.rerank_top_k],
+            retrieval_scores,
+            enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
+        )
+
+        return verification.response, sources, verification
 
     def handle_command(self, command: str, *args) -> Optional[str]:
         """Manejar comandos internos."""
@@ -239,10 +249,19 @@ Comandos disponibles:
 
             # Consulta normal
             console.print("[dim]Buscando...[/dim]")
-            response, sources = self._run_query(user_input)
+            response, sources, verification = self._run_query(user_input)
 
             # Mostrar respuesta y fuentes
             console.print(f"\n[bold magenta]🤖 RAG-Lab:[/bold magenta] {response}")
+
+            # Mostrar advertencias si las hay
+            warnings = verification.get_warnings()
+            for warning in warnings:
+                console.print(f"[bold yellow]⚠️ {warning}[/bold yellow]")
+
+            # Mostrar bloque de verificación
+            console.print(f"\n{verification.format_verification_block()}")
+
             if sources:
                 console.print(f"[dim]Fuentes: {', '.join(sources)}[/dim]")
             console.print()

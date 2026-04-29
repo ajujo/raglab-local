@@ -4,6 +4,12 @@
 Nueva fase de desarrollo para el sistema RAG-Lab. Este documento registra las mejoras, correcciones y nuevas funcionalidades que se implementarán en esta versión.
 
 ## Tareas Pendientes
+- [x] Bloque 1: Estructura Base y Configuración
+- [x] Bloque 2: Verifier Layer (Componente 1)
+- [x] Bloque 3: Self-consistency Check (Componente 2)
+- [x] Bloque 4: Scoring y Pipeline (Componente 3 y Orquestación)
+- [x] Integración en CLI y modo chat
+- [x] Actualización de documentación (README.md y update1-2.md)
 - [ ] (Añadiremos las tareas a medida que las vayas proponiendo)
 
 ## Cambios Realizados
