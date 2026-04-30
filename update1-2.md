@@ -294,7 +294,40 @@ Este documento contiene el plan detallado para tres líneas de mejora:
 3. **Chat**: `python -m rag_lab.cli chat` → comandos `/hyde on`, `/docs doc1,doc2`
 4. **Feedback**: `python -m rag_lab.feedback.analyze_feedback`
 
-### Notas
+### Update 1.4 — Diagnóstico y Corrección de Precisión
+
+### Contexto del Problema
+El sistema RAG daba respuestas incompletas e imprecisas al preguntar sobre reglas de agencias mantenedoras. La sección 6 del documento contenía 7 reglas enumeradas, pero el RAG no las recuperaba correctamente y el score de confianza era MEDIUM (0.61).
+
+### Diagnóstico Realizado
+1. **Inspección de la base de datos**: Los chunks tenían `heading_path` incorrecto (`"5.3 Report Structure … 6 Maintenance Agencies"`).
+2. **Análisis del Parser**: Funciona correctamente.
+3. **Análisis del Splitter**: Bug en `_merge_sibling_sections()`. Todos los headings root compartían `id(None)` como `parent_id`, causando que secciones independientes se fusionaran en mega-chunks.
+4. **Análisis del Scoring**: 
+   - `retrieval_score` usaba `max(promedio_logits, 0.0)`, dando siempre 0.0 para logits negativos.
+   - `coverage_score` medía `chunks_citados / total_recuperados`, penalizando respuestas correctas que solo citaban fragmentos relevantes.
+
+### Correcciones Aplicadas
+1. **`_merge_sibling_sections()`**: Se evitó fusionar secciones root (sin parent real). Ahora cada capítulo de nivel superior mantiene su propio chunk con `heading_path` correcto.
+2. **`calculate_score()`**: 
+   - `retrieval_score`: Se aplicó **sigmoid** a los logits crudos del reranker y se promedian solo los top-3 scores.
+   - `coverage_score`: Se cambió a `citas_verificadas / total_citas`, midiendo la tasa de verificación en lugar de penalizar por no citar todos los chunks.
+
+### Tests Actualizados
+- `test_verification.py`: Actualizados los valores esperados para `coverage_score`.
+- `test_raw_scores_fix.py`: Actualizados los rangos esperados para `retrieval_score` tras aplicar sigmoid.
+
+### Verificación
+- Todos los tests pasan (225 tests en total).
+- El chunk de "Maintenance Agencies" ahora tiene `heading_path` correcto y contiene las 7 reglas completas.
+- La respuesta del RAG ahora enumera correctamente las reglas con citas al chunk correcto.
+
+### Pendiente
+- Re-ingesta completa falló por falta de memoria GPU (SGLang ocupando VRAM). Se necesita detener SGLang y ejecutar `python -m rag_lab.cli ingest` para regenerar embeddings y ChromaDB.
+
+---
+
+## Notas
 - Fecha de cierre: 2026-04-30
 - Total commits 1.3: 3 (8d1dfd8, 38784ae, 5e9e8b9)
 - Tests totales: 14 (chat) + 16 (performance) + 4 (multi-doc) + 20 (verification) + 6 (query_rewriter) + 7 (feedback) = **67 tests**
