@@ -5,10 +5,13 @@ Permite conversaciones continuas con:
 - Historial de conversación
 - Comandos internos (/help, /clear, /mode, /temp, /topk, /quit)
 - Indicadores de fuentes
+- HyDE, query rewriting y feedback loop integrados
 """
 
+import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -32,8 +35,10 @@ from rag_lab.config import (
     STORAGE_DIR,
 )
 from rag_lab.embedding.encoder import encode_chunks
+from rag_lab.feedback.feedback_store import FeedbackEntry, save_feedback, init_db
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.generation.prompt_builder import build_prompt
+from rag_lab.retrieval.query_rewriter import rewrite_query
 from rag_lab.verification.pipeline import verify_and_score
 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
 from rag_lab.retrieval.hybrid_search import hybrid_search
@@ -60,6 +65,11 @@ class ChatSession:
         self.embedding_device: str = EMBEDDING_DEVICE
         self.reranker_device: str = EMBEDDING_DEVICE
 
+        # Flags de mejora del chat
+        self.hyde_enabled: bool = False
+        self.rewrite_enabled: bool = False
+        self.feedback_enabled: bool = True
+
         # Inicializar almacenes
         self.vector_store = VectorStore()
         self.sparse_store = SparseStore()
@@ -79,11 +89,14 @@ class ChatSession:
             return results
         return [r for r in results if r.get("doc_id") in self.active_docs]
 
-    def _run_query(self, question: str) -> Tuple[str, List[str]]:
-        """Ejecutar una consulta RAG y devolver (respuesta, fuentes)."""
+    def _run_query(self, question: str) -> Tuple[str, List[str], object, List[dict]]:
+        """Ejecutar una consulta RAG y devolver (respuesta, fuentes, verification, chunks)."""
         # Procesar consulta
-        use_hyde = self.mode == "hyde"
-        queries = process_query(question, use_hyde=use_hyde)
+        queries = process_query(
+            question,
+            use_hyde=self.hyde_enabled,
+            use_rewriting=self.rewrite_enabled,
+        )
 
         # Obtener embeddings de consulta
         all_query_data = []
@@ -133,7 +146,7 @@ class ChatSession:
             )
 
         if not unique_results:
-            return "No se encontraron resultados relevantes.", []
+            return "No se encontraron resultados relevantes.", [], None, []
 
         # Construir prompt con historial
         system_prompt, user_prompt = build_prompt(question, unique_results[:self.rerank_top_k])
@@ -153,7 +166,7 @@ class ChatSession:
             enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
         )
 
-        return verification.response, sources, verification
+        return verification.response, sources, verification, unique_results[:self.rerank_top_k]
 
     def handle_command(self, command: str, *args) -> Optional[str]:
         """Manejar comandos internos."""
@@ -179,6 +192,11 @@ class ChatSession:
                 mode = args[0].lower()
                 if mode in ("fast", "standard", "hyde"):
                     self.mode = mode
+                    # Backward compatibility: /mode hyde also enables hyde_enabled
+                    if mode == "hyde":
+                        self.hyde_enabled = True
+                    elif mode == "standard":
+                        self.hyde_enabled = False
                     return f"Modo cambiado a: {mode}"
                 return "Modo inválido. Opciones: fast, standard, hyde"
             return f"Modo actual: {self.mode}"
@@ -198,6 +216,39 @@ class ChatSession:
                 except ValueError:
                     return "Valor inválido. Debe ser un número entero."
             return f"Top-k actual: {self.top_k}"
+        elif cmd == "hyde":
+            if not args:
+                return f"HyDE: {'activado' if self.hyde_enabled else 'desactivado'}"
+            val = args[0].lower()
+            if val == "on":
+                self.hyde_enabled = True
+                return "HyDE activado: las consultas usarán hipótesis generadas por el LLM."
+            elif val == "off":
+                self.hyde_enabled = False
+                return "HyDE desactivado."
+            return "Uso: /hyde [on|off]"
+        elif cmd == "rewrite":
+            if not args:
+                return f"Query rewriting: {'activado' if self.rewrite_enabled else 'desactivado'}"
+            val = args[0].lower()
+            if val == "on":
+                self.rewrite_enabled = True
+                return "Query rewriting activado: las preguntas se reformularán para mejorar la recuperación."
+            elif val == "off":
+                self.rewrite_enabled = False
+                return "Query rewriting desactivado."
+            return "Uso: /rewrite [on|off]"
+        elif cmd == "feedback":
+            if not args:
+                return f"Feedback: {'activado' if self.feedback_enabled else 'desactivado'}"
+            val = args[0].lower()
+            if val == "on":
+                self.feedback_enabled = True
+                return "Feedback activado."
+            elif val == "off":
+                self.feedback_enabled = False
+                return "Feedback desactivado."
+            return "Uso: /feedback [on|off]"
         elif cmd in ("quit", "exit", "bye"):
             return "__QUIT__"
         else:
@@ -212,15 +263,81 @@ Comandos disponibles:
   /mode <modo>   - Cambia modo: fast, standard, hyde
   /temp <valor>  - Cambia temperatura del LLM (ej. /temp 0.1)
   /topk <n>      - Cambia número de chunks (ej. /topk 20)
+  /hyde [on|off] - Activa/desactiva HyDE (hipótesis con LLM)
+  /rewrite [on|off] - Activa/desactiva query rewriting
+  /feedback [on|off] - Activa/desactiva prompt de feedback
   /quit           - Sale del chat
 """
+
+    def _collect_feedback(
+        self,
+        question: str,
+        rewritten_query: str | None,
+        hyde_used: bool,
+        chunks: list[dict],
+        final_score: float,
+        score_level: str,
+    ) -> None:
+        """Prompt al usuario por feedback y guardar en SQLite."""
+        # Construir metadatos de chunks (sin texto completo)
+        chunk_metas = []
+        for c in chunks:
+            chunk_metas.append({
+                "doc_id": c.get("doc_id", ""),
+                "heading_path": c.get("heading_path", ""),
+                "line_start": c.get("line_start", 0),
+                "line_end": c.get("line_end", 0),
+                "retrieval_score": c.get("score", 0.5),
+            })
+
+        console.print("\n¿Esta respuesta fue útil? [s/n] (Enter para omitir): ", end="")
+        try:
+            answer = sys.stdin.readline().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if answer in ("s", "sí", "si", "yes", "y"):
+            entry = FeedbackEntry(
+                question=question,
+                rewritten_query=rewritten_query,
+                hyde_used=hyde_used,
+                chunks_retrieved=json.dumps(chunk_metas, ensure_ascii=False),
+                final_score=final_score,
+                score_level=score_level,
+                useful=True,
+                timestamp=datetime.now().isoformat(),
+            )
+            save_feedback(entry)
+            console.print("[bold green]✅ Feedback guardado: Útil[/bold green]")
+        elif answer in ("n", "no"):
+            entry = FeedbackEntry(
+                question=question,
+                rewritten_query=rewritten_query,
+                hyde_used=hyde_used,
+                chunks_retrieved=json.dumps(chunk_metas, ensure_ascii=False),
+                final_score=final_score,
+                score_level=score_level,
+                useful=False,
+                timestamp=datetime.now().isoformat(),
+            )
+            save_feedback(entry)
+            console.print("[bold yellow]⚠️ Feedback guardado: No útil[/bold yellow]")
+        # Enter o input inválido → se omite
 
     def chat_loop(self):
         """Bucle principal del chat."""
         console.print("[bold cyan]🔒 Chat RAG-Lab iniciado[/bold cyan]")
         console.print(f"[dim]Documentos disponibles: {len(SOURCES)} fuentes[/dim]")
+        console.print(
+            f"[dim]Estado: HyDE={'ON' if self.hyde_enabled else 'OFF'}, "
+            f"Rewriting={'ON' if self.rewrite_enabled else 'OFF'}, "
+            f"Feedback={'ON' if self.feedback_enabled else 'OFF'}[/dim]"
+        )
         console.print("[dim]Escribe /help para ver los comandos disponibles.[/dim]")
         console.print("[dim]Escribe tu pregunta o un comando con /[/dim]\n")
+
+        # Inicializar DB de feedback
+        init_db()
 
         while True:
             try:
@@ -249,7 +366,12 @@ Comandos disponibles:
 
             # Consulta normal
             console.print("[dim]Buscando...[/dim]")
-            response, sources, verification = self._run_query(user_input)
+            response, sources, verification, chunks = self._run_query(user_input)
+
+            # Si no hay resultados, saltar feedback
+            if verification is None:
+                console.print(f"\n[bold magenta]🤖 RAG-Lab:[/bold magenta] {response}")
+                continue
 
             # Mostrar respuesta y fuentes
             console.print(f"\n[bold magenta]🤖 RAG-Lab:[/bold magenta] {response}")
@@ -264,6 +386,18 @@ Comandos disponibles:
 
             if sources:
                 console.print(f"[dim]Fuentes: {', '.join(sources)}[/dim]")
+
+            # Feedback prompt
+            if self.feedback_enabled:
+                self._collect_feedback(
+                    question=user_input,
+                    rewritten_query=None,
+                    hyde_used=self.hyde_enabled,
+                    chunks=chunks,
+                    final_score=verification.score_result.final_score,
+                    score_level=verification.score_result.confidence_level.value,
+                )
+
             console.print()
 
 

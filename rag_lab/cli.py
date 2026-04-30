@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -39,6 +40,11 @@ from rag_lab.generation.prompt_builder import build_prompt
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.verification.pipeline import verify_and_score
 from rag_lab.verification.scoring import ConfidenceLevel
+from rag_lab.feedback.feedback_store import (
+    FeedbackEntry,
+    save_feedback,
+    init_db,
+)
 from rag_lab.logging_config import setup_logging
 
 app = typer.Typer(
@@ -156,6 +162,7 @@ def query(
     rewrite: bool = typer.Option(False, "--rewrite", help="Enable query rewriting."),
     fast: bool = typer.Option(False, "--fast", help="Skip reranking."),
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
+    no_feedback: bool = typer.Option(False, "--no-feedback", help="Disable feedback prompt."),
     cpu_embedding: bool = typer.Option(
         False,
         "--cpu-embedding",
@@ -261,6 +268,17 @@ def query(
 
                     # Print verification block
                     console.print(f"\n{verification.format_verification_block()}")
+
+                    # Feedback prompt
+                    if not no_feedback:
+                        _collect_feedback(
+                            question=question,
+                            rewritten_query=None,  # TODO: capture rewritten query
+                            hyde_used=hyde,
+                            chunks=unique_results[:RERANK_TOP_K],
+                            final_score=verification.score_result.final_score,
+                            score_level=verification.score_result.confidence_level.value,
+                        )
                 except Exception as e:
                     # Si la verificación falla, mostrar la respuesta sin el bloque de verificación
                     console.print(f"\n[bold green]🤖 Response:[/bold green]\n{response}")
@@ -296,3 +314,62 @@ def chat(
 
 if __name__ == "__main__":
     app()
+
+
+def _collect_feedback(
+    question: str,
+    rewritten_query: str | None,
+    hyde_used: bool,
+    chunks: list[dict],
+    final_score: float,
+    score_level: str,
+) -> None:
+    """Prompt the user for feedback and save to SQLite."""
+    init_db()
+
+    # Build chunk metadata (no full text)
+    chunk_metas = []
+    for c in chunks:
+        chunk_metas.append({
+            "doc_id": c.get("doc_id", ""),
+            "heading_path": c.get("heading_path", ""),
+            "line_start": c.get("line_start", 0),
+            "line_end": c.get("line_end", 0),
+            "retrieval_score": c.get("score", 0.5),
+        })
+
+    console.print("\n¿Esta respuesta fue útil? [s/n] (Enter para omitir): ", end="")
+    try:
+        answer = sys.stdin.readline().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if answer in ("s", "sí", "si", "yes", "y"):
+        entry = FeedbackEntry(
+            question=question,
+            rewritten_query=rewritten_query,
+            hyde_used=hyde_used,
+            chunks_retrieved=json.dumps(chunk_metas, ensure_ascii=False),
+            final_score=final_score,
+            score_level=score_level,
+            useful=True,
+            timestamp=datetime.now().isoformat(),
+        )
+        save_feedback(entry)
+        console.print("[bold green]✅ Feedback guardado: Útil[/bold green]")
+    elif answer in ("n", "no"):
+        entry = FeedbackEntry(
+            question=question,
+            rewritten_query=rewritten_query,
+            hyde_used=hyde_used,
+            chunks_retrieved=json.dumps(chunk_metas, ensure_ascii=False),
+            final_score=final_score,
+            score_level=score_level,
+            useful=False,
+            timestamp=datetime.now().isoformat(),
+        )
+        save_feedback(entry)
+        console.print("[bold yellow]⚠️ Feedback guardado: No útil[/bold yellow]")
+    else:
+        # Enter or unrecognized — skip
+        pass
