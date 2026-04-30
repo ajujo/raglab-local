@@ -199,6 +199,8 @@ Responde a la pregunta basándote ÚNICAMENTE en los fragmentos anteriores.
 
 Cita usando el formato: [[N] Fuente: <doc_id> | Sección: <heading_path> | Líneas: <line_start>-<line_end>]
 
+IMPORTANTE: Al citar, copia los valores de Fuente, Sección y Líneas EXACTAMENTE como aparecen en el encabezado del fragmento, sin modificarlos.
+
 Si la respuesta no está en los fragmentos, indícalo explícitamente.
 """
 
@@ -210,7 +212,7 @@ LOG_FILE = "rag_lab.log"
 # =============================================================================
 
 # Activar/desactivar el self-consistency check
-ENABLE_CONSISTENCY_CHECK = True
+ENABLE_CONSISTENCY_CHECK = False
 
 # Ponderaciones del scoring
 WEIGHT_CITATION = 0.35
