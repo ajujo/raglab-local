@@ -45,6 +45,8 @@ from rag_lab.feedback.feedback_store import (
     save_feedback,
     init_db,
 )
+from rag_lab.performance.timer import PhaseTimer
+from rag_lab.performance.report import generate_report, save_report_json
 from rag_lab.logging_config import setup_logging
 
 app = typer.Typer(
@@ -163,6 +165,7 @@ def query(
     fast: bool = typer.Option(False, "--fast", help="Skip reranking."),
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
     no_feedback: bool = typer.Option(False, "--no-feedback", help="Disable feedback prompt."),
+    profile: bool = typer.Option(False, "--profile", help="Show performance metrics."),
     cpu_embedding: bool = typer.Option(
         False,
         "--cpu-embedding",
@@ -185,19 +188,28 @@ def query(
     emb_device = "cpu" if cpu_embedding else EMBEDDING_DEVICE
     rerank_device = "cpu" if cpu_reranker else os.getenv("RERANKER_DEVICE", "cuda")
 
+    # Initialize timer for profiling
+    timer = PhaseTimer()
+
     # Process query
+    if profile:
+        timer.start("query_processing")
     queries = process_query(question, use_hyde=hyde, use_rewriting=rewrite)
+    if profile:
+        timer.stop()
 
     # Get embeddings for all query variants
     # encode_chunks returns (dense_embeddings: np.ndarray, sparse_embeddings: Dict)
     all_query_data = []
+    if profile:
+        timer.start("embedding")
     for q in queries:
         dense_emb, sparse_dict = encode_chunks([{"text": q["text"]}], batch_size=1, device=emb_device)
-        # dense_emb is shape (1, 1024), take first element
         query_dense = dense_emb[0]
-        # sparse_dict maps chunk_id -> {token_idx: weight}, get first (and only) entry
         query_sparse = next(iter(sparse_dict.values()), {}) if sparse_dict else {}
         all_query_data.append((query_dense, query_sparse))
+    if profile:
+        timer.stop()
 
     # Perform hybrid search
     vector_store = VectorStore()
@@ -208,6 +220,8 @@ def query(
 
     # Search with each query variant
     all_results = []
+    if profile:
+        timer.start("hybrid_search")
     for query_dense, query_sparse in all_query_data:
         results = hybrid_search(
             question,
@@ -219,6 +233,8 @@ def query(
             top_k=top_k * 2,
         )
         all_results.extend(results)
+    if profile:
+        timer.stop()
 
     # Deduplicate by chunk_id
     seen = set()
@@ -230,18 +246,26 @@ def query(
 
     # Rerank if not in fast mode
     if not fast and unique_results:
+        if profile:
+            timer.start("reranking")
         unique_results = rerank(
             question,
             unique_results[:20],
             top_k=min(top_k * 2, len(unique_results)),
             device=rerank_device,
         )
+        if profile:
+            timer.stop()
 
     # Generate response
     if unique_results:
         system_prompt, user_prompt = build_prompt(question, unique_results[:RERANK_TOP_K])
         try:
+            if profile:
+                timer.start("llm_generation")
             response = generate_response(system_prompt, user_prompt)
+            if profile:
+                timer.stop()
             if not response:
                 console.print("\n[bold yellow]⚠️ El LLM no devolvió respuesta.[/bold yellow]")
             else:
@@ -251,12 +275,16 @@ def query(
                 # Run verification pipeline
                 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
                 try:
+                    if profile:
+                        timer.start("verification")
                     verification = verify_and_score(
                         response,
                         unique_results[:RERANK_TOP_K],
                         retrieval_scores,
                         enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
                     )
+                    if profile:
+                        timer.stop()
 
                     # Print response with verification block
                     console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verification.response}")
@@ -269,18 +297,22 @@ def query(
                     # Print verification block
                     console.print(f"\n{verification.format_verification_block()}")
 
+                    # Profile report
+                    if profile:
+                        console.print(f"\n{generate_report(timer.get_all_durations())}")
+                        save_report_json(timer.get_all_durations())
+
                     # Feedback prompt
                     if not no_feedback:
                         _collect_feedback(
                             question=question,
-                            rewritten_query=None,  # TODO: capture rewritten query
+                            rewritten_query=None,
                             hyde_used=hyde,
                             chunks=unique_results[:RERANK_TOP_K],
                             final_score=verification.score_result.final_score,
                             score_level=verification.score_result.confidence_level.value,
                         )
                 except Exception as e:
-                    # Si la verificación falla, mostrar la respuesta sin el bloque de verificación
                     console.print(f"\n[bold green]🤖 Response:[/bold green]\n{response}")
                     console.print(f"\n[bold yellow]⚠️ Error en la capa de verificación: {e}[/bold yellow]")
 
