@@ -57,9 +57,10 @@ def calculate_score(
         valid_count = sum(1 for r in citation_results if r.status == CitationStatus.VALID)
         citation_score = valid_count / len(citation_results)
 
-    # 2. retrieval_score: promedio de los scores de similitud
+    # 2. retrieval_score: promedio de los scores de similitud (clipped a [0, 1])
     if retrieval_scores:
-        retrieval_score = sum(retrieval_scores) / len(retrieval_scores)
+        avg_score = sum(retrieval_scores) / len(retrieval_scores)
+        retrieval_score = min(max(avg_score, 0.0), 1.0)
     else:
         retrieval_score = 0.5
 
@@ -70,13 +71,14 @@ def calculate_score(
     cited_chunk_ids = {r.matched_chunk.get("chunk_id") for r in citation_results if r.matched_chunk}
     coverage_score = len(cited_chunk_ids) / max(total_retrieved, 1)
 
-    # Score final ponderado
-    final_score = (
+    # Score final ponderado (clipped a [0, 1])
+    raw_final = (
         citation_score * 0.35 +
         retrieval_score * 0.30 +
         consistency_score * 0.25 +
         coverage_score * 0.10
     )
+    final_score = min(max(raw_final, 0.0), 1.0)
 
     # Nivel de confianza
     if final_score >= 0.75:

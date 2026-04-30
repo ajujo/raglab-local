@@ -249,6 +249,28 @@ class TestSplitIntoSegments:
         # Should be split into smaller segments
         assert len(result) > 0
 
+    def test_numbered_list_grouping(self):
+        """Las líneas de una lista numerada consecutiva se agrupan en un solo segmento."""
+        text = "Some intro text.\n\n1. First item\n2. Second item\n3. Third item\n4. Fourth item\n5. Fifth item\nMore text after."
+        result = _split_into_segments(text)
+        # La lista numerada debe estar en un solo segmento
+        list_segments = [s for s in result if s.startswith("1.")]
+        assert len(list_segments) == 1
+        assert "2. Second item" in list_segments[0]
+        assert "3. Third item" in list_segments[0]
+        assert "4. Fourth item" in list_segments[0]
+        assert "5. Fifth item" in list_segments[0]
+
+    def test_numbered_list_with_surrounding_text(self):
+        """Texto antes y después de la lista no se agrupa con la lista."""
+        text = "Intro paragraph that is long enough to trigger line splitting so we can test list grouping behavior.\n\n1. Agencies are maintained in an Agency Scheme.\n2. The maintenance agency of the Agency Scheme must also be declared.\n3. The top-level agency is SDMX.\n\nOutro paragraph that follows the list."
+        result = _split_into_segments(text)
+        # Verificar que la lista está agrupada
+        list_segments = [s for s in result if s.startswith("1.")]
+        assert len(list_segments) == 1
+        assert "2." in list_segments[0]
+        assert "3." in list_segments[0]
+
 
 # --- chunk_document ---
 

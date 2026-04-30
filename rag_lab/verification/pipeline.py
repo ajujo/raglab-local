@@ -90,13 +90,17 @@ class VerificationResult:
         score = self.score_result
         confidence_emoji = {"HIGH": "✓", "MEDIUM": "⚠", "LOW": "✗"}
 
+        # Normalizar scores para visualización (logits crudos → ratio 0-1)
+        max_score = max(abs(s) for s in self.retrieval_scores) if self.retrieval_scores else 1.0
+
         # Construir sección de fragmentos recuperados
         chunks_lines = []
         for i, (chunk, sc) in enumerate(zip(self.retrieved_chunks, self.retrieval_scores)):
             doc_id = chunk.get("doc_id", "desconocido")
             line_start = chunk.get("line_start", "?")
             line_end = chunk.get("line_end", "?")
-            bar = _score_bar(sc)
+            display_ratio = sc / max_score if max_score > 0 else 0
+            bar = _score_bar(display_ratio)
             chunks_lines.append(
                 f"  [{i+1}] {doc_id} | Líneas {line_start}-{line_end}  → {sc:.2f} {bar}"
             )

@@ -71,6 +71,11 @@ def _is_table_line(line: str) -> bool:
     return '|' in stripped and stripped.startswith('|')
 
 
+def _is_numbered_list_line(line: str) -> bool:
+    """Check if a line is part of a numbered list (e.g., '1. Agencies...')."""
+    return bool(re.match(r'^\d+\.\s+\S', line.strip()))
+
+
 def _build_heading_path(heading: Heading, parent_map: dict) -> str:
     """Build the full hierarchical heading path.
 
@@ -532,9 +537,8 @@ def _create_chunks(
 def _split_into_segments(text: str) -> List[str]:
     """Split text into natural segments (paragraphs and sentences).
 
-    Prefers paragraph boundaries (double newline), then falls back
-    to single lines. This produces cleaner chunk boundaries than
-    splitting by individual words.
+    Always groups consecutive numbered list lines together to preserve
+    the context of ordered lists, regardless of paragraph length.
 
     Args:
         text: Input text.
@@ -551,13 +555,33 @@ def _split_into_segments(text: str) -> List[str]:
         if not para:
             continue
 
-        # If a paragraph is very long, split by lines
-        if _count_tokens(para) > 200:
-            for line in para.split('\n'):
-                line = line.strip()
-                if line:
+        # Always check for numbered lists and group them
+        lines = para.split('\n')
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if _is_numbered_list_line(line):
+                # Collect consecutive numbered list lines
+                list_lines = [line]
+                j = i + 1
+                while j < len(lines) and _is_numbered_list_line(lines[j]):
+                    list_lines.append(lines[j].strip())
+                    j += 1
+                segments.append('\n'.join(list_lines))
+                i = j
+            elif _count_tokens(para) > 200:
+                # Only split non-list lines into individual segments for long paragraphs
+                segments.append(line)
+                i += 1
+            else:
+                # For short paragraphs, keep the whole paragraph as one segment
+                # But we need to handle the case where we're inside a loop
+                # If we haven't started processing list lines, add the whole paragraph
+                if not any(_is_numbered_list_line(l) for l in lines):
+                    segments.append(para)
+                    break
+                else:
                     segments.append(line)
-        else:
-            segments.append(para)
+                    i += 1
 
     return segments
