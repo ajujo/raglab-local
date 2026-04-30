@@ -40,6 +40,8 @@ from rag_lab.generation.llm_client import generate_response
 from rag_lab.generation.prompt_builder import build_prompt
 from rag_lab.retrieval.query_rewriter import rewrite_query
 from rag_lab.verification.pipeline import verify_and_score
+from rag_lab.performance.timer import PhaseTimer
+from rag_lab.performance.report import generate_report, save_report_json
 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.query_processor import process_query
@@ -55,7 +57,7 @@ console = Console()
 class ChatSession:
     """Sesión de chat con historial y configuración dinámica."""
 
-    def __init__(self):
+    def __init__(self, profile: bool = False):
         self.history: List[Dict[str, str]] = []
         self.active_docs: Optional[List[str]] = None  # None = todos
         self.mode: str = "standard"  # fast, standard, hyde
@@ -64,6 +66,7 @@ class ChatSession:
         self.rerank_top_k: int = RERANK_TOP_K
         self.embedding_device: str = EMBEDDING_DEVICE
         self.reranker_device: str = EMBEDDING_DEVICE
+        self.profile: bool = profile
 
         # Flags de mejora del chat
         self.hyde_enabled: bool = False
@@ -159,8 +162,8 @@ class ChatSession:
         # Extraer fuentes
         sources = list({r.get("doc_id", "desconocido") for r in unique_results[:self.rerank_top_k]})
 
-        # Ejecutar pipeline de verificación
-        retrieval_scores = [r.get("score", 0.5) for r in unique_results[:self.rerank_top_k]]
+        # Use rerank_score if available, fallback to retrieval score
+        retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in unique_results[:self.rerank_top_k]]
         verification = verify_and_score(
             response or "No se pudo generar una respuesta.",
             unique_results[:self.rerank_top_k],
@@ -289,7 +292,7 @@ Comandos disponibles:
                 "heading_path": c.get("heading_path", ""),
                 "line_start": c.get("line_start", 0),
                 "line_end": c.get("line_end", 0),
-                "retrieval_score": c.get("score", 0.5),
+                "retrieval_score": c.get("rerank_score", c.get("score", 0.5)),
             })
 
         console.print("\n¿Esta respuesta fue útil? [s/n] (Enter para omitir): ", end="")
@@ -406,9 +409,10 @@ Comandos disponibles:
 def run_chat(
     cpu_embedding: bool = False,
     cpu_reranker: bool = False,
+    profile: bool = False,
 ) -> None:
     """Ejecutar el modo chat interactivo."""
-    session = ChatSession()
+    session = ChatSession(profile=profile)
 
     if cpu_embedding:
         session.embedding_device = "cpu"

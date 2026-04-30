@@ -269,8 +269,8 @@ def query(
             if not response:
                 console.print("\n[bold yellow]⚠️ El LLM no devolvió respuesta.[/bold yellow]")
             else:
-                # Extract retrieval scores from results
-                retrieval_scores = [r.get("score", 0.5) for r in unique_results[:RERANK_TOP_K]]
+                # Use rerank_score if available, fallback to retrieval score
+                retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in unique_results[:RERANK_TOP_K]]
 
                 # Run verification pipeline
                 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
@@ -340,10 +340,15 @@ def chat(
         "--cpu-reranker",
         help="Run reranker model on CPU to free GPU VRAM.",
     ),
+    profile: bool = typer.Option(
+        False,
+        "--profile",
+        help="Show performance metrics per query.",
+    ),
 ) -> None:
     """Start an interactive chat session with document filtering."""
     setup_logging("INFO")
-    run_chat(cpu_embedding=cpu_embedding, cpu_reranker=cpu_reranker)
+    run_chat(cpu_embedding=cpu_embedding, cpu_reranker=cpu_reranker, profile=profile)
 
 
 if __name__ == "__main__":
@@ -369,7 +374,7 @@ def _collect_feedback(
             "heading_path": c.get("heading_path", ""),
             "line_start": c.get("line_start", 0),
             "line_end": c.get("line_end", 0),
-            "retrieval_score": c.get("score", 0.5),
+            "retrieval_score": c.get("rerank_score", c.get("score", 0.5)),
         })
 
     console.print("\n¿Esta respuesta fue útil? [s/n] (Enter para omitir): ", end="")
