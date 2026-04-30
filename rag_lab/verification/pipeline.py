@@ -14,6 +14,16 @@ from rag_lab.verification.scoring import calculate_score, ScoreResult, Confidenc
 
 logger = logging.getLogger("rag_lab")
 
+_SCORE_BAR_WIDTH = 15
+_LOW_SCORE_THRESHOLD = 0.60
+
+
+def _score_bar(score: float, width: int = _SCORE_BAR_WIDTH) -> str:
+    """Generate a visual bar for a score between 0 and 1."""
+    filled = round(score * width)
+    empty = width - filled
+    return "█" * filled + "░" * empty
+
 
 class VerificationResult:
     """Resultado completo de la capa de verificación."""
@@ -24,14 +34,18 @@ class VerificationResult:
         citation_results: List[CitationResult],
         consistency_result: ConsistencyResult,
         score_result: ScoreResult,
+        retrieved_chunks: List[dict],
+        retrieval_scores: List[float],
     ):
         self.response = response
         self.citation_results = citation_results
         self.consistency_result = consistency_result
         self.score_result = score_result
+        self.retrieved_chunks = retrieved_chunks
+        self.retrieval_scores = retrieval_scores
 
     def get_warnings(self) -> List[str]:
-        """Obtener advertencias de citas inválidas."""
+        """Obtener advertencias de citas inválidas y scores bajos."""
         warnings = []
         for result in self.citation_results:
             if result.status == CitationStatus.INVALID:
@@ -47,10 +61,18 @@ class VerificationResult:
         else:
             warnings.append("⚠ Consistency check no pudo ejecutarse correctamente.")
 
+        # Advertencia por scores bajos
+        has_low_score = any(s < _LOW_SCORE_THRESHOLD for s in self.retrieval_scores)
+        if has_low_score:
+            warnings.append(
+                "⚠ Algunos fragmentos tienen relevancia baja. Considera reformular la pregunta "
+                "o activar HyDE con --hyde para mejorar la recuperación."
+            )
+
         return warnings
 
     def format_verification_block(self) -> str:
-        """Formatear el bloque de metadatos de verificación."""
+        """Formatear el bloque de metadatos de verificación con scores por chunk."""
         valid_citations = sum(1 for r in self.citation_results if r.status == CitationStatus.VALID)
         total_citations = len(self.citation_results)
 
@@ -68,11 +90,26 @@ class VerificationResult:
         score = self.score_result
         confidence_emoji = {"HIGH": "✓", "MEDIUM": "⚠", "LOW": "✗"}
 
+        # Construir sección de fragmentos recuperados
+        chunks_lines = []
+        for i, (chunk, sc) in enumerate(zip(self.retrieved_chunks, self.retrieval_scores)):
+            doc_id = chunk.get("doc_id", "desconocido")
+            line_start = chunk.get("line_start", "?")
+            line_end = chunk.get("line_end", "?")
+            bar = _score_bar(sc)
+            chunks_lines.append(
+                f"  [{i+1}] {doc_id} | Líneas {line_start}-{line_end}  → {sc:.2f} {bar}"
+            )
+
+        chunks_section = "\n".join(chunks_lines)
+
         block = "─" * 45
         block += "\nVerificación de respuesta\n"
-        block += f"Citas verificadas : {valid_citations}/{total_citations} {('✓' if total_citations == valid_citations else '⚠')}\n"
-        block += f"Consistencia      : {consistency_status}\n"
-        block += f"Score de confianza: {score.final_score:.2f} — {score.confidence_level.value} {confidence_emoji.get(score.confidence_level.value, '')}\n"
+        block += "  Fragmentos recuperados:\n"
+        block += chunks_section + "\n"
+        block += f"  Citas verificadas : {valid_citations}/{total_citations} {('✓' if total_citations == valid_citations else '⚠')}\n"
+        block += f"  Consistencia      : {consistency_status}\n"
+        block += f"  Score de confianza: {score.final_score:.2f} — {score.confidence_level.value} {confidence_emoji.get(score.confidence_level.value, '')}\n"
         block += "─" * 45
 
         return block
@@ -134,4 +171,6 @@ def verify_and_score(
         citation_results=citation_results,
         consistency_result=consistency_result,
         score_result=score_result,
+        retrieved_chunks=retrieved_chunks,
+        retrieval_scores=retrieval_scores,
     )

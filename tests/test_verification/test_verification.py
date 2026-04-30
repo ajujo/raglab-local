@@ -10,15 +10,31 @@ from rag_lab.verification.verifier import (
     CitationStatus,
 )
 from rag_lab.verification.scoring import calculate_score, ScoreResult, ConfidenceLevel
-from rag_lab.verification.consistency import ConsistencyResult, run_consistency_check
-from rag_lab.verification.pipeline import verify_and_score, VerificationResult
+from rag_lab.verification.consistency import ConsistencyResult, run_consistency_check, _parse_response, _compute_score
+from rag_lab.verification.pipeline import verify_and_score, VerificationResult, _score_bar
+
+
+class TestScoreBar:
+    """Tests para la función auxiliar de barra visual."""
+
+    def test_score_bar_full(self):
+        bar = _score_bar(1.0)
+        assert bar == "█" * 15
+
+    def test_score_bar_empty(self):
+        bar = _score_bar(0.0)
+        assert bar == "░" * 15
+
+    def test_score_bar_half(self):
+        bar = _score_bar(0.5)
+        # 0.5 * 15 = 7.5 → round → 8
+        assert bar == "█" * 8 + "░" * 7
 
 
 class TestVerifier:
     """Tests para el componente de verificación de citas."""
 
     def test_verify_valid_citation(self):
-        """Verificar que una cita válida se clasifique correctamente."""
         response = "SDMX es un estándar [[1] Fuente: doc1 | Sección: Section 1 | Líneas: 10-20]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Section 1", "line_start": 10, "line_end": 20}
@@ -29,7 +45,6 @@ class TestVerifier:
         assert results[0].matched_chunk is not None
 
     def test_verify_invalid_citation(self):
-        """Verificar que una cita inválida se detecte."""
         response = "Algo [[1] Fuente: doc_missing | Sección: Section X | Líneas: 99-100]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Section 1", "line_start": 10, "line_end": 20}
@@ -40,7 +55,6 @@ class TestVerifier:
         assert results[0].matched_chunk is None
 
     def test_verify_partial_citation(self):
-        """Verificar que una cita parcial se clasifique como PARTIAL."""
         response = "Dato [[1] Fuente: doc1 | Sección: Section 1 | Líneas: 10-30]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Section 1", "line_start": 10, "line_end": 20}
@@ -50,7 +64,6 @@ class TestVerifier:
         assert results[0].status == CitationStatus.PARTIAL
 
     def test_no_citations(self):
-        """Verificar que una respuesta sin citas devuelva lista vacía."""
         response = "Esta respuesta no tiene citas."
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Section 1", "line_start": 10, "line_end": 20}
@@ -63,8 +76,6 @@ class TestConsistency:
     """Tests para el componente de consistency check."""
 
     def test_parse_response_valid(self):
-        """Verificar parseo de respuesta válida."""
-        from rag_lab.verification.consistency import _parse_response
         raw = "UNSUPPORTED: NO\nCONTRADICTIONS: NO\nHALLUCINATIONS: NO\nDETAILS:"
         result = _parse_response(raw)
         assert result is not None
@@ -73,32 +84,23 @@ class TestConsistency:
         assert result["HALLUCINATIONS"] == "NO"
 
     def test_parse_response_invalid(self):
-        """Verificar que un parseo inválido devuelva None."""
-        from rag_lab.verification.consistency import _parse_response
         raw = "ALGO: SI\nOTRA: NO"
         result = _parse_response(raw)
         assert result is None
 
     def test_compute_score_hallucinations(self):
-        """Verificar score con alucinaciones."""
-        from rag_lab.verification.consistency import _compute_score
         parsed = {"UNSUPPORTED": "NO", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "SI", "DETAILS": "Hallucination detected"}
         assert _compute_score(parsed) == 0.0
 
     def test_compute_score_unsupported(self):
-        """Verificar score con afirmaciones sin respaldo."""
-        from rag_lab.verification.consistency import _compute_score
         parsed = {"UNSUPPORTED": "SI", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "NO", "DETAILS": "Unsupported claim"}
         assert _compute_score(parsed) == 0.5
 
     def test_compute_score_ok(self):
-        """Verificar score cuando todo está bien."""
-        from rag_lab.verification.consistency import _compute_score
         parsed = {"UNSUPPORTED": "NO", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "NO", "DETAILS": ""}
         assert _compute_score(parsed) == 1.0
 
     def test_run_consistency_check_mock(self):
-        """Verificar run_consistency_check con LLM mock."""
         def mock_llm_call(prompt):
             return "UNSUPPORTED: NO\nCONTRADICTIONS: NO\nHALLUCINATIONS: NO\nDETAILS:"
 
@@ -117,7 +119,6 @@ class TestScoring:
     """Tests para el componente de scoring."""
 
     def test_score_all_valid(self):
-        """Verificar scoring con todas las citas válidas."""
         consistency = ConsistencyResult(
             has_unsupported_claims=False,
             has_contradictions=False,
@@ -139,7 +140,6 @@ class TestScoring:
         assert score.confidence_level == ConfidenceLevel.HIGH
 
     def test_score_with_invalid(self):
-        """Verificar scoring con citas inválidas."""
         consistency = ConsistencyResult(
             has_unsupported_claims=False,
             has_contradictions=False,
@@ -158,7 +158,6 @@ class TestScoring:
         assert score.confidence_level == ConfidenceLevel.MEDIUM
 
     def test_score_low_confidence(self):
-        """Verificar scoring con baja confianza."""
         consistency = ConsistencyResult(
             has_unsupported_claims=False,
             has_contradictions=False,
@@ -179,7 +178,6 @@ class TestPipeline:
     """Tests para el pipeline de verificación."""
 
     def test_pipeline_basic(self):
-        """Verificar el pipeline completo."""
         response = "Respuesta [[1] Fuente: doc1 | Sección: Sec1 | Líneas: 10-20]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Sec1", "line_start": 10, "line_end": 20},
@@ -195,7 +193,6 @@ class TestPipeline:
         assert result.format_verification_block() is not None
 
     def test_pipeline_warnings(self):
-        """Verificar que las advertencias se generen correctamente."""
         response = "Respuesta [[1] Fuente: doc_missing | Sección: SecX | Líneas: 99-100]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Sec1", "line_start": 10, "line_end": 20},
@@ -206,6 +203,38 @@ class TestPipeline:
         warnings = result.get_warnings()
         assert len(warnings) == 1
         assert "inválida" in warnings[0].lower() or "invalid" in warnings[0].lower()
+
+    def test_pipeline_low_score_warning(self):
+        response = "Respuesta [[1] Fuente: doc1 | Sección: Sec1 | Líneas: 10-20]"
+        chunks = [
+            {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Sec1", "line_start": 10, "line_end": 20},
+        ]
+        retrieval_scores = [0.5]  # Below threshold
+
+        result = verify_and_score(response, chunks, retrieval_scores, enable_consistency_check=False)
+        warnings = result.get_warnings()
+        low_score_warning = [w for w in warnings if "relevancia baja" in w.lower()]
+        assert len(low_score_warning) == 1
+
+    def test_verification_block_format(self):
+        response = "Respuesta"
+        chunks = [
+            {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Sec1", "line_start": 10, "line_end": 20},
+            {"chunk_id": "c2", "doc_id": "doc1", "heading_path": "Sec2", "line_start": 30, "line_end": 40},
+            {"chunk_id": "c3", "doc_id": "doc2", "heading_path": "Sec3", "line_start": 50, "line_end": 60},
+        ]
+        retrieval_scores = [0.91, 0.74, 0.61]
+
+        result = verify_and_score(response, chunks, retrieval_scores, enable_consistency_check=False)
+        block = result.format_verification_block()
+
+        # Verify structure
+        assert "Fragmentos recuperados:" in block
+        assert "[1]" in block
+        assert "[2]" in block
+        assert "[3]" in block
+        assert "█" in block
+        assert "░" in block
 
 
 if __name__ == "__main__":
