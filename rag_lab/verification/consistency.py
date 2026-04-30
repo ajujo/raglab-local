@@ -18,27 +18,25 @@ Eres un evaluador de coherencia de respuestas RAG. Tu tarea es verificar si la r
 """
 
 CONSISTENCY_USER_PROMPT_TEMPLATE = """\
-Dado este conjunto de fragmentos de documento:
+Evalúa la siguiente respuesta frente a estos fragmentos:
+
 <chunks>
 {chunks_text}
 </chunks>
 
-Y esta respuesta generada:
 <respuesta>
 {response}
 </respuesta>
 
-Evalúa si la respuesta:
-a) Contiene alguna afirmación que NO está respaldada por los fragmentos
-b) Contradice algún fragmento
-c) Inventa datos, cifras o definiciones que no aparecen en los fragmentos
+Indica en formato JSON puro si la respuesta contiene afirmaciones sin respaldo, contradicciones o alucinaciones.
 
-Responde SOLO en JSON con este esquema:
+Devuelve ÚNICAMENTE este JSON, sin texto adicional ni bloques de código:
+
 {
-  "has_unsupported_claims": true/false,
-  "has_contradictions": true/false,
-  "has_hallucinations": true/false,
-  "details": "<explicación breve si alguno es true, vacío si todo es false>"
+  "has_unsupported_claims": false,
+  "has_contradictions": false,
+  "has_hallucinations": false,
+  "details": ""
 }
 """
 
@@ -88,13 +86,26 @@ def check_consistency(
 
         # Limpiar la respuesta para extraer el JSON
         json_str = result_text.strip()
+        # Limpieza defensiva: remover bloques de código markdown
+        json_str = json_str.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
         # Intentar extraer JSON si hay texto adicional
         start = json_str.find('{')
         end = json_str.rfind('}') + 1
-        if start != -1 and end != 0:
+        if start != -1 and end != 0 and end > start:
             json_str = json_str[start:end]
+        else:
+            logger.warning("No se encontró JSON válido en la respuesta del LLM")
+            return None
 
         result = json.loads(json_str)
+        
+        # Validar que el resultado tenga las claves esperadas
+        required_keys = ["has_unsupported_claims", "has_contradictions", "has_hallucinations", "details"]
+        if not all(k in result for k in required_keys):
+            logger.warning(f"El JSON falta claves requeridas: {required_keys}")
+            return None
+
         logger.info(f"Consistency check completado: {result}")
         return result
 
