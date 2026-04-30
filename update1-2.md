@@ -255,7 +255,46 @@ Este documento contiene el plan detallado para tres líneas de mejora:
 | 2. Métricas | 2 (`timer.py`, `report.py`) | `cli.py` | 9 tests |
 | 3. Multi-doc | 0 | `config.py`, `cleaner.py`, `manifest.py`, `splitter.py`, `hybrid_search.py`, `verifier.py`, `cli_chat.py`, `MULTI_DOC.md` | 10 tests |
 
-## Notas
-- Fecha de inicio: 2026-04-30
-- Versión objetivo: v1.3
-- Dependencias: Ninguna nueva requerida (SQLite ya está en stdlib)
+## Update 1.3 — Cierre
+
+### Mejoras Implementadas en 1.3
+
+| Mejora | Archivos | Commit |
+|---------|-----------|---------|
+| Mejorar modo chat | `cli_chat.py` | `8d1dfd8` |
+| Métricas de rendimiento | `performance/timer.py`, `performance/report.py`, `cli.py` | `38784ae` |
+| Multi-document | `config.py`, `vector_store.py`, `hybrid_search.py`, `cli_chat.py` | `5e9e8b9` |
+
+### Comandos de Chat
+| Comando | Uso |
+|---------|-----|
+| `/hyde [on|off]` | Activar/desactivar HyDE |
+| `/rewrite [on|off]` | Activar/desactivar query rewriting |
+| `/feedback [on|off]` | Activar/desactivar feedback |
+| `/docs [doc1,doc2]` | Filtrar por documento |
+| `/mode [fast|standard|hyde]` | Cambiar modo |
+| `/temp <valor>` | Cambiar temperatura |
+| `/topk <n>` | Cambiar top-k |
+
+### Flags CLI
+| Flag | Propósito |
+|------|-----------|
+| `--hyde` | Activar HyDE |
+| `--rewrite` | Activar query rewriting |
+| `--profile` | Mostrar métricas de rendimiento |
+| `--no-feedback` | Desactivar prompt de feedback |
+| `--cpu-embedding` | Ejecutar embedding en CPU |
+| `--cpu-reranker` | Ejecutar reranker en CPU |
+| `--fast` | Modo rápido (sin reranking) |
+| `--top-k <n>` | Número de chunks |
+
+### Flujo de Trabajo
+1. **Ingesta**: `python -m rag_lab.cli ingest` (o `--doc <archivo>` para un solo documento)
+2. **Consulta**: `python -m rag_lab.cli query "Pregunta" --hyde --rewrite --profile`
+3. **Chat**: `python -m rag_lab.cli chat` → comandos `/hyde on`, `/docs doc1,doc2`
+4. **Feedback**: `python -m rag_lab.feedback.analyze_feedback`
+
+### Notas
+- Fecha de cierre: 2026-04-30
+- Total commits 1.3: 3 (8d1dfd8, 38784ae, 5e9e8b9)
+- Tests totales: 14 (chat) + 16 (performance) + 4 (multi-doc) + 20 (verification) + 6 (query_rewriter) + 7 (feedback) = **67 tests**
