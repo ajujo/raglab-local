@@ -48,7 +48,7 @@ RAG-Lab/
 ├── Notas_Tecnicas_SDMX_2.1.md         ← Documento fuente (~3.3 MB, 2816 líneas)
 ├── .opencode/plans/rag-sdmx-plan.md   ← Plan de implementación detallado
 │
-├── rag_lab/                           ← Paquete principal (a implementar)
+├── rag_lab/                           ← Paquete principal
 │   ├── __init__.py
 │   ├── config.py                      ← Configuración central
 │   ├── cli.py                         ← CLI con Typer
@@ -71,13 +71,25 @@ RAG-Lab/
 │   │
 │   ├── retrieval/                     ← Fases 5-6: Retrieval híbrido
 │   │   ├── query_processor.py         ← Query expansion + HyDE
+│   │   ├── query_rewriter.py          ← Query rewriting (LLM-based)
 │   │   ├── hybrid_search.py           ← Búsqueda + RRF fusion
 │   │   └── reranker.py                ← Cross-encoder reranking
 │   │
-│   └── generation/                    ← Fase 7: Generación LLM
-│       ├── prompt_builder.py          ← Construye prompts
-│       ├── llm_client.py              ← Wrapper OpenAI-compatible
-│       └── verifier.py                ← Verifica citas del LLM
+│   ├── generation/                    ← Fase 7: Generación LLM
+│   │   ├── prompt_builder.py          ← Construye prompts
+│   │   ├── llm_client.py              ← Wrapper OpenAI-compatible
+│   │   └── verifier.py                ← Verifica citas del LLM
+│   │
+│   ├── verification/                  ← Fase 8: Capa de verificación
+│   │   ├── verifier.py                ← Verificación de citas
+│   │   ├── consistency.py             ← Self-consistency check
+│   │   ├── scoring.py                 ← Scoring de confianza
+│   │   └── pipeline.py                ← Orquestación de verificación
+│   │
+│   └── feedback/                     ← Fase 9: Feedback loop
+│       ├── __init__.py
+│       ├── feedback_store.py          ← Almacenamiento SQLite de feedback
+│       └── analyze_feedback.py        ← Script de análisis de feedback
 │
 ├── data/                              ← Datos procesados (generados)
 │   ├── ingested.jsonl                 ← Manifiesto de documentos
@@ -89,15 +101,16 @@ RAG-Lab/
 │   ├── sparse_index.json              ← Índices sparse
 │   └── docstore.sqlite                ← Docstore SQLite
 │
-├── tests/                             ← Tests (a implementar)
+├── tests/                             ← Tests
 │   ├── conftest.py                    ← Fixtures compartidos
 │   ├── test_ingest/
 │   ├── test_chunking/
 │   ├── test_embedding/
 │   ├── test_storage/
-│   ├── test_retrieval/
+│   ├── test_retrieval/                ← Incluye test_query_rewriter.py
 │   ├── test_generation/
-│   ├── test_cli/
+│   ├── test_verification/               ← 20 tests de verificación
+│   ├── test_feedback/                 ← 7 tests de feedback
 │   └── integration/
 │
 ├── requirements.txt                   ← Dependencias Python
@@ -126,9 +139,17 @@ python -m rag_lab.cli query "tu pregunta aquí"   # Hacer una consulta
 
 ### Opciones de consulta
 ```bash
-python -m rag_lab.cli query "Pregunta" --hyde     # Con HyDE activado
+python -m rag_lab.cli query "Pregunta" --hyde     # Con HyDE activado (LLM real)
+python -m rag_lab.cli query "Pregunta" --rewrite   # Con query rewriting
 python -m rag_lab.cli query "Pregunta" --fast      # Sin reranker (más rápido)
 python -m rag_lab.cli query "Pregunta" --top-k 10  # Más chunks recuperados
+python -m rag_lab.cli query "Pregunta" --no-feedback  # Sin prompt de feedback
+```
+
+### Feedback
+```bash
+# Analizar feedback acumulado
+python -m rag_lab.feedback.analyze_feedback
 ```
 
 ### Tests
@@ -136,8 +157,10 @@ python -m rag_lab.cli query "Pregunta" --top-k 10  # Más chunks recuperados
 conda activate rag-lab
 pytest tests/                          # Todos los tests
 pytest tests/test_chunking/            # Solo tests de chunking
+pytest tests/test_verification/        # Tests de verificación
+pytest tests/test_retrieval/           # Tests de retrieval (incluye query_rewriter)
+pytest tests/test_feedback/             # Tests de feedback
 pytest tests/ -v --tb=short            # Detallado con stack trace
-pytest tests/ -m "gpu"                 # Solo tests que requieren GPU
 ```
 
 ---
@@ -211,7 +234,7 @@ def chunk_document(text: str, max_tokens: int = 400, overlap: int = 80) -> list[
 ### Para implementar una nueva funcionalidad:
 
 1. **Leer el plan** en `.opencode/plans/rag-sdmx-plan.md` para entender la arquitectura
-2. **Identificar la fase** correspondiente (Fase 1-7)
+2. **Identificar la fase** correspondiente (Fase 1-9)
 3. **Crear los tests primero** (TDD) en `tests/test_<modulo>/`
 4. **Implementar el código** en `rag_lab/<modulo>/`
 5. **Ejecutar tests**: `pytest tests/test_<modulo>/ -v`
@@ -233,18 +256,24 @@ Todos los parámetros deben estar en `rag_lab/config.py`:
 # Ejemplo de configuración esperada:
 DATA_DIR = "data"
 STORAGE_DIR = "storage"
-CHUNK_MAX_TOKENS = 400
-CHUNK_OVERLAP = 80
+CHUNK_MAX_TOKENS = 800
+CHUNK_OVERLAP = 200
 CHUNK_MIN_TOKENS = 50
-EMBEDDING_BATCH_SIZE = 64
-RETRIEVAL_TOP_K = 20
-RERANK_TOP_K = 5
-LLM_BASE_URL = "http://localhost:30000/v1"
-LLM_MODEL = "qwen-3.6-35b-a3b"
+EMBEDDING_BATCH_SIZE = 8
+RETRIEVAL_TOP_K = 30
+RERANK_TOP_K = 8
+RRF_K = 60
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8000/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "sakamakismile/Qwen3.6-27B-NVFP4")
 LLM_TEMPERATURE = 0.1
-LLM_MAX_TOKENS = 1024
+LLM_MAX_TOKENS = 2048
 HYDE_ENABLED = False
-FAST_MODE = False
+QUERY_REWRITING_ENABLED = False
+ENABLE_CONSISTENCY_CHECK = True
+WEIGHT_CITATION = 0.35
+WEIGHT_RETRIEVAL = 0.30
+WEIGHT_CONSISTENCY = 0.25
+WEIGHT_COVERAGE = 0.10
 ```
 
 ---
@@ -256,5 +285,6 @@ FAST_MODE = False
 | Plan detallado | `.opencode/plans/rag-sdmx-plan.md` |
 | Documento fuente | `Notas_Tecnicas_SDMX_2.1.md` |
 | Configuración LLM | `.env` (crear desde `.env.example`) |
-| Dependencias | `requirements.txt` (al crearlo) |
+| Dependencias | `requirements.txt` |
 | Documentación SDMX | Contenido en `Notas_Tecnicas_SDMX_2.1.md` |
+| Análisis de feedback | `python -m rag_lab.feedback.analyze_feedback` |
