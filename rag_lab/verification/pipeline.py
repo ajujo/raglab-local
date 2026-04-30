@@ -104,7 +104,7 @@ def verify_and_score(
         consistency_result = run_consistency_check(
             response=response,
             retrieved_chunks=retrieved_chunks,
-            llm_call=lambda prompt: generate_response(prompt),
+            llm_call=lambda prompt: generate_response("", prompt),
             max_retries=2,
         )
         logger.info(f"Consistency check: parse_success={consistency_result.parse_success}, score={consistency_result.score}")
