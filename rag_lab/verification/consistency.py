@@ -4,114 +4,146 @@ Detecta si la respuesta del LLM es coherente con los chunks que recibió,
 sin inventar información ni contradecir las fuentes.
 """
 
-import json
 import logging
-from typing import Dict, List, Optional
+import re
+from dataclasses import dataclass
+from typing import Callable, List
 
 from rag_lab.generation.llm_client import generate_response
-from rag_lab.config import LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE
 
 logger = logging.getLogger("rag_lab")
 
-CONSISTENCY_SYSTEM_PROMPT = """\
-Eres un evaluador de coherencia de respuestas RAG. Tu tarea es verificar si la respuesta generada es fiel a los fragmentos proporcionados.
-"""
+CONSISTENCY_PROMPT = """\
+Analiza si la siguiente respuesta está respaldada por los fragmentos de documento proporcionados.
 
-CONSISTENCY_USER_PROMPT_TEMPLATE = """\
-Evalúa la siguiente respuesta frente a estos fragmentos:
+## Fragmentos de referencia
+{chunks}
 
-<chunks>
-{chunks_text}
-</chunks>
-
-<respuesta>
+## Respuesta a evaluar
 {response}
-</respuesta>
 
-Indica en formato JSON puro si la respuesta contiene afirmaciones sin respaldo, contradicciones o alucinaciones.
+## Instrucciones
+Responde ÚNICAMENTE con estas cuatro líneas, sin texto adicional antes ni después:
+UNSUPPORTED: SÍ o NO
+CONTRADICTIONS: SÍ o NO
+HALLUCINATIONS: SÍ o NO
+DETAILS: <una sola frase explicando el problema, o vacío si todo es NO>
 
-Devuelve ÚNICAMENTE este JSON, sin texto adicional ni bloques de código:
-
-{
-  "has_unsupported_claims": false,
-  "has_contradictions": false,
-  "has_hallucinations": false,
-  "details": ""
-}
+Ejemplo de respuesta correcta:
+UNSUPPORTED: NO
+CONTRADICTIONS: NO
+HALLUCINATIONS: NO
+DETAILS:
 """
 
 
-def check_consistency(
+@dataclass
+class ConsistencyResult:
+    has_unsupported_claims: bool
+    has_contradictions: bool
+    has_hallucinations: bool
+    details: str
+    score: float          # 1.0 OK | 0.5 problemas menores | 0.0 alucinaciones
+    parse_success: bool   # False si se agotaron los reintentos
+
+
+def _parse_response(raw: str) -> dict | None:
+    """
+    Parsea el formato clave:valor simple.
+    Devuelve None si algún campo obligatorio falta o no es SÍ/NO.
+    """
+    result = {}
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        result[key.strip().upper()] = value.strip()
+
+    required = {"UNSUPPORTED", "CONTRADICTIONS", "HALLUCINATIONS"}
+    if not required.issubset(result.keys()):
+        return None
+
+    for key in required:
+        if result[key].upper() not in {"SÍ", "SI", "NO"}:
+            return None
+
+    return result
+
+
+def _normalize(value: str) -> bool:
+    return value.upper() in {"SÍ", "SI"}
+
+
+def _compute_score(parsed: dict) -> float:
+    if _normalize(parsed["HALLUCINATIONS"]):
+        return 0.0
+    if _normalize(parsed["UNSUPPORTED"]) or _normalize(parsed["CONTRADICTIONS"]):
+        return 0.5
+    return 1.0
+
+
+def run_consistency_check(
     response: str,
     retrieved_chunks: List[dict],
-    enable_consistency_check: bool = True,
-) -> Optional[Dict[str, object]]:
-    """Ejecutar el self-consistency check.
+    llm_call: Callable[[str], str],
+    max_retries: int = 2,
+) -> ConsistencyResult:
+    """
+    Ejecuta el consistency check con reintentos automáticos.
 
     Args:
-        response: La respuesta generada por el LLM.
-        retrieved_chunks: Lista de chunks recuperados.
-        enable_consistency_check: Si es False, se omite el check.
+        response:         Texto de la respuesta generada por el LLM principal.
+        retrieved_chunks: Lista de chunks con al menos el campo 'text'.
+        llm_call:         Función que acepta un prompt (str) y devuelve un str.
+                          Ejemplo: lambda prompt: ollama.generate(prompt)
+        max_retries:      Número máximo de reintentos si el parseo falla.
 
     Returns:
-        Dict con los resultados de la evaluación, o None si está desactivado.
+        ConsistencyResult con score y parse_success.
     """
-    if not enable_consistency_check:
-        logger.debug("Consistency check desactivado")
-        return None
-
-    # Construir el texto de los chunks
-    chunks_text = "\n".join([
-        f"[{i+1}] {c.get('text', '')}"
-        for i, c in enumerate(retrieved_chunks)
-    ])
-
-    # Construir el prompt del usuario
-    user_prompt = CONSISTENCY_USER_PROMPT_TEMPLATE.format(
-        chunks_text=chunks_text,
-        response=response
+    # Construir el bloque de chunks para el prompt
+    chunks_text = "\n\n".join(
+        f"[{i+1}] {chunk.get('text', '')}"
+        for i, chunk in enumerate(retrieved_chunks)
     )
 
-    try:
-        # Llamar al LLM para la evaluación
-        result_text = generate_response(
-            CONSISTENCY_SYSTEM_PROMPT,
-            user_prompt,
-            temperature=0.0,  # Determinista para evaluación
-        )
+    prompt = CONSISTENCY_PROMPT.format(
+        chunks=chunks_text,
+        response=response,
+    )
 
-        if not result_text:
-            logger.warning("El LLM no devolvió respuesta de consistencia")
-            return None
+    # Intentos con reintentos
+    for attempt in range(1, max_retries + 2):  # +2: intento inicial + reintentos
+        try:
+            raw = llm_call(prompt)
+            parsed = _parse_response(raw)
 
-        # Limpiar la respuesta para extraer el JSON
-        json_str = result_text.strip()
-        # Limpieza defensiva: remover bloques de código markdown
-        json_str = json_str.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            if parsed is not None:
+                logger.debug(f"Consistency check OK en intento {attempt}")
+                return ConsistencyResult(
+                    has_unsupported_claims=_normalize(parsed["UNSUPPORTED"]),
+                    has_contradictions=_normalize(parsed["CONTRADICTIONS"]),
+                    has_hallucinations=_normalize(parsed["HALLUCINATIONS"]),
+                    details=parsed.get("DETAILS", ""),
+                    score=_compute_score(parsed),
+                    parse_success=True,
+                )
 
-        # Intentar extraer JSON si hay texto adicional
-        start = json_str.find('{')
-        end = json_str.rfind('}') + 1
-        if start != -1 and end != 0 and end > start:
-            json_str = json_str[start:end]
-        else:
-            logger.warning("No se encontró JSON válido en la respuesta del LLM")
-            return None
+            logger.warning(f"Intento {attempt}: parseo fallido. Raw: {repr(raw[:200])}")
 
-        result = json.loads(json_str)
-        
-        # Validar que el resultado tenga las claves esperadas
-        required_keys = ["has_unsupported_claims", "has_contradictions", "has_hallucinations", "details"]
-        if not all(k in result for k in required_keys):
-            logger.warning(f"El JSON falta claves requeridas: {required_keys}")
-            return None
+        except Exception as e:
+            logger.warning(f"Intento {attempt}: error en LLM call: {e}")
 
-        logger.info(f"Consistency check completado: {result}")
-        return result
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Error al parsear JSON de consistencia: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error en el consistency check: {e}")
-        return None
+    # Se agotaron los reintentos → score neutro, no penaliza
+    logger.error("Consistency check: reintentos agotados. Usando score neutro 0.5.")
+    return ConsistencyResult(
+        has_unsupported_claims=False,
+        has_contradictions=False,
+        has_hallucinations=False,
+        details="Consistency check no pudo ejecutarse correctamente.",
+        score=0.5,
+        parse_success=False,
+    )

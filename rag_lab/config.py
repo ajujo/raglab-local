@@ -212,7 +212,7 @@ LOG_FILE = "rag_lab.log"
 # =============================================================================
 
 # Activar/desactivar el self-consistency check
-ENABLE_CONSISTENCY_CHECK = False
+ENABLE_CONSISTENCY_CHECK = True
 
 # Ponderaciones del scoring
 WEIGHT_CITATION = 0.35

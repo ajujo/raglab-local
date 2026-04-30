@@ -10,6 +10,7 @@ from rag_lab.verification.verifier import (
     CitationStatus,
 )
 from rag_lab.verification.scoring import calculate_score, ScoreResult, ConfidenceLevel
+from rag_lab.verification.consistency import ConsistencyResult, run_consistency_check
 from rag_lab.verification.pipeline import verify_and_score, VerificationResult
 
 
@@ -58,17 +59,79 @@ class TestVerifier:
         assert len(results) == 0
 
 
+class TestConsistency:
+    """Tests para el componente de consistency check."""
+
+    def test_parse_response_valid(self):
+        """Verificar parseo de respuesta válida."""
+        from rag_lab.verification.consistency import _parse_response
+        raw = "UNSUPPORTED: NO\nCONTRADICTIONS: NO\nHALLUCINATIONS: NO\nDETAILS:"
+        result = _parse_response(raw)
+        assert result is not None
+        assert result["UNSUPPORTED"] == "NO"
+        assert result["CONTRADICTIONS"] == "NO"
+        assert result["HALLUCINATIONS"] == "NO"
+
+    def test_parse_response_invalid(self):
+        """Verificar que un parseo inválido devuelva None."""
+        from rag_lab.verification.consistency import _parse_response
+        raw = "ALGO: SI\nOTRA: NO"
+        result = _parse_response(raw)
+        assert result is None
+
+    def test_compute_score_hallucinations(self):
+        """Verificar score con alucinaciones."""
+        from rag_lab.verification.consistency import _compute_score
+        parsed = {"UNSUPPORTED": "NO", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "SI", "DETAILS": "Hallucination detected"}
+        assert _compute_score(parsed) == 0.0
+
+    def test_compute_score_unsupported(self):
+        """Verificar score con afirmaciones sin respaldo."""
+        from rag_lab.verification.consistency import _compute_score
+        parsed = {"UNSUPPORTED": "SI", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "NO", "DETAILS": "Unsupported claim"}
+        assert _compute_score(parsed) == 0.5
+
+    def test_compute_score_ok(self):
+        """Verificar score cuando todo está bien."""
+        from rag_lab.verification.consistency import _compute_score
+        parsed = {"UNSUPPORTED": "NO", "CONTRADICTIONS": "NO", "HALLUCINATIONS": "NO", "DETAILS": ""}
+        assert _compute_score(parsed) == 1.0
+
+    def test_run_consistency_check_mock(self):
+        """Verificar run_consistency_check con LLM mock."""
+        def mock_llm_call(prompt):
+            return "UNSUPPORTED: NO\nCONTRADICTIONS: NO\nHALLUCINATIONS: NO\nDETAILS:"
+
+        result = run_consistency_check(
+            response="Respuesta de prueba",
+            retrieved_chunks=[{"text": "Chunk 1"}, {"text": "Chunk 2"}],
+            llm_call=mock_llm_call,
+            max_retries=2,
+        )
+        assert result.parse_success == True
+        assert result.score == 1.0
+        assert result.has_hallucinations == False
+
+
 class TestScoring:
     """Tests para el componente de scoring."""
 
     def test_score_all_valid(self):
         """Verificar scoring con todas las citas válidas."""
+        consistency = ConsistencyResult(
+            has_unsupported_claims=False,
+            has_contradictions=False,
+            has_hallucinations=False,
+            details="",
+            score=1.0,
+            parse_success=True,
+        )
         citation_results = [
             CitationResult(citation_text="[[1] ...", status=CitationStatus.VALID, matched_chunk={"chunk_id": "c1"}),
             CitationResult(citation_text="[[2] ...", status=CitationStatus.VALID, matched_chunk={"chunk_id": "c2"}),
         ]
         retrieval_scores = [0.9, 0.85, 0.8]
-        score = calculate_score(citation_results, retrieval_scores, None, 3)
+        score = calculate_score(citation_results, retrieval_scores, consistency, 3)
         assert score.citation_score == 1.0
         assert score.consistency_score == 1.0
         assert score.coverage_score == pytest.approx(2/3)
@@ -77,22 +140,38 @@ class TestScoring:
 
     def test_score_with_invalid(self):
         """Verificar scoring con citas inválidas."""
+        consistency = ConsistencyResult(
+            has_unsupported_claims=False,
+            has_contradictions=False,
+            has_hallucinations=False,
+            details="",
+            score=1.0,
+            parse_success=True,
+        )
         citation_results = [
             CitationResult(citation_text="[[1] ...", status=CitationStatus.VALID, matched_chunk={"chunk_id": "c1"}),
             CitationResult(citation_text="[[2] ...", status=CitationStatus.INVALID, matched_chunk=None),
         ]
         retrieval_scores = [0.5, 0.4]
-        score = calculate_score(citation_results, retrieval_scores, None, 2)
+        score = calculate_score(citation_results, retrieval_scores, consistency, 2)
         assert score.citation_score == 0.5
         assert score.confidence_level == ConfidenceLevel.MEDIUM
 
     def test_score_low_confidence(self):
         """Verificar scoring con baja confianza."""
+        consistency = ConsistencyResult(
+            has_unsupported_claims=False,
+            has_contradictions=False,
+            has_hallucinations=False,
+            details="",
+            score=1.0,
+            parse_success=True,
+        )
         citation_results = [
             CitationResult(citation_text="[[1] ...", status=CitationStatus.INVALID, matched_chunk=None),
         ]
         retrieval_scores = [0.2]
-        score = calculate_score(citation_results, retrieval_scores, None, 5)
+        score = calculate_score(citation_results, retrieval_scores, consistency, 5)
         assert score.confidence_level == ConfidenceLevel.LOW
 
 

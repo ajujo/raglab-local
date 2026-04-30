@@ -7,9 +7,10 @@ de la respuesta del LLM.
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import List
 
 from rag_lab.verification.verifier import CitationResult, CitationStatus
+from rag_lab.verification.consistency import ConsistencyResult
 
 logger = logging.getLogger("rag_lab")
 
@@ -35,7 +36,7 @@ class ScoreResult:
 def calculate_score(
     citation_results: List[CitationResult],
     retrieval_scores: List[float],
-    consistency_result: Optional[Dict[str, object]],
+    consistency_result: ConsistencyResult,
     total_retrieved: int,
 ) -> ScoreResult:
     """Calcular la puntuación de confianza de la respuesta.
@@ -43,7 +44,7 @@ def calculate_score(
     Args:
         citation_results: Resultados de la verificación de citas.
         retrieval_scores: Scores de similitud de los chunks recuperados.
-        consistency_result: Resultado del consistency check (o None si está desactivado).
+        consistency_result: Resultado del consistency check.
         total_retrieved: Número total de chunks recuperados.
 
     Returns:
@@ -63,19 +64,7 @@ def calculate_score(
         retrieval_score = 0.5
 
     # 3. consistency_score: basado en el consistency check
-    if consistency_result is None:
-        consistency_score = 1.0  # Si está desactivado, asumimos que pasa
-    else:
-        has_hallucinations = consistency_result.get("has_hallucinations", False)
-        has_unsupported = consistency_result.get("has_unsupported_claims", False)
-        has_contradictions = consistency_result.get("has_contradictions", False)
-
-        if has_hallucinations:
-            consistency_score = 0.0
-        elif has_unsupported or has_contradictions:
-            consistency_score = 0.5
-        else:
-            consistency_score = 1.0
+    consistency_score = consistency_result.score
 
     # 4. coverage_score: proporción de chunks citados sobre los recuperados
     cited_chunk_ids = {r.matched_chunk.get("chunk_id") for r in citation_results if r.matched_chunk}

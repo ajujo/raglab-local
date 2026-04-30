@@ -242,23 +242,28 @@ def query(
 
                 # Run verification pipeline
                 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
-                verification = verify_and_score(
-                    response,
-                    unique_results[:RERANK_TOP_K],
-                    retrieval_scores,
-                    enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
-                )
+                try:
+                    verification = verify_and_score(
+                        response,
+                        unique_results[:RERANK_TOP_K],
+                        retrieval_scores,
+                        enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
+                    )
 
-                # Print response with verification block
-                console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verification.response}")
+                    # Print response with verification block
+                    console.print(f"\n[bold green]🤖 Response:[/bold green]\n{verification.response}")
 
-                # Print warnings if any
-                warnings = verification.get_warnings()
-                for warning in warnings:
-                    console.print(f"[bold yellow]⚠️ {warning}[/bold yellow]")
+                    # Print warnings if any
+                    warnings = verification.get_warnings()
+                    for warning in warnings:
+                        console.print(f"[bold yellow]⚠️ {warning}[/bold yellow]")
 
-                # Print verification block
-                console.print(f"\n{verification.format_verification_block()}")
+                    # Print verification block
+                    console.print(f"\n{verification.format_verification_block()}")
+                except Exception as e:
+                    # Si la verificación falla, mostrar la respuesta sin el bloque de verificación
+                    console.print(f"\n[bold green]🤖 Response:[/bold green]\n{response}")
+                    console.print(f"\n[bold yellow]⚠️ Error en la capa de verificación: {e}[/bold yellow]")
 
         except LLMConnectionError as e:
             console.print(f"[bold red]LLM Error:[/bold red] {e}")

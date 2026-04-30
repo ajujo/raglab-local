@@ -5,10 +5,11 @@ en una única función que se ejecuta después de la generación del LLM.
 """
 
 import logging
-from typing import Dict, List, Optional
+from typing import List
 
+from rag_lab.generation.llm_client import generate_response
 from rag_lab.verification.verifier import CitationResult, verify_citations_layer, CitationStatus
-from rag_lab.verification.consistency import check_consistency
+from rag_lab.verification.consistency import run_consistency_check, ConsistencyResult
 from rag_lab.verification.scoring import calculate_score, ScoreResult, ConfidenceLevel
 
 logger = logging.getLogger("rag_lab")
@@ -21,7 +22,7 @@ class VerificationResult:
         self,
         response: str,
         citation_results: List[CitationResult],
-        consistency_result: Optional[Dict[str, object]],
+        consistency_result: ConsistencyResult,
         score_result: ScoreResult,
     ):
         self.response = response
@@ -35,6 +36,17 @@ class VerificationResult:
         for result in self.citation_results:
             if result.status == CitationStatus.INVALID:
                 warnings.append(f"Cita inválida: {result.citation_text}")
+
+        # Advertencias del consistency check
+        cr = self.consistency_result
+        if cr.parse_success:
+            if cr.has_hallucinations:
+                warnings.append("⚠ Se detectaron posibles alucinaciones en la respuesta.")
+            elif cr.has_unsupported_claims or cr.has_contradictions:
+                warnings.append("⚠ Algunas afirmaciones pueden no estar respaldadas por los fragmentos.")
+        else:
+            warnings.append("⚠ Consistency check no pudo ejecutarse correctamente.")
+
         return warnings
 
     def format_verification_block(self) -> str:
@@ -42,15 +54,16 @@ class VerificationResult:
         valid_citations = sum(1 for r in self.citation_results if r.status == CitationStatus.VALID)
         total_citations = len(self.citation_results)
 
-        consistency_status = "OK ✓"
-        if self.consistency_result:
-            has_issues = (
-                self.consistency_result.get("has_unsupported_claims", False) or
-                self.consistency_result.get("has_contradictions", False) or
-                self.consistency_result.get("has_hallucinations", False)
-            )
-            if has_issues:
+        cr = self.consistency_result
+        if cr.parse_success:
+            if cr.has_hallucinations:
+                consistency_status = "ALUCINACIONES ⚠"
+            elif cr.has_unsupported_claims or cr.has_contradictions:
                 consistency_status = "WARN ⚠"
+            else:
+                consistency_status = "OK ✓"
+        else:
+            consistency_status = "N/A"
 
         score = self.score_result
         confidence_emoji = {"HIGH": "✓", "MEDIUM": "⚠", "LOW": "✗"}
@@ -87,11 +100,25 @@ def verify_and_score(
     logger.info(f"Verificación de citas: {len(citation_results)} citas encontradas")
 
     # Componente 2: Consistency check
-    consistency_result = check_consistency(response, retrieved_chunks, enable_consistency_check)
-    if consistency_result:
-        logger.info(f"Consistency check completado")
+    if enable_consistency_check:
+        consistency_result = run_consistency_check(
+            response=response,
+            retrieved_chunks=retrieved_chunks,
+            llm_call=lambda prompt: generate_response(prompt),
+            max_retries=2,
+        )
+        logger.info(f"Consistency check: parse_success={consistency_result.parse_success}, score={consistency_result.score}")
     else:
-        logger.info("Consistency check desactivado o fallido")
+        # Si está desactivado, usar score neutro
+        consistency_result = ConsistencyResult(
+            has_unsupported_claims=False,
+            has_contradictions=False,
+            has_hallucinations=False,
+            details="",
+            score=1.0,
+            parse_success=True,
+        )
+        logger.info("Consistency check desactivado")
 
     # Componente 3: Scoring
     score_result = calculate_score(
