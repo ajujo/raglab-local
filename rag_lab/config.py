@@ -30,9 +30,7 @@ SOURCES_DIR = BASE_DIR
 # Fuentes de documentos — lista de rutas
 SOURCES = [
     SOURCES_DIR / "Notas_Tecnicas_SDMX_2.1.md",
-    # Agregar más documentos aquí:
-    # SOURCES_DIR / "doc2.md",
-    # SOURCES_DIR / "doc3.md",
+    SOURCES_DIR / "SDMX_Glossary_Test.md",
 ]
 
 # =============================================================================
@@ -119,6 +117,10 @@ HYDE_ENABLED = False
 
 # Activar query rewriting
 QUERY_REWRITING_ENABLED = False
+
+# Multi-document support
+MULTI_DOC_ENABLED = True
+ACTIVE_DOCS: list[str] = []  # Vacío = todos los documentos
 
 # Modo rápido (sin reranking)
 FAST_MODE = False

@@ -112,6 +112,7 @@ class ChatSession:
 
         # Búsqueda híbrida
         all_results = []
+        doc_ids = self._get_doc_ids()
         for query_dense, query_sparse in all_query_data:
             results = hybrid_search(
                 question,
@@ -121,6 +122,7 @@ class ChatSession:
                 query_dense=query_dense,
                 query_sparse=query_sparse,
                 top_k=self.top_k,
+                doc_ids=doc_ids,
             )
             all_results.extend(results)
 

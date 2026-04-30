@@ -28,6 +28,7 @@ def hybrid_search(
     query_sparse: dict = None,
     top_k: int = None,
     rrf_k: int = None,
+    doc_ids: Optional[List[str]] = None,
 ) -> List[dict]:
     """Perform hybrid search with RRF fusion.
 
@@ -40,6 +41,7 @@ def hybrid_search(
         query_sparse: Sparse embedding for the query.
         top_k: Number of final results.
         rrf_k: RRF constant.
+        doc_ids: Optional list of document IDs to filter by.
 
     Returns:
         List of chunk dicts sorted by relevance.
@@ -49,7 +51,7 @@ def hybrid_search(
 
     # Step 1: Dense search
     if query_dense is not None:
-        dense_results = vector_store.query(query_dense, top_k)
+        dense_results = vector_store.query(query_dense, top_k, doc_ids=doc_ids)
     else:
         dense_results = {"ids": [], "distances": [], "documents": [], "metadatas": []}
 

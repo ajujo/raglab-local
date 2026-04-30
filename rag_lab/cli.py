@@ -313,6 +313,8 @@ def query(
                             score_level=verification.score_result.confidence_level.value,
                         )
                 except Exception as e:
+                    if profile and timer._current_phase is not None:
+                        timer.stop()
                     console.print(f"\n[bold green]🤖 Response:[/bold green]\n{response}")
                     console.print(f"\n[bold yellow]⚠️ Error en la capa de verificación: {e}[/bold yellow]")
 
