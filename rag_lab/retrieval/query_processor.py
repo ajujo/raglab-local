@@ -6,9 +6,10 @@ Transforms the user's question into representations optimal for retrieval.
 import logging
 from typing import List, Tuple
 
-from rag_lab.config import EMBEDDING_MODEL, VARIANTS_COUNT, HYDE_ENABLED
+from rag_lab.config import EMBEDDING_MODEL, VARIANTS_COUNT, HYDE_ENABLED, QUERY_REWRITING_ENABLED
 from rag_lab.embedding.encoder import load_embedding_model
 from rag_lab.generation.llm_client import generate_response
+from rag_lab.retrieval.query_rewriter import rewrite_query
 
 logger = logging.getLogger("rag_lab")
 
@@ -16,6 +17,7 @@ logger = logging.getLogger("rag_lab")
 def process_query(
     query: str,
     use_hyde: bool = False,
+    use_rewriting: bool = False,
     top_k: int = 20,
 ) -> List[dict]:
     """Process a user query for retrieval.
@@ -23,13 +25,22 @@ def process_query(
     Args:
         query: The user's question.
         use_hyde: If True, generate hypothetical document for embedding.
+        use_rewriting: If True, rewrite the query before processing.
         top_k: Number of results to retrieve.
 
     Returns:
         List of query dicts with 'text', 'dense', 'sparse' keys.
     """
+    # Step 1: Query rewriting (if enabled)
+    if use_rewriting:
+        query = rewrite_query(
+            query,
+            llm_call=lambda prompt: generate_response("", prompt),
+        )
+
     queries = [{"text": query, "type": "original"}]
 
+    # Step 2: HyDE (if enabled, operates on the potentially rewritten query)
     if use_hyde:
         hypothetical = _generate_hypothetical_answer(query)
         if hypothetical:
@@ -38,7 +49,7 @@ def process_query(
                 "type": "hyde",
             })
 
-    # Query expansion: generate variants
+    # Step 3: Query expansion: generate variants
     for i in range(VARIANTS_COUNT):
         variant = _generate_query_variant(query, i)
         if variant and variant != query:

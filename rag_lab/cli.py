@@ -153,6 +153,7 @@ def ingest(
 def query(
     question: str = typer.Argument(..., help="The question to ask."),
     hyde: bool = typer.Option(False, "--hyde", help="Enable HyDE."),
+    rewrite: bool = typer.Option(False, "--rewrite", help="Enable query rewriting."),
     fast: bool = typer.Option(False, "--fast", help="Skip reranking."),
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
     cpu_embedding: bool = typer.Option(
@@ -178,7 +179,7 @@ def query(
     rerank_device = "cpu" if cpu_reranker else os.getenv("RERANKER_DEVICE", "cuda")
 
     # Process query
-    queries = process_query(question, use_hyde=hyde)
+    queries = process_query(question, use_hyde=hyde, use_rewriting=rewrite)
 
     # Get embeddings for all query variants
     # encode_chunks returns (dense_embeddings: np.ndarray, sparse_embeddings: Dict)

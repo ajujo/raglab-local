@@ -117,6 +117,9 @@ VARIANTS_COUNT = 2
 # Activar HyDE (Hypothetical Document Embeddings)
 HYDE_ENABLED = False
 
+# Activar query rewriting
+QUERY_REWRITING_ENABLED = False
+
 # Modo rápido (sin reranking)
 FAST_MODE = False
 
