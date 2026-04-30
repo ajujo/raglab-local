@@ -8,6 +8,7 @@ from typing import List, Tuple
 
 from rag_lab.config import EMBEDDING_MODEL, VARIANTS_COUNT, HYDE_ENABLED
 from rag_lab.embedding.encoder import load_embedding_model
+from rag_lab.generation.llm_client import generate_response
 
 logger = logging.getLogger("rag_lab")
 
@@ -50,24 +51,50 @@ def process_query(
     return queries
 
 
-def _generate_hypothetical_answer(query: str) -> str:
-    """Generate a hypothetical answer for HyDE.
+HYDE_SYSTEM_PROMPT = """\
+Eres un experto técnico que genera respuestas hipotéticas para mejorar la recuperación de documentos.
+"""
 
-    In a full implementation, this would call an LLM to generate
-    a plausible answer. For now, returns a simple template.
+HYDE_USER_PROMPT_TEMPLATE = """\
+Genera un párrafo técnico de 3-5 oraciones que respondería directamente
+a la siguiente pregunta, usando el vocabulario especializado del dominio.
+No cites fuentes. No uses expresiones como "según los documentos".
+Escribe como si fueras un experto respondiendo desde su conocimiento.
+
+Pregunta: {question}
+"""
+
+
+def _generate_hypothetical_answer(query: str) -> str:
+    """Generate a hypothetical answer for HyDE using the real LLM.
+
+    Calls the LLM to generate a plausible technical answer to the query,
+    which is then used as a hypothetical document for embedding-based retrieval.
 
     Args:
         query: The user's question.
 
     Returns:
-        Hypothetical answer text.
+        Hypothetical answer text, or empty string on failure.
     """
-    # Simple template - in production, call an LLM
-    return (
-        f"This question is about {query.lower()}. "
-        f"The answer involves technical specifications and "
-        f"implementation details related to the topic."
-    )
+    user_prompt = HYDE_USER_PROMPT_TEMPLATE.format(question=query)
+
+    try:
+        hypothetical = generate_response(HYDE_SYSTEM_PROMPT, user_prompt)
+        if hypothetical:
+            # Count tokens (approximate: 1 token ≈ 4 chars for this model)
+            n_tokens = len(hypothetical.encode()) // 4
+            logger.info(
+                f"HyDE: hipótesis generada ({n_tokens} tokens) para query: \"{query[:60]}...\""
+            )
+            return hypothetical
+        else:
+            logger.warning("HyDE: LLM devolvió texto vacío, usando query original como fallback")
+            return query
+
+    except Exception as e:
+        logger.warning(f"HyDE: error al llamar al LLM: {e}. Usando query original como fallback.")
+        return query
 
 
 def _generate_query_variant(query: str, variant_idx: int) -> str:
