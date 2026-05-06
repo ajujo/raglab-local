@@ -39,6 +39,7 @@ def interactive_mode():
         console.print("  [6] 📊 Migrar documentos existentes")
         console.print("  [7] ℹ️  Info de documento")
         console.print("  [8] 📁 Ver colecciones/etiquetas")
+        console.print("  [9] 💣 Borrar todos los documentos")
         console.print("  [0] Salir\n")
 
     def select_document(prompt_msg: str = "Seleccione un documento (número):") -> dict | None:
@@ -116,13 +117,42 @@ def interactive_mode():
         if not doc:
             return
 
-        confirm = input(f"¿Seguro que quieres borrar '{doc['doc_id']}'? (s/n): ")
-        if confirm.lower() == "s":
-            deleted = manager.delete_document(doc["doc_id"])
-            if deleted:
-                console.print(f"[bold green]✅ Documento borrado: {doc['doc_id']}[/bold green]")
+        while True:
+            confirm = input(f"¿Seguro que quieres borrar '{doc['doc_id']}'? (s/n/volver): ")
+            if confirm.lower() == "s":
+                deleted = manager.delete_document(doc["doc_id"])
+                if deleted:
+                    console.print(f"[bold green]✅ Documento borrado: {doc['doc_id']}[/bold green]")
+                else:
+                    console.print(f"[bold red]Error al borrar el documento.[/bold red]")
+                break
+            elif confirm.lower() == "volver" or confirm.lower() == "v":
+                console.print("[bold yellow]Se canceló la eliminación.[/bold yellow]")
+                return
+            elif confirm.lower() == "n":
+                console.print("[bold yellow]Se canceló la eliminación.[/bold yellow]")
+                return
             else:
-                console.print(f"[bold red]Error al borrar el documento.[/bold red]")
+                console.print("[bold red]Respuesta inválida. Escribe 's' para sí, 'n' para no, o 'volver' para cancelar.[/bold red]")
+
+    def action_delete_all():
+        """Delete all documents with double confirmation."""
+        documents = manager.list_documents()
+        if not documents:
+            console.print("[bold yellow]No hay documentos para borrar.[/bold yellow]")
+            return
+
+        console.print(f"[bold red]⚠️ Atención: vas a borrar {len(documents)} documento(s):[/bold red]")
+        for doc in documents:
+            console.print(f"  • {doc['doc_id']}")
+
+        confirm = input("\nEscribe 'BORRAR' para confirmar: ")
+        if confirm == "BORRAR":
+            for doc in documents:
+                manager.delete_document(doc["doc_id"])
+            console.print(f"[bold green]✅ Se borraron {len(documents)} documento(s).[/bold green]")
+        else:
+            console.print("[bold yellow]Se canceló la eliminación masiva.[/bold yellow]")
 
     def action_tag():
         """Tag a document."""
@@ -220,10 +250,10 @@ def interactive_mode():
     # Main loop
     show_banner()
 
-    valid_choices = ["0", "1", "2", "3", "4", "5", "6", "7", "8"]
+    valid_choices = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     while True:
         show_menu()
-        choice = input("Elige una opción (0-8): ")
+        choice = input("Elige una opción (0-9): ")
         if choice not in valid_choices:
             console.print(f"[bold red]Opción inválida: {choice}[/bold red]")
             continue
@@ -247,6 +277,8 @@ def interactive_mode():
             action_info()
         elif choice == "8":
             action_collections()
+        elif choice == "9":
+            action_delete_all()
 
         console.print("\n" + "=" * 60)
 
