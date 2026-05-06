@@ -59,10 +59,12 @@ def interactive_mode():
 
         valid = [str(i) for i in range(1, len(documents) + 1)]
         while True:
-            choice = input(prompt_msg + " (" + ", ".join(valid) + "): ")
+            choice = input(f"{prompt_msg} ({', '.join(valid)} o 'volver'): ")
+            if choice.lower() in ("volver", "v", "n"):
+                return None
             if choice in valid:
                 return documents[int(choice) - 1]
-            console.print(f"[bold red]Opción inválida. Elige: {', '.join(valid)}[/bold red]")
+            console.print(f"[bold red]Opción inválida. Elige: {', '.join(valid)} o 'volver'[/bold red]")
 
     def action_list():
         """List all documents."""
@@ -114,7 +116,7 @@ def interactive_mode():
     def action_delete():
         """Delete a document."""
         doc = select_document("¿Qué documento quieres borrar?")
-        if not doc:
+        if doc is None:
             return
 
         while True:
@@ -126,10 +128,7 @@ def interactive_mode():
                 else:
                     console.print(f"[bold red]Error al borrar el documento.[/bold red]")
                 break
-            elif confirm.lower() == "volver" or confirm.lower() == "v":
-                console.print("[bold yellow]Se canceló la eliminación.[/bold yellow]")
-                return
-            elif confirm.lower() == "n":
+            elif confirm.lower() in ("volver", "v", "n"):
                 console.print("[bold yellow]Se canceló la eliminación.[/bold yellow]")
                 return
             else:
