@@ -188,5 +188,12 @@ def migrate():
     console.print(f"[bold yellow]Updated/Skipped: {skipped}[/bold yellow]\n")
 
 
+@app.command()
+def interactive():
+    """Launch the interactive menu-based interface."""
+    from rag_lab.doc_manager.interactive import interactive_mode
+    interactive_mode()
+
+
 if __name__ == "__main__":
     app()
