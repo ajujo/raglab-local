@@ -154,6 +154,28 @@ class DocStore:
         cursor = self._conn.execute("SELECT COUNT(*) FROM chunks")
         return cursor.fetchone()[0]
 
+    def count_chunks(self, doc_id: str) -> int:
+        """Return the number of chunks for a specific document.
+
+        Args:
+            doc_id: The document ID to count chunks for.
+
+        Returns:
+            Number of chunks for the given document.
+        """
+        if self._conn is None:
+            self.initialize()
+        cursor = self._conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE doc_id = ?", (doc_id,)
+        )
+        return cursor.fetchone()[0]
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
+
     def delete_all(self) -> None:
         """Delete all chunks from the store."""
         if self._conn is None:

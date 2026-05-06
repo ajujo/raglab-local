@@ -4,10 +4,12 @@ Provides commands to manage ingested documents, including listing,
 adding, deleting, tagging, and searching.
 """
 
+import json
 import typer
 from pathlib import Path
 from rich.console import Console
 
+from rag_lab.config import DATA_DIR
 from rag_lab.doc_manager.doc_store import DocManager
 
 app = typer.Typer(
@@ -141,6 +143,49 @@ def info(doc_id: str):
     console.print(f"  Chunks    : {doc['chunk_count']}")
     console.print(f"  Ingested  : {doc['ingested_at']}")
     console.print(f"  Tags      : {', '.join(doc['tags']) if doc['tags'] else '(none)'}")
+
+
+@app.command()
+def migrate():
+    """Migrate existing documents from ingested.jsonl to the doc manager."""
+    manager = DocManager()
+    manifest_path = Path(DATA_DIR) / "ingested.jsonl"
+
+    if not manifest_path.exists():
+        console.print(f"[bold red]Manifest not found: {manifest_path}[/bold red]")
+        raise typer.Exit(1)
+
+    migrated = 0
+    skipped = 0
+    for line in manifest_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        doc_id = entry["doc_id"]
+        file_path = Path(entry["path"])
+
+        if file_path.exists():
+            added = manager.add_document(file_path)
+            if added:
+                migrated += 1
+
+            # Always update chunk count from docstore
+            from rag_lab.storage.docstore import DocStore
+            try:
+                ds = DocStore()
+                ds.initialize()
+                chunk_count = ds.count_chunks(doc_id)
+                manager.update_chunk_count(doc_id, chunk_count)
+                ds.close()
+            except Exception as e:
+                console.print(f"[bold red]Failed to get chunk count for {doc_id}: {e}[/bold red]")
+            skipped += 1
+        else:
+            console.print(f"[bold yellow]⚠️ File not found: {file_path}[/bold yellow]")
+            skipped += 1
+
+    console.print(f"\n[bold green]✅ Migrated: {migrated}[/bold green]")
+    console.print(f"[bold yellow]Updated/Skipped: {skipped}[/bold yellow]\n")
 
 
 if __name__ == "__main__":
