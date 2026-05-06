@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 from rich.console import Console
-from rich.prompt import Prompt, IntPrompt
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -57,10 +56,12 @@ def interactive_mode():
                 f"{doc['size']} bytes {tags_str}"
             )
 
-        choice = IntPrompt(message=prompt_msg).ask(
-            choices=[str(i) for i in range(1, len(documents) + 1)]
-        )
-        return documents[choice - 1]
+        valid = [str(i) for i in range(1, len(documents) + 1)]
+        while True:
+            choice = input(prompt_msg + " (" + ", ".join(valid) + "): ")
+            if choice in valid:
+                return documents[int(choice) - 1]
+            console.print(f"[bold red]Opción inválida. Elige: {', '.join(valid)}[/bold red]")
 
     def action_list():
         """List all documents."""
@@ -88,7 +89,7 @@ def interactive_mode():
 
     def action_add():
         """Add a new document."""
-        path = Prompt(message="Ruta al archivo a añadir:").ask()
+        path = input("Ruta al archivo a añadir: ")
         file_path = Path(path)
 
         if not file_path.exists():
@@ -115,13 +116,8 @@ def interactive_mode():
         if not doc:
             return
 
-        confirm = Prompt(
-            message=f"¿Seguro que quieres borrar '{doc['doc_id']}'?",
-            choices=["s", "n"],
-            default="n"
-        ).ask()
-
-        if confirm == "s":
+        confirm = input(f"¿Seguro que quieres borrar '{doc['doc_id']}'? (s/n): ")
+        if confirm.lower() == "s":
             deleted = manager.delete_document(doc["doc_id"])
             if deleted:
                 console.print(f"[bold green]✅ Documento borrado: {doc['doc_id']}[/bold green]")
@@ -134,7 +130,7 @@ def interactive_mode():
         if not doc:
             return
 
-        tag_name = Prompt(message="Nombre de la etiqueta:").ask()
+        tag_name = input("Nombre de la etiqueta: ")
         success = manager.assign_tag(doc["doc_id"], tag_name)
         if success:
             console.print(f"[bold green]✅ Etiqueta '{tag_name}' asignada a {doc['doc_id']}[/bold green]")
@@ -143,7 +139,7 @@ def interactive_mode():
 
     def action_search():
         """Search documents."""
-        query = Prompt(message="Buscar (nombre, ruta o etiqueta):").ask()
+        query = input("Buscar (nombre, ruta o etiqueta): ")
         results = manager.search_documents(query)
 
         if not results:
@@ -224,13 +220,13 @@ def interactive_mode():
     # Main loop
     show_banner()
 
+    valid_choices = ["0", "1", "2", "3", "4", "5", "6", "7", "8"]
     while True:
         show_menu()
-        choice = Prompt(
-            message="Elige una opción",
-            choices=["0", "1", "2", "3", "4", "5", "6", "7", "8"],
-            default="1"
-        ).ask()
+        choice = input("Elige una opción (0-8): ")
+        if choice not in valid_choices:
+            console.print(f"[bold red]Opción inválida: {choice}[/bold red]")
+            continue
 
         if choice == "0":
             console.print("[bold green]👋 ¡Hasta luego![/bold green]")
