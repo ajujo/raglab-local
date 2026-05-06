@@ -18,13 +18,36 @@ Nueva fase de desarrollo para el sistema RAG-Lab. Este documento registra las me
 - [ ] Añadir nuevos features o mejoras (definir con el usuario)
 
 ## Tareas Completadas
-_(Se actualizará a medida que se vayan completando tareas)_
+- [x] Crear gestor de documentos con CLI independiente
+- [x] Implementar almacenamiento SQLite con metadatos y etiquetas
+- [x] Implementar detección de duplicados por hash
+- [x] Implementar borrado de chunks de ChromaDB al eliminar documento
+- [x] Escribir tests para todas las funcionalidades (10 tests)
 
-## Archivos Modificados
-_(Se actualizará con los cambios realizados)_
+## Archivos Creados
+- `rag_lab/doc_manager/__init__.py` — Paquete del gestor
+- `rag_lab/doc_manager/doc_store.py` — Almacenamiento SQLite + lógica de etiquetas
+- `rag_lab/doc_manager/cli.py` — CLI con Typer + Rich
+- `tests/test_doc_manager/test_doc_manager.py` — 10 tests pasando
 
-## Tests
-_(Se actualizará con los tests creados o modificados)_
+## CLI del Gestor
+```bash
+# Iniciar el gestor
+python -m rag_lab.doc_manager.cli
+
+# Comandos disponibles:
+docs list              # Listar documentos
+docs add <archivo>     # Añadir documento (con detección de duplicados)
+docs delete <doc_id>   # Eliminar documento y sus chunks de ChromaDB
+docs tag <doc_id> <tag>    # Asignar etiqueta
+docs untag <doc_id> <tag>  # Quitar etiqueta
+docs search <query>    # Buscar por nombre, ruta o etiquetas
+docs collections       # Listar todas las etiquetas
+docs info <doc_id>     # Información detallada
+```
 
 ## Notas
-_(Notas adicionales sobre el progreso del update)_
+- El gestor es independiente del pipeline RAG principal
+- Usa SQLite para metadatos y ChromaDB para chunks
+- Las etiquetas permiten organizar y filtrar documentos
+- La detección de duplicados por hash evita ingestas duplicadas
