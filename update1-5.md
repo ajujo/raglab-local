@@ -50,6 +50,13 @@ Se creó un módulo independiente para gestionar documentos ingestados en el sis
 - Se añadió `count_chunks(doc_id)` para contar chunks por documento
 - Se añadió `close()` para cerrar conexiones
 
+### Integración del pipeline completo en el gestor de documentos
+**`cli.py` y `interactive.py` — Comando `add` con pipeline completo:**
+- El comando `add` ahora ejecuta las 4 fases del RAG: limpiar, chunking, embedding y almacenamiento.
+- Se registran los chunks en ChromaDB, sparse store y docstore.
+- Se actualiza `ingested.jsonl` y se registra el documento en `doc_manager.db` con el `chunk_count` correcto.
+- Funciona tanto en modo CLI (`python -m rag_lab.doc_manager add archivo.md`) como en modo interactivo (opción [2]).
+
 ### Commits del día
 1. `495ddeb` — feat: añadir gestor de documentos con CLI independiente
 2. `1ef49cd` — feat: añadir __main__.py y comando migrate al gestor de documentos
@@ -57,6 +64,7 @@ Se creó un módulo independiente para gestionar documentos ingestados en el sis
 4. `ac056ed` — refactor: modo interactivo por defecto, CLI con argumentos
 5. `088765b` — feat: añadir opción volver en borrar y borrar todos con confirmación doble
 6. `7a23af2` — fix: aceptar 'volver' y 'n' en selección de documentos
+7. `1e6ea3d` — feat: añadir pipeline completo al comando add del gestor de documentos
 
 ## Tareas Pendientes de Updates Anteriores
 - [ ] Re-ingesta completa (bloqueada por falta de VRAM — SGLang ocupando GPU)
