@@ -91,7 +91,7 @@ def interactive_mode():
         console.print(table)
 
     def action_add():
-        """Add a new document."""
+        """Add a new document with full pipeline."""
         path = input("Ruta al archivo a añadir: ")
         file_path = Path(path)
 
@@ -99,19 +99,74 @@ def interactive_mode():
             console.print(f"[bold red]Archivo no encontrado: {path}[/bold red]")
             return
 
-        added = manager.add_document(file_path)
-        if added:
-            try:
-                ds = DocStore()
-                ds.initialize()
-                chunk_count = ds.count_chunks(file_path.stem)
-                manager.update_chunk_count(file_path.stem, chunk_count)
-                ds.close()
-            except Exception as e:
-                console.print(f"[bold yellow]No se pudo actualizar chunk count: {e}[/bold yellow]")
-            console.print(f"[bold green]✅ Documento añadido: {file_path.name}[/bold green]")
-        else:
+        # Check for duplicate
+        file_hash = manager.compute_hash(file_path)
+        if manager.get_document(file_path.stem):
             console.print(f"[bold yellow]⚠️ Documento ya existe (hash duplicado)[/bold yellow]")
+            return
+
+        # Phase 1: Clean
+        from rag_lab.ingest.cleaner import clean_document
+        console.print(f"[bold cyan]🧹 Limpiando: {file_path.name}[/bold cyan]")
+        cleaned_path = clean_document(file_path)
+
+        # Phase 2: Chunking
+        from rag_lab.chunking.splitter import chunk_document
+        from rag_lab.config import CHUNK_MAX_TOKENS, CHUNK_OVERLAP
+        console.print("[bold cyan]✂️ Chunking...[/bold cyan]")
+        cleaned_text = cleaned_path.read_text(encoding="utf-8")
+        chunks = chunk_document(
+            cleaned_text,
+            doc_id=file_path.stem,
+            max_tokens=CHUNK_MAX_TOKENS,
+            overlap=CHUNK_OVERLAP,
+        )
+        console.print(f"[bold green]Creados {len(chunks)} chunks[/bold green]")
+
+        # Phase 3: Embedding
+        from rag_lab.embedding.encoder import encode_chunks
+        from rag_lab.config import EMBEDDING_BATCH_SIZE, EMBEDDING_DEVICE
+        device = EMBEDDING_DEVICE
+        console.print(f"[bold cyan]🔢 Generando embeddings en {device}...[/bold cyan]")
+        chunk_dicts = [chunk.to_dict() for chunk in chunks]
+        dense_embeddings, sparse_embeddings = encode_chunks(
+            chunk_dicts,
+            batch_size=EMBEDDING_BATCH_SIZE,
+            device=device,
+        )
+
+        # Phase 4: Storage
+        from rag_lab.storage.vector_store import VectorStore
+        from rag_lab.storage.sparse_store import SparseStore
+        from rag_lab.storage.docstore import DocStore
+        from rag_lab.ingest.manifest import create_manifest
+
+        console.print("[bold cyan]💾 Almacenando...[/bold cyan]")
+
+        vector_store = VectorStore()
+        vector_store.initialize()
+        vector_store.add(
+            ids=[c.get("chunk_id", "") for c in chunk_dicts],
+            embeddings=dense_embeddings,
+            documents=[c.get("text", "") for c in chunk_dicts],
+            metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
+        )
+
+        sparse_store = SparseStore()
+        sparse_store.add(
+            ids=[c.get("chunk_id", "") for c in chunk_dicts],
+            sparse_vectors=list(sparse_embeddings.values()),
+        )
+        sparse_store.save()
+
+        doc_store = DocStore()
+        doc_store.add(chunk_dicts)
+
+        create_manifest(file_path, cleaned_path, force=True)
+
+        manager.add_document(file_path, chunk_count=len(chunks))
+
+        console.print(f"[bold green]✅ Documento añadido e ingestado: {file_path.name} ({len(chunks)} chunks)[/bold green]")
 
     def action_delete():
         """Delete a document."""

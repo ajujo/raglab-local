@@ -41,7 +41,7 @@ def list():
 
 @app.command()
 def add(file_path: str):
-    """Add a new document to the RAG system."""
+    """Add a new document to the RAG system (full pipeline: clean → chunk → embed → store)."""
     path = Path(file_path)
     manager = DocManager()
 
@@ -49,11 +49,79 @@ def add(file_path: str):
         console.print(f"[bold red]File not found: {file_path}[/bold red]")
         raise typer.Exit(1)
 
-    added = manager.add_document(path)
-    if added:
-        console.print(f"[bold green]✅ Document added: {path.name}[/bold green]")
-    else:
+    # Check for duplicate by hash
+    file_hash = manager.compute_hash(path)
+    if manager.get_document(path.stem):
         console.print(f"[bold yellow]⚠️ Document already exists (duplicate hash)[/bold yellow]")
+        return
+
+    # Phase 1: Clean
+    from rag_lab.ingest.cleaner import clean_document
+    console.print(f"[bold cyan]🧹 Cleaning: {path.name}[/bold cyan]")
+    cleaned_path = clean_document(path)
+
+    # Phase 2: Chunking
+    from rag_lab.chunking.splitter import chunk_document
+    from rag_lab.config import CHUNK_MAX_TOKENS, CHUNK_OVERLAP
+    console.print(f"[bold cyan]✂️ Chunking...[/bold cyan]")
+    cleaned_text = cleaned_path.read_text(encoding="utf-8")
+    chunks = chunk_document(
+        cleaned_text,
+        doc_id=path.stem,
+        max_tokens=CHUNK_MAX_TOKENS,
+        overlap=CHUNK_OVERLAP,
+    )
+    console.print(f"[bold green]Created {len(chunks)} chunks[/bold green]")
+
+    # Phase 3: Embedding
+    from rag_lab.embedding.encoder import encode_chunks
+    from rag_lab.config import EMBEDDING_BATCH_SIZE, EMBEDDING_DEVICE
+    device = EMBEDDING_DEVICE
+    console.print(f"[bold cyan]🔢 Generating embeddings on {device}...[/bold cyan]")
+    chunk_dicts = [chunk.to_dict() for chunk in chunks]
+    dense_embeddings, sparse_embeddings = encode_chunks(
+        chunk_dicts,
+        batch_size=EMBEDDING_BATCH_SIZE,
+        device=device,
+    )
+
+    # Phase 4: Storage
+    from rag_lab.storage.vector_store import VectorStore
+    from rag_lab.storage.sparse_store import SparseStore
+    from rag_lab.storage.docstore import DocStore
+    from rag_lab.ingest.manifest import create_manifest
+
+    console.print("[bold cyan]💾 Storing...[/bold cyan]")
+
+    # ChromaDB
+    vector_store = VectorStore()
+    vector_store.initialize()
+    vector_store.add(
+        ids=[c.get("chunk_id", "") for c in chunk_dicts],
+        embeddings=dense_embeddings,
+        documents=[c.get("text", "") for c in chunk_dicts],
+        metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
+    )
+
+    # Sparse store
+    sparse_store = SparseStore()
+    sparse_store.add(
+        ids=[c.get("chunk_id", "") for c in chunk_dicts],
+        sparse_vectors=list(sparse_embeddings.values()),
+    )
+    sparse_store.save()
+
+    # Docstore
+    doc_store = DocStore()
+    doc_store.add(chunk_dicts)
+
+    # Manifest
+    create_manifest(path, cleaned_path, force=True)
+
+    # Register in doc_manager
+    manager.add_document(path, chunk_count=len(chunks))
+
+    console.print(f"[bold green]✅ Document added and ingested: {path.name} ({len(chunks)} chunks)[/bold green]")
 
 
 @app.command()
