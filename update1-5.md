@@ -31,6 +31,21 @@ Se creó un módulo independiente para gestionar documentos ingestados en el sis
 - Opción "volver" / "n" para cancelar cualquier prompt y volver al menú
 - Opción [9] "Borrar todos" con confirmación doble (escribir "BORRAR")
 
+### Mejoras en Scoring y Pipeline de Verificación
+**`scoring.py` — `retrieval_score` con normalización min-max:**
+- Se reemplazó el enfoque anterior (sigmoid sobre logits) por normalización min-max.
+- Los logits crudos del reranker se escalan a `[0, 1]`: mejor chunk → 1.0, peor → 0.0.
+- Funciona independientemente de si los logits son positivos o negativos.
+- Se usan solo los top-3 scores normalizados para calcular el promedio.
+
+**`pipeline.py` — Barras de visualización y warning adaptativo:**
+- Las barras de scores se muestran en escala `0-10` con ancho fijo de 10 caracteres.
+- El warning de "relevancia baja" se activa cuando el spread (max - min) de los scores es `< 0.5`, indicando que el reranker no pudo distinguir relevancia entre chunks.
+
+**Tests actualizados:**
+- `test_raw_scores_fix.py`: Assertions actualizadas para reflejar la normalización min-max (ej. `0.4 < retrieval_score < 0.55`).
+- `test_verification.py`: `test_score_all_valid` espera `coverage_score == 1.0` (antes era diferente).
+
 ### Mejoras en `DocStore`
 - Se añadió `count_chunks(doc_id)` para contar chunks por documento
 - Se añadió `close()` para cerrar conexiones

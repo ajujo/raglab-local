@@ -14,13 +14,35 @@ from rag_lab.verification.scoring import calculate_score, ScoreResult, Confidenc
 
 logger = logging.getLogger("rag_lab")
 
-_SCORE_BAR_WIDTH = 15
-_LOW_SCORE_THRESHOLD = 0.60
+_SCORE_BAR_WIDTH = 10
+
+
+def _normalize_scores(scores: list[float]) -> list[float]:
+    """Normalize raw reranker logits to [0, 1] via min-max scaling.
+
+    Best score → 1.0, worst → 0.0. Works with any logit range.
+    """
+    if not scores:
+        return []
+    if len(scores) == 1:
+        return [1.0]
+    min_s = min(scores)
+    max_s = max(scores)
+    score_range = max_s - min_s
+    if score_range == 0:
+        return [1.0] * len(scores)
+    return [(s - min_s) / score_range for s in scores]
 
 
 def _score_bar(score: float, width: int = _SCORE_BAR_WIDTH) -> str:
-    """Generate a visual bar for a score between 0 and 1."""
-    filled = round(score * width)
+    """Generate a visual bar for a score between 0 and 1.
+
+    Args:
+        score: Value clamped to [0, 1].
+        width: Total bar width in characters.
+    """
+    clamped = max(0.0, min(1.0, score))
+    filled = round(clamped * width)
     empty = width - filled
     return "█" * filled + "░" * empty
 
@@ -61,13 +83,23 @@ class VerificationResult:
         else:
             warnings.append("⚠ Consistency check no pudo ejecutarse correctamente.")
 
-        # Advertencia por scores bajos
-        has_low_score = any(s < _LOW_SCORE_THRESHOLD for s in self.retrieval_scores)
-        if has_low_score:
-            warnings.append(
-                "⚠ Algunos fragmentos tienen relevancia baja. Considera reformular la pregunta "
-                "o activar HyDE con --hyde para mejorar la recuperación."
-            )
+        # Advertencia por scores bajos — basada en scores normalizados.
+        # Solo se activa cuando el MEJOR chunk normalizado está por debajo
+        # de 0.3, indicando que genuinamente no se encontró nada relevante.
+        # Con min-max, el top-1 siempre es 1.0 si hay spread entre scores,
+        # así que esto solo se activa cuando todos los scores son casi iguales
+        # (spread < 0.5) — es decir, el reranker no pudo distinguir relevancia.
+        if len(self.retrieval_scores) >= 2:
+            max_s = max(self.retrieval_scores)
+            min_s = min(self.retrieval_scores)
+            spread = max_s - min_s
+            # If the spread is very small, the reranker couldn't differentiate
+            # relevance — all chunks look equally (ir)relevant
+            if spread < 0.5:
+                warnings.append(
+                    "⚠ Algunos fragmentos tienen relevancia baja. Considera reformular la pregunta "
+                    "o activar HyDE con --hyde para mejorar la recuperación."
+                )
 
         return warnings
 
@@ -90,19 +122,21 @@ class VerificationResult:
         score = self.score_result
         confidence_emoji = {"HIGH": "✓", "MEDIUM": "⚠", "LOW": "✗"}
 
-        # Normalizar scores para visualización (logits crudos → ratio 0-1)
-        max_score = max(abs(s) for s in self.retrieval_scores) if self.retrieval_scores else 1.0
+        # Normalizar scores para visualización (logits crudos → escala 0-10)
+        norm_scores = _normalize_scores(self.retrieval_scores)
 
         # Construir sección de fragmentos recuperados
         chunks_lines = []
-        for i, (chunk, sc) in enumerate(zip(self.retrieved_chunks, self.retrieval_scores)):
+        for i, (chunk, raw_sc, norm_sc) in enumerate(
+            zip(self.retrieved_chunks, self.retrieval_scores, norm_scores)
+        ):
             doc_id = chunk.get("doc_id", "desconocido")
             line_start = chunk.get("line_start", "?")
             line_end = chunk.get("line_end", "?")
-            display_ratio = sc / max_score if max_score > 0 else 0
-            bar = _score_bar(display_ratio)
+            display_score = norm_sc * 10  # Scale to 0-10
+            bar = _score_bar(norm_sc)
             chunks_lines.append(
-                f"  [{i+1}] {doc_id} | Líneas {line_start}-{line_end}  → {sc:.2f} {bar}"
+                f"  [{i+1}] {doc_id} | Líneas {line_start}-{line_end}  {display_score:4.1f}/10 {bar}"
             )
 
         chunks_section = "\n".join(chunks_lines)

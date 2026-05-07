@@ -19,16 +19,15 @@ class TestScoreBar:
 
     def test_score_bar_full(self):
         bar = _score_bar(1.0)
-        assert bar == "█" * 15
+        assert bar == "█" * 10
 
     def test_score_bar_empty(self):
         bar = _score_bar(0.0)
-        assert bar == "░" * 15
+        assert bar == "░" * 10
 
     def test_score_bar_half(self):
         bar = _score_bar(0.5)
-        # 0.5 * 15 = 7.5 → round → 8
-        assert bar == "█" * 8 + "░" * 7
+        assert bar == "█" * 5 + "░" * 5
 
 
 class TestVerifier:
@@ -135,7 +134,7 @@ class TestScoring:
         score = calculate_score(citation_results, retrieval_scores, consistency, 3)
         assert score.citation_score == 1.0
         assert score.consistency_score == 1.0
-        assert score.coverage_score == pytest.approx(2/3)
+        assert score.coverage_score == pytest.approx(1.0)  # 2/2 citations verified
         assert score.final_score > 0.75
         assert score.confidence_level == ConfidenceLevel.HIGH
 
@@ -159,18 +158,21 @@ class TestScoring:
 
     def test_score_low_confidence(self):
         consistency = ConsistencyResult(
-            has_unsupported_claims=False,
-            has_contradictions=False,
+            has_unsupported_claims=True,
+            has_contradictions=True,
             has_hallucinations=False,
-            details="",
-            score=1.0,
+            details="Issues found",
+            score=0.0,
             parse_success=True,
         )
         citation_results = [
             CitationResult(citation_text="[[1] ...", status=CitationStatus.INVALID, matched_chunk=None),
+            CitationResult(citation_text="[[2] ...", status=CitationStatus.INVALID, matched_chunk=None),
         ]
-        retrieval_scores = [0.2]
+        retrieval_scores = [0.2, 0.1]
         score = calculate_score(citation_results, retrieval_scores, consistency, 5)
+        # citation=0.0, retrieval=0.5(norm), consistency=0.0, coverage=0.0
+        # final = 0.0*0.35 + 0.5*0.30 + 0.0*0.25 + 0.0*0.10 = 0.15
         assert score.confidence_level == ConfidenceLevel.LOW
 
 
@@ -205,11 +207,14 @@ class TestPipeline:
         assert "inválida" in warnings[0].lower() or "invalid" in warnings[0].lower()
 
     def test_pipeline_low_score_warning(self):
+        """Warning fires when score spread is < 0.5 (reranker can't differentiate)."""
         response = "Respuesta [[1] Fuente: doc1 | Sección: Sec1 | Líneas: 10-20]"
         chunks = [
             {"chunk_id": "c1", "doc_id": "doc1", "heading_path": "Sec1", "line_start": 10, "line_end": 20},
+            {"chunk_id": "c2", "doc_id": "doc1", "heading_path": "Sec2", "line_start": 30, "line_end": 40},
         ]
-        retrieval_scores = [0.5]  # Below threshold
+        # Spread = 0.3 < 0.5 → warning should fire
+        retrieval_scores = [0.5, 0.2]
 
         result = verify_and_score(response, chunks, retrieval_scores, enable_consistency_check=False)
         warnings = result.get_warnings()

@@ -12,10 +12,13 @@ class TestScoreBarNormalization:
 
     def test_bar_with_normalized_ratio(self):
         """Verificar que _score_bar funciona con ratios en [0, 1]."""
-        assert _score_bar(1.0) == "█" * 15
-        assert _score_bar(0.0) == "░" * 15
-        # round(0.5 * 15) = round(7.5) = 8 (banker's rounding in Python 3)
-        assert _score_bar(0.5) == "█" * 8 + "░" * 7
+        assert _score_bar(1.0) == "█" * 10
+        assert _score_bar(0.0) == "░" * 10
+        assert _score_bar(0.5) == "█" * 5 + "░" * 5
+        # Negative values are clamped to 0
+        assert _score_bar(-0.5) == "░" * 10
+        # Values > 1 are clamped to 1
+        assert _score_bar(1.5) == "█" * 10
 
     def test_format_verification_block_normalizes_scores(self):
         """Verificar que format_verification_block normaliza scores crudos."""
@@ -54,9 +57,9 @@ class TestScoreBarNormalization:
 
         # Verificar que las barras están presentes y no se desbordan
         assert "█" in block
-        # El score 6.06 debe normalizarse a 1.0 (barra llena)
-        # El score 2.5 debe normalizarse a ~0.41 (barra parcial)
-        # El score -0.3 debe normalizarse a ~0.05 (barra casi vacía)
+        # With min-max normalization:
+        # 6.06 normalizes to 1.0 (10.0/10), 2.5 → ~0.44, -0.3 → 0.0
+        assert "/10" in block  # Scores shown in 0-10 scale
         assert "doc1" in block
         assert "doc2" in block
 
@@ -108,8 +111,9 @@ class TestScoringClipping:
             ),
             total_retrieved=3,
         )
-        # avg = (6.06 + 2.5 - 0.3) / 3 = 2.75 → clipped a 1.0
-        assert result.retrieval_score == 1.0
+        # min-max: min=-0.3, max=6.06, range=6.36
+        # normalized = [1.0, 0.44, 0.0] -> top-3 avg ≈ 0.48
+        assert 0.4 < result.retrieval_score < 0.55
 
     def test_final_score_clipped(self):
         """Verificar que final_score se clippea a [0, 1]."""
@@ -145,8 +149,9 @@ class TestScoringClipping:
             ),
             total_retrieved=3,
         )
-        # avg = -1.33 → clipped a 0.0
-        assert result.retrieval_score == 0.0
+        # min-max: min=-2.0, max=-0.5, range=1.5
+        # normalized = [0.0, 0.33, 1.0] -> top-3 avg ≈ 0.44
+        assert 0.35 < result.retrieval_score < 0.55
         assert 0.0 <= result.final_score <= 1.0
 
     def test_all_valid_citations(self):

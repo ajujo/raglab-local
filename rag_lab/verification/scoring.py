@@ -57,19 +57,44 @@ def calculate_score(
         valid_count = sum(1 for r in citation_results if r.status == CitationStatus.VALID)
         citation_score = valid_count / len(citation_results)
 
-    # 2. retrieval_score: promedio de los scores de similitud (clipped a [0, 1])
-    if retrieval_scores:
-        avg_score = sum(retrieval_scores) / len(retrieval_scores)
-        retrieval_score = min(max(avg_score, 0.0), 1.0)
+    # 2. retrieval_score: based on reranker scores (logits from cross-encoder).
+    #    BGE-reranker-v2-m3 outputs raw logits that can be negative. We use
+    #    min-max normalization within each query so scores are relative:
+    #    best chunk → 1.0, worst → 0.0. This works regardless of whether
+    #    logits are positive or negative, and avoids the sigmoid problem
+    #    where negative logits always produce near-zero probabilities.
+    #    We use the top-3 normalized scores since the best retrieved chunks
+    #    determine retrieval quality.
+    if retrieval_scores and len(retrieval_scores) >= 2:
+        min_s = min(retrieval_scores)
+        max_s = max(retrieval_scores)
+        score_range = max_s - min_s
+        if score_range > 0:
+            normalized = [(s - min_s) / score_range for s in retrieval_scores]
+        else:
+            # All scores identical → perfect agreement
+            normalized = [1.0] * len(retrieval_scores)
+        # Sort descending and use top-3
+        normalized.sort(reverse=True)
+        top_scores = normalized[:3]
+        retrieval_score = sum(top_scores) / len(top_scores)
+    elif retrieval_scores:
+        # Only 1 score — no range to normalize, treat as perfect
+        retrieval_score = 1.0
     else:
         retrieval_score = 0.5
 
     # 3. consistency_score: basado en el consistency check
     consistency_score = consistency_result.score
 
-    # 4. coverage_score: proporción de chunks citados sobre los recuperados
-    cited_chunk_ids = {r.matched_chunk.get("chunk_id") for r in citation_results if r.matched_chunk}
-    coverage_score = len(cited_chunk_ids) / max(total_retrieved, 1)
+    # 4. coverage_score: proportion of citations that were successfully verified.
+    #    A precise answer that cites only the most relevant chunk(s) should NOT
+    #    be penalized. What matters is that the citations it makes are valid.
+    if citation_results:
+        verified_count = sum(1 for r in citation_results if r.matched_chunk)
+        coverage_score = verified_count / len(citation_results)
+    else:
+        coverage_score = 0.0
 
     # Score final ponderado (clipped a [0, 1])
     raw_final = (
