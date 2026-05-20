@@ -154,18 +154,8 @@ class DocManager:
         try:
             vector_store = VectorStore()
             vector_store.initialize()
-
-            # Get all chunk IDs for this doc_id
-            results = vector_store.query(
-                query_embedding=vector_store._collection.get(include=["metadatas"])[0],
-                top_k=1000,
-                doc_ids=[doc_id],
-            )
-
-            chunk_ids = results["ids"]
-            if chunk_ids:
-                vector_store._collection.delete(ids=chunk_ids)
-                logger.info(f"Deleted {len(chunk_ids)} chunks for {doc_id} from ChromaDB")
+            vector_store._collection.delete(where={"doc_id": doc_id})
+            logger.info(f"Deleted chunks for {doc_id} from ChromaDB")
         except Exception as e:
             logger.warning(f"Failed to delete chunks from ChromaDB: {e}")
 

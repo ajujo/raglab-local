@@ -76,6 +76,12 @@ def _is_numbered_list_line(line: str) -> bool:
     return bool(re.match(r'^\d+\.\s+\S', line.strip()))
 
 
+def _make_chunk_id(doc_id: str, line_start: int, text: str) -> str:
+    """Generate a stable, unique chunk ID from doc_id, position, and content."""
+    payload = f"{doc_id}:{line_start}:{text[:200]}"
+    return hashlib.sha1(payload.encode()).hexdigest()[:16]
+
+
 def _build_heading_path(heading: Heading, parent_map: dict) -> str:
     """Build the full hierarchical heading path.
 
@@ -284,12 +290,20 @@ def _merge_sibling_sections(
         # We merge aggressively: even large siblings are grouped together,
         # because _create_chunks will split the result with overlap.
         # Cap at 2x max_tokens to avoid mega-chunks of unrelated siblings.
+        #
+        # IMPORTANT: Root-level sections (parent_id == id(None)) must NOT
+        # be merged, because they represent distinct top-level chapters.
+        # Since id(None) is the same for all root headings, the parent_id
+        # check alone would incorrectly treat all roots as siblings.
         merge_cap = max_tokens * 2
         group = [current]
         group_tokens = current['tokens']
         j = i + 1
 
-        while j < len(sections):
+        # Skip merging for root-level sections (no parent)
+        has_real_parent = current['parent_id'] != id(None)
+
+        while j < len(sections) and has_real_parent:
             candidate = sections[j]
             # Must be same level and same parent to be siblings
             if (candidate['level'] == current['level']
@@ -363,10 +377,7 @@ def _filter_tiny_chunks(chunks: List[Chunk]) -> List[Chunk]:
             merged_text = prev.text + "\n\n" + chunk.text
             prev.text = merged_text
             prev.n_tokens = _count_tokens(merged_text)
-            # Update chunk_id for the merged chunk
-            prev.chunk_id = hashlib.md5(
-                merged_text[:100].encode()
-            ).hexdigest()[:12]
+            prev.chunk_id = _make_chunk_id(prev.doc_id, prev.line_start, merged_text)
         else:
             # First chunk and it's tiny — keep it anyway (better than losing content)
             filtered.append(chunk)
@@ -409,7 +420,7 @@ def _create_chunks(
 
     if has_table:
         # This section contains a table — keep as single chunk
-        chunk_id = hashlib.md5(text[:100].encode()).hexdigest()[:12]
+        chunk_id = _make_chunk_id(doc_id, line_start, text)
         return [Chunk(
             chunk_id=chunk_id,
             doc_id=doc_id,
@@ -425,7 +436,7 @@ def _create_chunks(
     # If the whole section fits in one chunk, return it directly
     total_tokens = _count_tokens(text)
     if total_tokens <= max_tokens:
-        chunk_id = hashlib.md5(text[:100].encode()).hexdigest()[:12]
+        chunk_id = _make_chunk_id(doc_id, line_start, text)
         return [Chunk(
             chunk_id=chunk_id,
             doc_id=doc_id,
@@ -468,7 +479,7 @@ def _create_chunks(
                 chunk_line_start = max(chunk_line_start, line_start)
                 chunk_line_end = min(chunk_line_end, line_end)
 
-                chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
+                chunk_id = _make_chunk_id(doc_id, chunk_line_start, chunk_text)
                 chunks.append(Chunk(
                     chunk_id=chunk_id,
                     doc_id=doc_id,
@@ -518,7 +529,7 @@ def _create_chunks(
             chunk_line_start = line_start + int(current_seg_start * lines_per_segment)
             chunk_line_end = line_end
 
-            chunk_id = hashlib.md5(chunk_text[:100].encode()).hexdigest()[:12]
+            chunk_id = _make_chunk_id(doc_id, chunk_line_start, chunk_text)
             chunks.append(Chunk(
                 chunk_id=chunk_id,
                 doc_id=doc_id,

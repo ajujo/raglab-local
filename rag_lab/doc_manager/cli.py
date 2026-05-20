@@ -4,12 +4,17 @@ Provides commands to manage ingested documents, including listing,
 adding, deleting, tagging, and searching.
 """
 
-import json
 import typer
 from pathlib import Path
 from rich.console import Console
 
-from rag_lab.config import DATA_DIR
+from rag_lab.config import (
+    DATA_DIR,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+    EMBEDDING_MODEL_VERSION,
+    SPARSE_FORMAT_VERSION,
+)
 from rag_lab.doc_manager.doc_store import DocManager
 
 app = typer.Typer(
@@ -76,6 +81,7 @@ def add(file_path: str):
     # Phase 3: Embedding
     from rag_lab.embedding.encoder import encode_chunks
     from rag_lab.config import EMBEDDING_BATCH_SIZE, EMBEDDING_DEVICE
+    import numpy as np
     device = EMBEDDING_DEVICE
     console.print(f"[bold cyan]🔢 Generating embeddings on {device}...[/bold cyan]")
     chunk_dicts = [chunk.to_dict() for chunk in chunks]
@@ -85,9 +91,22 @@ def add(file_path: str):
         device=device,
     )
 
+    # Enrich chunk dicts with sparse BLOBs and model version
+    for chunk_d in chunk_dicts:
+        sparse = sparse_embeddings.get(chunk_d["chunk_id"], {})
+        if sparse:
+            chunk_d["sparse_tokens"] = np.array(list(sparse.keys()), dtype=np.int32).tobytes()
+            chunk_d["sparse_weights"] = np.array(list(sparse.values()), dtype=np.float32).tobytes()
+        else:
+            chunk_d["sparse_tokens"] = None
+            chunk_d["sparse_weights"] = None
+        chunk_d["embedding_model_name"] = EMBEDDING_MODEL
+        chunk_d["embedding_model_version"] = EMBEDDING_MODEL_VERSION
+        chunk_d["embedding_dim"] = EMBEDDING_DIM
+        chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
+
     # Phase 4: Storage
     from rag_lab.storage.vector_store import VectorStore
-    from rag_lab.storage.sparse_store import SparseStore
     from rag_lab.storage.docstore import DocStore
     from rag_lab.ingest.manifest import create_manifest
 
@@ -103,15 +122,7 @@ def add(file_path: str):
         metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
     )
 
-    # Sparse store
-    sparse_store = SparseStore()
-    sparse_store.add(
-        ids=[c.get("chunk_id", "") for c in chunk_dicts],
-        sparse_vectors=list(sparse_embeddings.values()),
-    )
-    sparse_store.save()
-
-    # Docstore
+    # Docstore (includes sparse BLOBs + FTS5)
     doc_store = DocStore()
     doc_store.add(chunk_dicts)
 

@@ -16,8 +16,8 @@ from rag_lab.retrieval.reranker import rerank
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.generation.prompt_builder import build_prompt
 from rag_lab.storage.vector_store import VectorStore
-from rag_lab.storage.sparse_store import SparseStore
 from rag_lab.storage.docstore import DocStore
+from rag_lab.storage.fts_store import FTSStore
 from rag_lab.embedding.encoder import encode_chunks
 
 
@@ -28,15 +28,16 @@ class TestBenchmarks:
     def stores(self):
         """Crear instancias de almacenes para los tests."""
         vector_store = VectorStore()
-        sparse_store = SparseStore()
         doc_store = DocStore()
+        fts_store = FTSStore()
         vector_store.initialize()
-        sparse_store.load()
-        return vector_store, sparse_store, doc_store
+        doc_store.initialize()
+        fts_store.initialize()
+        return vector_store, doc_store, fts_store
 
     def _run_query(self, question: str, stores, use_hyde=False) -> str:
         """Ejecutar una consulta completa y devolver la respuesta."""
-        vector_store, sparse_store, doc_store = stores
+        vector_store, doc_store, fts_store = stores
 
         # Procesar consulta
         queries = process_query(question, use_hyde=use_hyde)
@@ -55,8 +56,8 @@ class TestBenchmarks:
             results = hybrid_search(
                 question,
                 vector_store,
-                sparse_store,
                 doc_store,
+                fts_store,
                 query_dense=query_dense,
                 query_sparse=query_sparse,
                 top_k=30,

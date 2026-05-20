@@ -1,0 +1,129 @@
+# RAG-Lab Retrieval Benchmark Queries
+#
+# Format per query:
+#   id             Unique identifier (used in output)
+#   text           The query string
+#   doc_relevance  Map of doc_id → relevance grade (0-3):
+#                    3 = highly relevant (directly answers the question)
+#                    2 = relevant (contains related information)
+#                    1 = marginally relevant (tangential)
+#                    0 / absent = not relevant
+#   chunk_relevance  (optional) Map of chunk_id → grade for fine-grained grading
+#   notes          Annotation rationale
+#
+# Docs in corpus:
+#   Notas_Tecnicas_SDMX_2.1          — SDMX 2.1 technical notes (ES)
+#   SDMX-Training-introduction-2015  — SDMX intro training material (EN)
+#   SDMX_2-1_User_Guide_6            — SDMX 2.1 user guide chapter 6 (EN)
+#   SDMX_Glossary                    — Official SDMX glossary (EN)
+#   SDMX_Glossary_Test               — Small test doc
+
+queries:
+
+  - id: q001
+    text: "What is SDMX?"
+    doc_relevance:
+      SDMX-Training-introduction-2015: 3
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Basic definition. Training intro and Glossary have explicit definition sections.
+      Technical notes give context but are less direct.
+
+  - id: q002
+    text: "What data exchange formats does SDMX support?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX-Training-introduction-2015: 2
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Format coverage (SDMX-ML, SDMX-EDI, etc.). Technical notes have the most
+      complete list. Training intro mentions them briefly.
+
+  - id: q003
+    text: "What is a Data Structure Definition in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      DSD is a core SDMX concept. Glossary has the canonical definition.
+      Both technical notes and user guide provide usage context.
+
+  - id: q004
+    text: "How are time series structured in SDMX?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Time series representation is covered in depth in the user guide.
+      Technical notes have complementary structural information.
+
+  - id: q005
+    text: "What is a code list in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Code list definition. Glossary has the definition; technical notes show usage.
+
+  - id: q006
+    text: "What organisations maintain the SDMX standard?"
+    doc_relevance:
+      SDMX-Training-introduction-2015: 3
+      SDMX_Glossary: 1
+    notes: >
+      The seven sponsoring organisations (BIS, ECB, Eurostat, IMF, OECD, UN, WB)
+      are described in the training introduction.
+
+  - id: q007
+    text: "What is a concept scheme in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Concept scheme is a core structural metadata artefact. Glossary is primary.
+
+  - id: q008
+    text: "What is SDMX-ML and how does it differ from SDMX-EDI?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX-Training-introduction-2015: 2
+    notes: >
+      Format comparison. Technical notes have detailed comparison; training intro
+      covers both at a high level.
+
+  - id: q009
+    text: "How does SDMX handle metadata reporting?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+      SDMX_Glossary: 1
+    notes: >
+      Metadata reporting framework. User guide chapter 6 covers this in depth.
+
+  - id: q010
+    text: "What are the SDMX reporting periods?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Specific time periods (annual, quarterly, monthly, etc.). Technical notes
+      define the canonical list.
+
+  - id: q011
+    text: "What is a provision agreement in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Structural artefact for data provision. Glossary is primary source.
+
+  - id: q012
+    text: "How does SDMX 2.1 differ from previous versions?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Version comparison. Technical notes for SDMX 2.1 cover evolution explicitly.

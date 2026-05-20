@@ -40,6 +40,16 @@ SOURCES = [
 # Modelo de embeddings denso + disperso
 EMBEDDING_MODEL = "BAAI/bge-m3"
 
+# Version fence: bump this string whenever the model weights change so that
+# stale sparse BLOBs can be detected and invalidated via reconcile.
+EMBEDDING_MODEL_VERSION = "2024-09"
+
+# Dense embedding dimension for BGE-M3
+EMBEDDING_DIM = 1024
+
+# Sparse BLOB encoding format version: 1 = (int32 tokens ‖ float32 weights)
+SPARSE_FORMAT_VERSION = 1
+
 # Tamaño del batch para procesar embeddings (más alto = más rápido, más memoria)
 # Propuesto: 8 (antes 4) — ~2x throughput en GPU
 EMBEDDING_BATCH_SIZE = 8
@@ -97,13 +107,31 @@ DOCDSTORE_SQLITE_PATH = STORAGE_DIR / "docstore.sqlite"
 # =============================================================================
 
 # Resultados de búsqueda híbrida antes del reranking
-RETRIEVAL_TOP_K = 30
+RETRIEVAL_TOP_K = 50
 
 # Resultados finales después del reranking (contexto para el LLM)
 RERANK_TOP_K = 8
 
-# Constante para fusión de rangos recíprocos (RRF)
-RRF_K = 60
+# Constante de suavizado para la fusión RRF: valores bajos amplifican diferencias
+# de rango (más discriminativo). Calibrado empíricamente sobre el corpus SDMX
+# (12 queries, 610 chunks). Recalibrar si cambia corpus, modelo o idioma.
+RRF_K = 20
+
+# Pesos por señal en la fusión weighted-RRF.
+# dense_w y bm25_w se mantienen en 1.0 como referencia.
+# sparse_w = 0.25: BGE-M3 sparse actúa como señal SECUNDARIA de refinamiento,
+# no como señal principal. Con peso alto (1.0) tiende a sobre-representar
+# documentos grandes con alta densidad terminológica (p.ej. un user guide de
+# 197 chunks monopoliza posiciones vs. el Glosario para queries de términos).
+# Calibrado empíricamente: sw=0.25 maximiza nDCG@10 y R@5 simultáneamente.
+DENSE_RRF_WEIGHT = 1.0
+BM25_RRF_WEIGHT = 1.0
+SPARSE_RRF_WEIGHT = 0.25
+
+# Cobertura mínima de sparse BLOBs para activar sparse scoring (0–1.0).
+# Si la cobertura real cae por debajo de este umbral, hybrid_search omite la
+# etapa sparse para evitar sesgo en el ranking.
+SPARSE_COVERAGE_THRESHOLD = 0.95
 
 # =============================================================================
 # 8. CONSULTA (QUERY)

@@ -47,7 +47,7 @@ from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.reranker import rerank
 from rag_lab.storage.docstore import DocStore
-from rag_lab.storage.sparse_store import SparseStore
+from rag_lab.storage.fts_store import FTSStore
 from rag_lab.storage.vector_store import VectorStore
 
 logger = logging.getLogger("rag_lab")
@@ -75,10 +75,11 @@ class ChatSession:
 
         # Inicializar almacenes
         self.vector_store = VectorStore()
-        self.sparse_store = SparseStore()
+        self.fts_store = FTSStore()
         self.doc_store = DocStore()
         self.vector_store.initialize()
-        self.sparse_store.load()
+        self.fts_store.initialize()
+        self.doc_store.initialize()
 
     def _get_doc_ids(self) -> Optional[List[str]]:
         """Obtener IDs de documentos activos."""
@@ -105,7 +106,7 @@ class ChatSession:
         all_query_data = []
         for q in queries:
             dense_emb, sparse_dict = encode_chunks(
-                [{"text": q["text"]}, {"text": q.get("hyde_text", q["text"])}, {"text": q["text"]}],
+                [{"text": q["text"]}],
                 batch_size=1,
                 device=self.embedding_device,
             )
@@ -120,8 +121,8 @@ class ChatSession:
             results = hybrid_search(
                 question,
                 self.vector_store,
-                self.sparse_store,
                 self.doc_store,
+                self.fts_store,
                 query_dense=query_dense,
                 query_sparse=query_sparse,
                 top_k=self.top_k,

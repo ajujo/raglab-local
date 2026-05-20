@@ -29,7 +29,10 @@ venv/
 # Data and storage
 data/chunks.jsonl
 data/cleaned/
-storage/
+/storage/
+
+# Runtime artifacts
+rag_lab/feedback/feedback.db
 
 # Logs
 *.log

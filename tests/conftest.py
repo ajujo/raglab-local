@@ -16,6 +16,30 @@ import pytest
 # Hide GPU entirely during tests to prevent any GPU memory allocation
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "llm_required: mark test as requiring a live LLM server — skipped when unavailable",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip llm_required tests when the LLM server is not reachable."""
+    import urllib.request
+    llm_url = os.getenv("LLM_BASE_URL", "http://localhost:8000/v1")
+    try:
+        urllib.request.urlopen(f"{llm_url}/models", timeout=2)
+        llm_available = True
+    except Exception:
+        llm_available = False
+
+    if not llm_available:
+        skip_marker = pytest.mark.skip(reason="LLM server not available (set LLM_BASE_URL or start server)")
+        for item in items:
+            if item.get_closest_marker("llm_required"):
+                item.add_marker(skip_marker)
+
 # Force CPU for all ML models in tests to avoid OOM on GPU
 os.environ["EMBEDDING_DEVICE"] = "cpu"
 os.environ["RERANKER_DEVICE"] = "cpu"

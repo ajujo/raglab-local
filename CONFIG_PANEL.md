@@ -230,3 +230,47 @@
 - **CPU:** Modo CPU para tests evita OOM en GPU.
 - **Throughput:** `EMBEDDING_BATCH_SIZE=8` mejora rendimiento sin riesgo en GPU.
 - **Latencia:** `RERANK_TOP_K=8` mantiene prompts pequeños y rápidos.
+
+---
+
+## 12. Flags de la CLI
+
+### Comando `query`
+
+| Flag | Qué hace | Impacto |
+|------|----------|----------|
+| `--cpu-embedding` | Fuerza el modelo de embedding (BGE-M3) a ejecutarse en la CPU | Libera memoria VRAM de la GPU para que el LLM pueda usarla. Más lento, pero evita OOM en GPU. |
+| `--cpu-reranker` | Fuerza el modelo de reranking (BGE-reranker) a ejecutarse en la CPU | También libera VRAM. Útil cuando la GPU está saturada por el LLM. |
+| `--hyde` | Activa HyDE (Hypothetical Document Embeddings) | Genera una respuesta hipotética para mejorar la calidad de la búsqueda. Añade latencia pero mejora la recuperación. |
+| `--fast` | Desactiva el paso de reranking | La consulta es mucho más rápida, pero los resultados pueden ser menos precisos. |
+| `--top-k <N>` | Define cuántos chunks se recuperan antes del reranking | Por defecto es 30. Subirlo da más contexto al LLM, bajarlo hace la búsqueda más rápida. |
+
+### Comando `ingest`
+
+| Flag | Qué hace | Impacto |
+|------|----------|----------|
+| `--doc <ruta>` | Procesa un solo documento | Por defecto, `ingest` procesa todos los documentos en `SOURCES`. Con `--doc` solo procesa el archivo especificado. |
+| `--cpu-embedding` | Mismo efecto que en `query` | Libera VRAM para el LLM. |
+| `--force` | Fuerza la re-ingesta | Reemplaza los datos existentes en los almacenes. |
+
+### Ejemplos de uso
+
+```bash
+# Consulta estándar (todo en GPU)
+python -m rag_lab.cli query "¿Qué es SDMX?"
+
+# Consulta con embedding y reranker en CPU (libera VRAM para el LLM)
+python -m rag_lab.cli query "¿Qué es SDMX?" --cpu-embedding --cpu-reranker
+
+# Consulta rápida (sin reranking)
+python -m rag_lab.cli query "¿Qué es SDMX?" --fast
+
+# Consulta con HyDE activado
+python -m rag_lab.cli query "¿Qué es SDMX?" --hyde
+
+# Ingesta de un solo documento
+python -m rag_lab.cli ingest --doc "otro_documento.md"
+
+# Ingesta de todos los documentos en SOURCES
+python -m rag_lab.cli ingest
+```

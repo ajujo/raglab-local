@@ -22,8 +22,8 @@ from rag_lab.ingest.manifest import create_manifest
 from rag_lab.chunking.splitter import chunk_document
 from rag_lab.embedding.encoder import encode_chunks
 from rag_lab.storage.vector_store import VectorStore
-from rag_lab.storage.sparse_store import SparseStore
 from rag_lab.storage.docstore import DocStore
+from rag_lab.storage.fts_store import FTSStore
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.reranker import rerank
@@ -88,6 +88,12 @@ class TestFullPipeline:
         assert len(dense_embeddings) == len(chunks)
 
         # Phase 4: Storage
+        import numpy as np
+        from rag_lab.config import (
+            EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION,
+            EMBEDDING_DIM, SPARSE_FORMAT_VERSION,
+        )
+
         vector_store = VectorStore()
         vector_store.initialize()
         vector_store.add(
@@ -97,23 +103,35 @@ class TestFullPipeline:
             metadatas=[{"heading_path": c["heading_path"]} for c in chunk_dicts],
         )
 
-        sparse_store = SparseStore()
-        sparse_store.add(
-            ids=[c["chunk_id"] for c in chunk_dicts],
-            sparse_vectors=list(sparse_embeddings.values()),
-        )
-        sparse_store.save()
+        for chunk_d in chunk_dicts:
+            sparse = sparse_embeddings.get(chunk_d["chunk_id"], {})
+            if sparse:
+                tokens_arr = np.array(list(sparse.keys()), dtype=np.int32)
+                weights_arr = np.array(list(sparse.values()), dtype=np.float32)
+                chunk_d["sparse_tokens"] = tokens_arr.tobytes()
+                chunk_d["sparse_weights"] = weights_arr.tobytes()
+            else:
+                chunk_d["sparse_tokens"] = None
+                chunk_d["sparse_weights"] = None
+            chunk_d["embedding_model_name"] = EMBEDDING_MODEL
+            chunk_d["embedding_model_version"] = EMBEDDING_MODEL_VERSION
+            chunk_d["embedding_dim"] = EMBEDDING_DIM
+            chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
 
-        doc_store = DocStore()
+        doc_store = DocStore(db_path=tmp_path / "test_docstore.sqlite")
+        doc_store.initialize()
         doc_store.add(chunk_dicts)
+
+        fts_store = FTSStore(db_path=tmp_path / "test_docstore.sqlite")
+        fts_store.initialize()
 
         # Verify storage
         query_emb = dense_embeddings[0]
         results = hybrid_search(
             "What is SDMX?",
             vector_store,
-            sparse_store,
             doc_store,
+            fts_store,
             query_dense=query_emb,
             query_sparse=next(iter(sparse_embeddings.values()), {}),
             top_k=5,

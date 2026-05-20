@@ -22,7 +22,7 @@ class TestChatSession:
         assert session.active_docs is None
         assert session.mode == "standard"
         assert session.temperature == 0.1
-        assert session.top_k == 30
+        assert session.top_k == 50
 
     def test_command_help(self):
         """Verificar comando /help."""

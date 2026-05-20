@@ -20,9 +20,13 @@ from rag_lab.config import (
     DATA_DIR,
     EMBEDDING_BATCH_SIZE,
     EMBEDDING_DEVICE,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL,
+    EMBEDDING_MODEL_VERSION,
     RETRIEVAL_TOP_K,
     RERANK_TOP_K,
     SOURCES,
+    SPARSE_FORMAT_VERSION,
     STORAGE_DIR,
 )
 from rag_lab.exceptions import RAGLabError, RetrievalError, LLMConnectionError
@@ -31,7 +35,7 @@ from rag_lab.ingest.manifest import create_manifest
 from rag_lab.chunking.splitter import chunk_document
 from rag_lab.embedding.encoder import encode_chunks, load_embedding_model
 from rag_lab.storage.vector_store import VectorStore
-from rag_lab.storage.sparse_store import SparseStore
+from rag_lab.storage.fts_store import FTSStore
 from rag_lab.storage.docstore import DocStore
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.hybrid_search import hybrid_search
@@ -115,13 +119,6 @@ def ingest(
         logger.info(f"Created {len(chunks)} chunks from {source_path.name}")
         total_chunks += len(chunks)
 
-        # Save chunks to JSONL (append mode for multi-doc)
-        chunks_path = DATA_DIR / "chunks.jsonl"
-        chunks_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(chunks_path, "a", encoding="utf-8") as f:
-            for chunk in chunks:
-                f.write(json.dumps(chunk.to_dict(), ensure_ascii=False) + "\n")
-
         # Phase 3: Embedding
         logger.info(f"Generating embeddings on {device}...")
         chunk_dicts = [chunk.to_dict() for chunk in chunks]
@@ -130,6 +127,23 @@ def ingest(
             batch_size=EMBEDDING_BATCH_SIZE,
             device=device,
         )
+
+        # Enrich chunk dicts with sparse BLOBs and model version metadata
+        import numpy as np
+        for chunk_d in chunk_dicts:
+            sparse = sparse_embeddings.get(chunk_d["chunk_id"], {})
+            if sparse:
+                tokens_arr = np.array(list(sparse.keys()), dtype=np.int32)
+                weights_arr = np.array(list(sparse.values()), dtype=np.float32)
+                chunk_d["sparse_tokens"] = tokens_arr.tobytes()
+                chunk_d["sparse_weights"] = weights_arr.tobytes()
+            else:
+                chunk_d["sparse_tokens"] = None
+                chunk_d["sparse_weights"] = None
+            chunk_d["embedding_model_name"] = EMBEDDING_MODEL
+            chunk_d["embedding_model_version"] = EMBEDDING_MODEL_VERSION
+            chunk_d["embedding_dim"] = EMBEDDING_DIM
+            chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
 
         # Phase 4: Storage
         logger.info("Storing embeddings...")
@@ -141,13 +155,6 @@ def ingest(
             documents=[c.get("text", "") for c in chunk_dicts],
             metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
         )
-
-        sparse_store = SparseStore()
-        sparse_store.add(
-            ids=[c.get("chunk_id", "") for c in chunk_dicts],
-            sparse_vectors=list(sparse_embeddings.values()),
-        )
-        sparse_store.save()
 
         doc_store = DocStore()
         doc_store.add(chunk_dicts)
@@ -213,10 +220,11 @@ def query(
 
     # Perform hybrid search
     vector_store = VectorStore()
-    sparse_store = SparseStore()
+    fts_store = FTSStore()
     doc_store = DocStore()
     vector_store.initialize()
-    sparse_store.load()
+    fts_store.initialize()
+    doc_store.initialize()
 
     # Search with each query variant
     all_results = []
@@ -226,8 +234,8 @@ def query(
         results = hybrid_search(
             question,
             vector_store,
-            sparse_store,
             doc_store,
+            fts_store,
             query_dense=query_dense,
             query_sparse=query_sparse,
             top_k=top_k * 2,

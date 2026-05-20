@@ -47,6 +47,7 @@ class TestGenerateHypotheticalAnswer:
         assert len(result) > 0
         assert "sdmx" in result.lower()
 
+    @pytest.mark.llm_required
     def test_empty(self):
         result = _generate_hypothetical_answer("")
         assert len(result) > 0
