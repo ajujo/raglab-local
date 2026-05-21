@@ -15,21 +15,24 @@ At sparse_w=1.0 it over-represents large high-density documents (e.g. a
 197-chunk user guide monopolises SDMX terminology results). Calibrated default
 sparse_w=0.25 eliminates this bias while preserving lexical coverage.
 
-Result shape per chunk (five-score):
+Result shape per chunk (five-score + three rank fields):
     {
         "id":             str,
-        "rrf_score":      float,   # fused rank score
-        "dense_score":    float,   # RRF contribution from dense ranking
-        "bm25_score":     float,   # raw BM25 score from FTS5 (not RRF unit)
-        "sparse_score":   float,   # raw dot-product score (not RRF unit)
+        "rrf_score":      float,        # fused rank score
+        "dense_score":    float,        # RRF contribution from dense ranking
+        "bm25_score":     float,        # raw BM25 score from FTS5 (not RRF unit)
+        "sparse_score":   float,        # raw dot-product score (not RRF unit)
         "in_dense_topk":  bool,
         "in_bm25_topk":   bool,
         "in_sparse_topk": bool,
+        "dense_rank":     Optional[int],  # 1-based rank in dense input list, or None
+        "bm25_rank":      Optional[int],  # 1-based rank in bm25 input list, or None
+        "sparse_rank":    Optional[int],  # 1-based rank in sparse input list, or None
     }
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger("rag_lab")
 
@@ -60,14 +63,15 @@ def weighted_rrf(
     rrf_scores: dict = {}
     meta: dict = {}
 
-    # Dense contribution
+    # Dense contribution — record 1-based rank for explain mode
     for rank, chunk_id in enumerate(dense_ids):
         contrib = dense_w / (k + rank + 1)
         rrf_scores[chunk_id] = rrf_scores.get(chunk_id, 0.0) + contrib
         meta.setdefault(chunk_id, {})["in_dense_topk"] = True
         meta[chunk_id]["dense_rrf_contrib"] = contrib
+        meta[chunk_id]["dense_rank"] = rank + 1
 
-    # BM25 contribution
+    # BM25 contribution — record 1-based rank for explain mode
     for rank, item in enumerate(bm25_ranking):
         cid = item["id"]
         contrib = bm25_w / (k + rank + 1)
@@ -75,8 +79,9 @@ def weighted_rrf(
         meta.setdefault(cid, {})
         meta[cid]["in_bm25_topk"] = True
         meta[cid]["bm25_score"] = item.get("bm25_score", 0.0)
+        meta[cid]["bm25_rank"] = rank + 1
 
-    # Sparse contribution
+    # Sparse contribution — record 1-based rank for explain mode
     for rank, item in enumerate(sparse_ranking):
         cid = item["id"]
         contrib = sparse_w / (k + rank + 1)
@@ -84,8 +89,9 @@ def weighted_rrf(
         meta.setdefault(cid, {})
         meta[cid]["in_sparse_topk"] = True
         meta[cid]["sparse_score"] = item.get("sparse_score", 0.0)
+        meta[cid]["sparse_rank"] = rank + 1
 
-    # Build result list
+    # Build result list — include rank fields (None when not in that signal's list)
     results = []
     for cid, rrf in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True):
         m = meta.get(cid, {})
@@ -98,6 +104,9 @@ def weighted_rrf(
             "in_dense_topk": m.get("in_dense_topk", False),
             "in_bm25_topk": m.get("in_bm25_topk", False),
             "in_sparse_topk": m.get("in_sparse_topk", False),
+            "dense_rank": m.get("dense_rank", None),
+            "bm25_rank": m.get("bm25_rank", None),
+            "sparse_rank": m.get("sparse_rank", None),
         })
 
     logger.debug(

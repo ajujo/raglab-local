@@ -169,7 +169,7 @@ def hybrid_search(
     # ------------------------------------------------------------------
     chunks = doc_store.get_by_ids(top_ids)
 
-    # Attach five-score fields to each chunk
+    # Attach five-score fields + signal rank fields to each chunk
     for chunk in chunks:
         cid = chunk["chunk_id"]
         info = score_map.get(cid, {})
@@ -180,9 +180,18 @@ def hybrid_search(
         chunk["in_dense_topk"] = info.get("in_dense_topk", False)
         chunk["in_bm25_topk"] = info.get("in_bm25_topk", False)
         chunk["in_sparse_topk"] = info.get("in_sparse_topk", False)
+        # Rank fields from fusion (None = not in that signal's top-k)
+        chunk["dense_rank"] = info.get("dense_rank", None)
+        chunk["bm25_rank"] = info.get("bm25_rank", None)
+        chunk["sparse_rank"] = info.get("sparse_rank", None)
 
     # Sort by rrf_score to match fusion order
     chunks.sort(key=lambda c: c.get("rrf_score", 0.0), reverse=True)
+
+    # Stamp rrf_rank (1-based position in rrf-sorted order) before any diversity reordering
+    for rrf_position, chunk in enumerate(chunks):
+        chunk["rrf_rank"] = rrf_position + 1
+        chunk["was_mmr_reordered"] = False  # default; overwritten below if MMR runs
 
     # ------------------------------------------------------------------
     # Optional diversity post-processing
@@ -206,6 +215,9 @@ def hybrid_search(
     elif effective_mode == "mmr":
         lam = mmr_lambda if mmr_lambda is not None else MMR_LAMBDA
         chunks = apply_mmr(chunks, lambda_=lam, k=top_k)
+        # Detect reordering: final position ≠ pre-MMR rrf_rank
+        for final_position, chunk in enumerate(chunks):
+            chunk["was_mmr_reordered"] = (final_position + 1) != chunk.get("rrf_rank", final_position + 1)
         logger.debug(f"MMR(lambda={lam}): {len(chunks)} chunks after reranking")
 
     logger.info(

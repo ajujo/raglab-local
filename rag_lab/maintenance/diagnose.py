@@ -6,6 +6,7 @@ runs a test query with all five scores to verify end-to-end retrieval.
 Usage:
     python -m rag_lab.maintenance.diagnose
     python -m rag_lab.maintenance.diagnose --query "What is SDMX?"
+    python -m rag_lab.maintenance.diagnose --query "What is SDMX?" --explain
 """
 
 import argparse
@@ -19,11 +20,13 @@ from rag_lab.storage.vector_store import VectorStore
 logger = logging.getLogger("rag_lab")
 
 
-def diagnose(query: str = None) -> dict:
+def diagnose(query: str = None, explain: bool = False) -> dict:
     """Run full system diagnostic.
 
     Args:
         query: Optional test query to exercise the retrieval pipeline.
+        explain: If True and query is provided, show per-signal rank breakdown
+                 for each result (requires --query).
 
     Returns:
         Dict with all diagnostic results.
@@ -136,7 +139,7 @@ def diagnose(query: str = None) -> dict:
     if query:
         print(f"\n  Test query: {query!r}")
         print("  " + "·" * 50)
-        _run_test_query(query, ds)
+        _run_test_query(query, ds, explain=explain)
 
     ds.close()
 
@@ -162,8 +165,14 @@ def diagnose(query: str = None) -> dict:
     return result
 
 
-def _run_test_query(query: str, ds: DocStore) -> None:
-    """Run a retrieval test and print five-score details."""
+def _run_test_query(query: str, ds: DocStore, explain: bool = False) -> None:
+    """Run a retrieval test and print five-score details.
+
+    Args:
+        query: Query text.
+        ds: Initialised DocStore (shared connection).
+        explain: If True, print per-signal rank breakdown for every result.
+    """
     try:
         from rag_lab.config import EMBEDDING_DEVICE
         from rag_lab.embedding.encoder import encode_chunks
@@ -206,6 +215,8 @@ def _run_test_query(query: str, ds: DocStore) -> None:
             print(f"       in_dense={chunk.get('in_dense_topk',False)}  "
                   f"in_bm25={chunk.get('in_bm25_topk',False)}  "
                   f"in_sparse={chunk.get('in_sparse_topk',False)}")
+            if explain:
+                _print_explain(chunk)
             print(f"       {chunk.get('text','')[:80].strip()}...")
 
         fts.close()
@@ -214,10 +225,36 @@ def _run_test_query(query: str, ds: DocStore) -> None:
         print(f"  Query test failed: {e}")
 
 
+def _print_explain(chunk: dict) -> None:
+    """Print the full rank / provenance breakdown for one result chunk."""
+    def _fmt_rank(r) -> str:
+        return f"rank={r}" if r is not None else "rank=–"
+
+    dense_r = _fmt_rank(chunk.get("dense_rank"))
+    bm25_r  = _fmt_rank(chunk.get("bm25_rank"))
+    sparse_r = _fmt_rank(chunk.get("sparse_rank"))
+    rrf_r   = _fmt_rank(chunk.get("rrf_rank"))
+
+    print(f"       ┌─ signal ranks: dense[{dense_r}]  bm25[{bm25_r}]  sparse[{sparse_r}]")
+    print(f"       │  rrf_rank={chunk.get('rrf_rank','–')}  chunk_id={chunk.get('chunk_id','?')[:16]}…")
+
+    mmr_score = chunk.get("mmr_score")
+    if mmr_score is not None:
+        reordered = chunk.get("was_mmr_reordered", False)
+        reorder_flag = " ← MMR reordered" if reordered else ""
+        print(f"       └─ mmr_score={mmr_score:.4f}{reorder_flag}")
+    else:
+        print(f"       └─ MMR: not active")
+
+
 if __name__ == "__main__":
     setup_logging("INFO")
     parser = argparse.ArgumentParser(description="RAG-Lab system diagnostic")
     parser.add_argument("--query", default=None, help="Optional test query")
+    parser.add_argument("--explain", action="store_true",
+                        help="Show per-signal rank breakdown for each result (requires --query)")
     args = parser.parse_args()
-    result = diagnose(query=args.query)
+    if args.explain and not args.query:
+        parser.error("--explain requires --query")
+    result = diagnose(query=args.query, explain=args.explain)
     sys.exit(1 if result.get("duplicates", 0) > 0 else 0)
