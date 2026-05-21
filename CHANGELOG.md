@@ -4,6 +4,45 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.2 — 2026-05-21
+
+### Reliability and observability
+
+This release adds diagnostics, regression protection, and extended consistency
+checking. No retrieval behaviour, ranking, or model changes.
+
+**New commands:**
+
+- `python -m rag_lab.doctor` — 7-check system health gate (config, docstore,
+  chromadb, fts5, sparse_coverage, reconcile, test_query). Exit codes: 0=OK,
+  1=WARN, 2=FAIL. Supports `--checks NAME[,...]` to run a subset.
+- `python -m rag_lab.benchmark.compare` — regression guard. Compares a current
+  benchmark JSON against a saved baseline. Default thresholds: R@5/nDCG@10 drop
+  >2 pp = FAIL; MRR drop >3 pp = FAIL; P95 increase >25% = WARN.
+- `python -m rag_lab.maintenance.diagnose --explain` — per-signal rank breakdown
+  showing `dense_rank`, `bm25_rank`, `sparse_rank`, `rrf_rank`, `mmr_score`, and
+  `was_mmr_reordered` for every result.
+
+**Reconcile improvements:**
+
+- `--repair` flag (alias: `--fix`), `--check` CI mode, `--report-json PATH`.
+- Extended checks: duplicate chunk IDs, model version mismatches vs config,
+  embedding dimension mismatches vs config, sparse format version mismatches vs config.
+- Quiet mode (`quiet=True`) for programmatic callers.
+
+**Rank fields in hybrid_search output:**
+
+Every chunk result now carries `dense_rank`, `bm25_rank`, `sparse_rank` (1-based
+rank in each signal's list, or `None` if absent), `rrf_rank` (1-based in fused
+order), and `was_mmr_reordered` (bool). Used by `--explain` mode.
+
+**Documentation:** `docs/OPERATIONS.md` — runbook covering all operational commands.
+
+**Test suite:** 427 tests, EXIT_CODE=0 (was 343 in v1.1; +84 new tests covering
+reconcile, doctor, compare, and explain/rank fields).
+
+---
+
 ## v1.1 — 2026-05-21
 
 ### MMR document-diversity post-processing

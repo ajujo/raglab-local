@@ -1,0 +1,253 @@
+# RAG-Lab Operations Guide
+
+Operational reference for diagnosing, maintaining, and protecting the RAG-Lab system.
+
+---
+
+## Quick-reference commands
+
+| Goal | Command |
+|------|---------|
+| Full health check | `python -m rag_lab.doctor` |
+| Health check with test query | `python -m rag_lab.doctor --query "What is SDMX?"` |
+| Run specific checks only | `python -m rag_lab.doctor --checks config,docstore,chromadb` |
+| Store consistency report | `python -m rag_lab.maintenance.reconcile` |
+| Store consistency (CI mode) | `python -m rag_lab.maintenance.reconcile --check` |
+| Remove ChromaDB orphans | `python -m rag_lab.maintenance.reconcile --repair` |
+| Save reconcile report | `python -m rag_lab.maintenance.reconcile --report-json out.json` |
+| Full system diagnostic | `python -m rag_lab.maintenance.diagnose` |
+| Diagnostic with test query | `python -m rag_lab.maintenance.diagnose --query "What is SDMX?"` |
+| Diagnostic with signal breakdown | `python -m rag_lab.maintenance.diagnose --query "..." --explain` |
+| Benchmark regression check | `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current data/benchmark_latest.json` |
+| Run benchmark | `python -m rag_lab.benchmark --variants hybrid hybrid_mmr --output data/benchmark_latest.json` |
+| Ingest all documents | `python -m rag_lab.cli ingest` |
+| Backfill sparse BLOBs | `python -m rag_lab.maintenance.backfill_sparse` |
+| Migrate to schema v2 | `python -m rag_lab.maintenance.migrate_to_v2` |
+
+---
+
+## Doctor command
+
+`python -m rag_lab.doctor` runs 7 sequential health checks and exits with a clear status.
+
+### Checks
+
+| Check | What it verifies |
+|-------|-----------------|
+| `config` | Required config constants exist and have valid values |
+| `docstore` | SQLite DocStore opens and contains chunks |
+| `chromadb` | ChromaDB collection is reachable and non-empty |
+| `fts5` | FTS5 virtual table exists and is fully populated |
+| `sparse_coverage` | Fraction of chunks with sparse BLOBs meets `SPARSE_COVERAGE_THRESHOLD` |
+| `reconcile` | Cross-store consistency (DocStore vs ChromaDB); calls reconcile internally |
+| `test_query` | End-to-end retrieval returns at least one result for the test query |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | All checks OK |
+| `1` | At least one WARN, no FAIL |
+| `2` | At least one FAIL |
+
+### Options
+
+```
+--checks NAME[,NAME,...]   Run only the specified checks (comma-separated)
+--query TEXT               Query used for test_query check (default: "What is SDMX?")
+```
+
+### Example output
+
+```
+───────────────────────────────────────────────────
+RAG-Lab Doctor
+───────────────────────────────────────────────────
+  ✓ config               OK  — dim=1024, model_ver=2024-09, top_k=50
+  ✓ docstore             OK  — 610 chunks
+  ✓ chromadb             OK  — 610 vectors
+  ✓ fts5                 OK  — 610/610 chunks indexed
+  ✓ sparse_coverage      OK  — 610/610 (100%)
+  ✓ reconcile            OK  — DocStore=610, ChromaDB=610
+  ✓ test_query           OK  — 3 results — top: SDMX_Glossary rrf=0.0412
+
+───────────────────────────────────────────────────
+  ✓ Overall: OK
+───────────────────────────────────────────────────
+```
+
+---
+
+## Reconcile command
+
+`python -m rag_lab.maintenance.reconcile` checks consistency between DocStore and ChromaDB.
+
+### Modes
+
+| Flag | Behaviour |
+|------|-----------|
+| _(none)_ | Print report, exit 0 if consistent, exit 1 if issues |
+| `--check` | CI mode — same as default (explicit) |
+| `--repair` | Remove orphaned entries from ChromaDB (destructive) |
+| `--fix` | Alias for `--repair` (backward compatibility) |
+| `--report-json PATH` | Save full JSON report to PATH |
+
+### Extended checks (v1.2+)
+
+Beyond orphan detection, reconcile now reports:
+
+- **Duplicate chunk IDs** — should never occur (PK constraint), but reported if found
+- **Model version mismatches** — chunks ingested with an older `embedding_model_version`
+- **Embedding dim mismatches** — chunks with a different `embedding_dim` than current config
+- **Sparse format version mismatches** — chunks with a stale `sparse_format_version`
+
+Any of these conditions causes exit code 1 and is flagged in the report.
+
+### JSON report format
+
+```json
+{
+  "docstore_count": 610,
+  "chroma_count": 610,
+  "fts_count": 610,
+  "sparse_blob_count": 610,
+  "chroma_orphans": [],
+  "missing_from_chroma": [],
+  "duplicate_chunk_ids": [],
+  "model_version_mismatches": [],
+  "embedding_dim_mismatches": [],
+  "sparse_format_version_mismatches": [],
+  "repaired": false
+}
+```
+
+### Recovery actions
+
+| Issue | Command |
+|-------|---------|
+| ChromaDB orphans | `python -m rag_lab.maintenance.reconcile --repair` |
+| Missing from ChromaDB | `python -m rag_lab.cli ingest --force` |
+| FTS5 incomplete | `python -m rag_lab.maintenance.migrate_to_v2` |
+| Sparse BLOBs missing | `python -m rag_lab.maintenance.backfill_sparse` |
+| Model version mismatch | Re-ingest affected documents |
+
+---
+
+## Diagnose command
+
+`python -m rag_lab.maintenance.diagnose` gives a detailed view of store counts and coverage.
+
+### Options
+
+```
+--query TEXT     Run a test retrieval query
+--explain        Show per-signal rank breakdown for each result (requires --query)
+```
+
+### Explain mode
+
+With `--explain`, each result shows:
+
+```
+  [1] SDMX_Glossary | lines 142-160
+       rrf=0.0412  dense=0.0231  bm25=12.50  sparse=0.0871
+       in_dense=True  in_bm25=True  in_sparse=True
+       ┌─ signal ranks: dense[rank=2]  bm25[rank=1]  sparse[rank=3]
+       │  rrf_rank=1  chunk_id=abc123de…
+       └─ mmr_score=0.7231 ← MMR reordered
+```
+
+This is the primary tool for diagnosing why a specific chunk appears or doesn't appear in results.
+
+---
+
+## Benchmark regression guard
+
+`python -m rag_lab.benchmark.compare` compares a current benchmark run against a saved baseline.
+
+### Usage
+
+```bash
+python -m rag_lab.benchmark.compare \
+    --baseline data/benchmark_v1_1_mmr_20260521.json \
+    --current  data/benchmark_latest.json \
+    --variant  hybrid_mmr \
+    --output   data/regression_report.json
+```
+
+### Default thresholds
+
+| Metric | Threshold | Severity |
+|--------|-----------|----------|
+| R@5 | drop > 2 pp | FAIL |
+| nDCG@10 | drop > 2 pp | FAIL |
+| MRR | drop > 3 pp | FAIL |
+| P95 latency | increase > 25% (relative) | WARN |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | No regressions |
+| `1` | At least one WARN |
+| `2` | At least one FAIL |
+
+### Canonical baseline
+
+The v1.1 baseline JSON is stored at `data/benchmark_v1_1_mmr_20260521.json`.
+
+Key metrics (28 queries, `hybrid_mmr` variant, λ=0.6):
+
+| Metric | Value |
+|--------|-------|
+| R@5 | 1.000 |
+| MRR | 0.884 |
+| nDCG@10 | 0.840 |
+| unique_docs@5 | 4.82 |
+
+---
+
+## Routine maintenance checklist
+
+Run after any bulk ingest or schema change:
+
+1. `python -m rag_lab.doctor` — quick health gate
+2. `python -m rag_lab.maintenance.reconcile` — cross-store consistency
+3. `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current <new_run>` — regression guard
+4. `pytest tests/ -v` — full test suite
+
+---
+
+## Troubleshooting
+
+### "Sparse scoring disabled: coverage X% < threshold 95%"
+
+Sparse BLOBs are below the configured threshold. Run:
+
+```bash
+python -m rag_lab.maintenance.backfill_sparse
+```
+
+### "FTS5 table is empty — run migrate_to_v2"
+
+The FTS5 virtual table was not created or is empty. Run:
+
+```bash
+python -m rag_lab.maintenance.migrate_to_v2
+```
+
+### ChromaDB orphans after integration tests
+
+Some integration tests insert temporary chunks that may not be cleaned up. Run:
+
+```bash
+python -m rag_lab.maintenance.reconcile --repair
+```
+
+### Stale model version / embedding dim mismatches
+
+Chunks were ingested with an older config. Re-ingest the affected documents:
+
+```bash
+python -m rag_lab.cli ingest --doc path/to/document.md --force
+```
