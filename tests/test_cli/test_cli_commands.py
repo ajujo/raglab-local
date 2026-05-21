@@ -18,14 +18,16 @@ class TestCLI:
         return CliRunner()
 
     def test_ingest_command(self, runner):
-        with patch("rag_lab.cli.clean_document") as mock_clean:
-            mock_clean.return_value = Mock()
-            with patch("rag_lab.cli.create_manifest"):
-                with patch("rag_lab.cli.chunk_document") as mock_chunk:
-                    mock_chunk.return_value = []
-                    result = runner.invoke(app, ["ingest"])
-                    # Should not crash
-                    assert result.exit_code == 0 or result.exit_code == 1
+        with patch("rag_lab.storage.docstore.DocStore") as mock_ds_cls, \
+             patch("rag_lab.storage.vector_store.VectorStore") as mock_vs_cls:
+            mock_ds = Mock()
+            mock_ds._conn = Mock()
+            mock_ds_cls.return_value = mock_ds
+            mock_vs_cls.return_value = Mock()
+            with patch("rag_lab.config.SOURCES", []):
+                result = runner.invoke(app, ["ingest"])
+            # Should not crash
+            assert result.exit_code == 0 or result.exit_code == 1
 
     def test_query_command(self, runner):
         with patch("rag_lab.cli.process_query") as mock_process:

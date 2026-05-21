@@ -48,9 +48,10 @@ class DocStore:
             """
         )
 
-        # Idempotent v2 migration
+        # Idempotent migrations
         self._migrate_v2()
         self._migrate_v3()
+        self._migrate_v4()
         self._conn.commit()
         logger.info(f"Initialized docstore at {self.db_path}")
 
@@ -99,6 +100,36 @@ class DocStore:
         """Create v3 metadata tables if they don't exist yet."""
         from rag_lab.storage.metadata_store import MetadataStore
         MetadataStore(conn=self._conn).initialize()
+
+    def _migrate_v4(self) -> None:
+        """Create ingest_runs table for transaction tracking (v1.4)."""
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingest_runs (
+                run_id TEXT PRIMARY KEY,
+                doc_id TEXT NOT NULL,
+                source_path TEXT,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+                error_message TEXT,
+                chunks_expected INTEGER DEFAULT 0,
+                chunks_written_docstore INTEGER DEFAULT 0,
+                chunks_written_fts5 INTEGER DEFAULT 0,
+                chunks_written_chroma INTEGER DEFAULT 0,
+                chunks_written_sparse INTEGER DEFAULT 0,
+                metadata_written INTEGER DEFAULT 0
+            )
+            """
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingest_runs_doc_status "
+            "ON ingest_runs(doc_id, status)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingest_runs_status "
+            "ON ingest_runs(status)"
+        )
 
     # ------------------------------------------------------------------
     # Write

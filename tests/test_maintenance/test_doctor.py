@@ -10,6 +10,7 @@ from rag_lab.doctor import (
     check_config,
     check_docstore,
     check_fts5,
+    check_ingest_health,
     check_reconcile,
     check_sparse_coverage,
     check_test_query,
@@ -328,7 +329,7 @@ class TestDoctor:
     def test_all_checks_list_complete(self):
         assert set(ALL_CHECKS) == {
             "config", "docstore", "chromadb", "fts5",
-            "sparse_coverage", "reconcile", "test_query",
+            "sparse_coverage", "reconcile", "ingest_health", "test_query",
         }
 
     def test_quiet_suppresses_output(self, capsys):
@@ -338,7 +339,92 @@ class TestDoctor:
              patch("rag_lab.doctor.check_fts5", return_value=CheckResult("fts5", "OK")), \
              patch("rag_lab.doctor.check_sparse_coverage", return_value=CheckResult("sparse_coverage", "OK")), \
              patch("rag_lab.doctor.check_reconcile", return_value=CheckResult("reconcile", "OK")), \
+             patch("rag_lab.doctor.check_ingest_health", return_value=CheckResult("ingest_health", "OK")), \
              patch("rag_lab.doctor.check_test_query", return_value=CheckResult("test_query", "OK")):
             doctor(quiet=True)
         captured = capsys.readouterr()
         assert captured.out == ""
+
+
+# ---------------------------------------------------------------------------
+# check_ingest_health
+# ---------------------------------------------------------------------------
+
+class TestCheckIngestHealth:
+    def test_ok_when_no_runs(self, tmp_path):
+        from rag_lab.storage.docstore import DocStore
+
+        ds = DocStore(db_path=tmp_path / "health.sqlite")
+        ds.initialize()
+
+        with patch("rag_lab.doctor.DocStore", return_value=ds):
+            ds.initialize = lambda: None
+            result = check_ingest_health()
+
+        assert result.name == "ingest_health"
+        assert result.status == "OK"
+        assert "no runs yet" in (result.reason or "")
+        ds.close()
+
+    def test_ok_with_last_committed_run(self, tmp_path):
+        from rag_lab.storage.docstore import DocStore
+        from rag_lab.ingest.transaction import IngestRunStore
+
+        ds = DocStore(db_path=tmp_path / "health2.sqlite")
+        ds.initialize()
+        IngestRunStore(ds._conn).create("run_ok", "doc_ok", None)
+        IngestRunStore(ds._conn).update("run_ok", status="COMMITTED", finished_at="2026-05-21T10:00:00")
+
+        with patch("rag_lab.doctor.DocStore", return_value=ds):
+            ds.initialize = lambda: None
+            result = check_ingest_health()
+
+        assert result.status == "OK"
+        assert "doc_ok" in (result.reason or "")
+        ds.close()
+
+    def test_warn_on_failed_run(self, tmp_path):
+        from rag_lab.storage.docstore import DocStore
+        from rag_lab.ingest.transaction import IngestRunStore
+
+        ds = DocStore(db_path=tmp_path / "health3.sqlite")
+        ds.initialize()
+        IngestRunStore(ds._conn).create("run_fail", "doc_f", None)
+        IngestRunStore(ds._conn).update("run_fail", status="FAILED", error_message="oops")
+
+        with patch("rag_lab.doctor.DocStore", return_value=ds):
+            ds.initialize = lambda: None
+            result = check_ingest_health()
+
+        assert result.status == "WARN"
+        assert "FAILED" in (result.reason or "")
+        ds.close()
+
+    def test_fail_on_stale_in_progress(self, tmp_path):
+        from rag_lab.storage.docstore import DocStore
+
+        ds = DocStore(db_path=tmp_path / "health4.sqlite")
+        ds.initialize()
+        ds._conn.execute(
+            "INSERT INTO ingest_runs (run_id, doc_id, source_path, started_at, status) "
+            "VALUES ('stale_h', 'doc_stale', NULL, datetime('now', '-2 hours'), 'IN_PROGRESS')"
+        )
+        ds._conn.commit()
+
+        with patch("rag_lab.doctor.DocStore", return_value=ds):
+            ds.initialize = lambda: None
+            result = check_ingest_health()
+
+        assert result.status == "FAIL"
+        assert "stale" in (result.reason or "").lower()
+        ds.close()
+
+    def test_exception_returns_fail(self):
+        mock_ds = MagicMock()
+        mock_ds.initialize.return_value = None
+        mock_ds._conn.execute.side_effect = Exception("DB gone")
+
+        with patch("rag_lab.doctor.DocStore", return_value=mock_ds):
+            result = check_ingest_health()
+
+        assert result.status == "FAIL"

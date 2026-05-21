@@ -15,24 +15,13 @@ from rich.console import Console
 
 from rag_lab.cli_chat import run_chat
 from rag_lab.config import (
-    CHUNK_MAX_TOKENS,
-    CHUNK_OVERLAP,
     DATA_DIR,
-    EMBEDDING_BATCH_SIZE,
     EMBEDDING_DEVICE,
-    EMBEDDING_DIM,
-    EMBEDDING_MODEL,
-    EMBEDDING_MODEL_VERSION,
     RETRIEVAL_TOP_K,
     RERANK_TOP_K,
-    SOURCES,
-    SPARSE_FORMAT_VERSION,
     STORAGE_DIR,
 )
 from rag_lab.exceptions import RAGLabError, RetrievalError, LLMConnectionError
-from rag_lab.ingest.cleaner import clean_document
-from rag_lab.ingest.manifest import create_manifest
-from rag_lab.chunking.splitter import chunk_document
 from rag_lab.embedding.encoder import encode_chunks, load_embedding_model
 from rag_lab.storage.vector_store import VectorStore
 from rag_lab.storage.fts_store import FTSStore
@@ -53,118 +42,18 @@ from rag_lab.performance.timer import PhaseTimer
 from rag_lab.performance.report import generate_report, save_report_json
 from rag_lab.logging_config import setup_logging
 from rag_lab.cli_docs import docs_app, tags_app
+from rag_lab.cli_ingest import ingest_app
 
 app = typer.Typer(
     name="rag-lab",
     help="RAG system for SDMX Technical Notes",
     add_completion=True,
 )
+app.add_typer(ingest_app, name="ingest")
 app.add_typer(docs_app, name="docs")
 app.add_typer(tags_app, name="tags")
 
 console = Console()
-
-
-@app.command()
-def ingest(
-    doc: str = typer.Option(
-        None,
-        "--doc",
-        help="Path to a single source document. If not specified, ingests all SOURCES.",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Force re-ingestion even if already ingested.",
-    ),
-    cpu_embedding: bool = typer.Option(
-        False,
-        "--cpu-embedding",
-        help="Run embedding model on CPU to free GPU VRAM.",
-    ),
-) -> None:
-    """Ingest one or more documents: clean, chunk, embed, and store."""
-    setup_logging("INFO")
-    logger = logging.getLogger("rag_lab")
-
-    # Determine embedding device
-    device = "cpu" if cpu_embedding else EMBEDDING_DEVICE
-
-    # Decide which documents to process
-    if doc is not None:
-        # Single document mode
-        paths_to_process = [Path(doc)]
-    else:
-        # Multi-document mode: process all SOURCES
-        paths_to_process = list(SOURCES)
-
-    total_chunks = 0
-    for source_path in paths_to_process:
-        console.print(f"[bold cyan]📥 Ingesting: {source_path.name}[/bold cyan]")
-
-        if not source_path.exists():
-            logger.warning(f"Source file not found: {source_path} — skipping")
-            continue
-
-        # Phase 1: Clean document
-        cleaned_path = clean_document(source_path)
-        create_manifest(source_path, cleaned_path, force=force)
-
-        # Phase 2: Chunking
-        logger.info("Starting chunking...")
-        cleaned_text = cleaned_path.read_text(encoding="utf-8")
-        chunks = chunk_document(
-            cleaned_text,
-            doc_id=source_path.stem,
-            max_tokens=CHUNK_MAX_TOKENS,
-            overlap=CHUNK_OVERLAP,
-        )
-        logger.info(f"Created {len(chunks)} chunks from {source_path.name}")
-        total_chunks += len(chunks)
-
-        # Phase 3: Embedding
-        logger.info(f"Generating embeddings on {device}...")
-        chunk_dicts = [chunk.to_dict() for chunk in chunks]
-        dense_embeddings, sparse_embeddings = encode_chunks(
-            chunk_dicts,
-            batch_size=EMBEDDING_BATCH_SIZE,
-            device=device,
-        )
-
-        # Enrich chunk dicts with sparse BLOBs and model version metadata
-        import numpy as np
-        for chunk_d in chunk_dicts:
-            sparse = sparse_embeddings.get(chunk_d["chunk_id"], {})
-            if sparse:
-                tokens_arr = np.array(list(sparse.keys()), dtype=np.int32)
-                weights_arr = np.array(list(sparse.values()), dtype=np.float32)
-                chunk_d["sparse_tokens"] = tokens_arr.tobytes()
-                chunk_d["sparse_weights"] = weights_arr.tobytes()
-            else:
-                chunk_d["sparse_tokens"] = None
-                chunk_d["sparse_weights"] = None
-            chunk_d["embedding_model_name"] = EMBEDDING_MODEL
-            chunk_d["embedding_model_version"] = EMBEDDING_MODEL_VERSION
-            chunk_d["embedding_dim"] = EMBEDDING_DIM
-            chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
-
-        # Phase 4: Storage
-        logger.info("Storing embeddings...")
-        vector_store = VectorStore()
-        vector_store.initialize()
-        vector_store.add(
-            ids=[c.get("chunk_id", "") for c in chunk_dicts],
-            embeddings=dense_embeddings,
-            documents=[c.get("text", "") for c in chunk_dicts],
-            metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
-        )
-
-        doc_store = DocStore()
-        doc_store.add(chunk_dicts)
-
-        console.print(f"[bold green]✅ Ingested {len(chunks)} chunks from {source_path.name}[/bold green]")
-
-    console.print(f"[bold green]🎉 Total: {total_chunks} chunks ingested[/bold green]")
 
 
 @app.command()

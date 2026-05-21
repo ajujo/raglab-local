@@ -170,10 +170,10 @@ class TestIngestNoChunksJsonl:
 
         chunks.jsonl grows unboundedly and duplicates what DocStore already stores.
         """
-        import rag_lab.cli as cli_module
-        source = inspect.getsource(cli_module.ingest)
+        import rag_lab.cli_ingest as cli_ingest_module
+        source = inspect.getsource(cli_ingest_module._ingest_one)
         assert "chunks.jsonl" not in source, (
-            "ingest() must not write chunks.jsonl — DocStore is the source of truth. "
+            "_ingest_one() must not write chunks.jsonl — DocStore is the source of truth. "
             "Remove the open(..., 'a') block that appends to chunks.jsonl."
         )
 
