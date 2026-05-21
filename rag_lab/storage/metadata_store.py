@@ -17,15 +17,6 @@ CREATE TABLE IF NOT EXISTS sources (
 )
 """
 
-_CREATE_DATASETS = """
-CREATE TABLE IF NOT EXISTS datasets (
-    dataset_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-)
-"""
-
 _CREATE_DOCUMENTS = """
 CREATE TABLE IF NOT EXISTS documents (
     doc_id TEXT PRIMARY KEY,
@@ -33,7 +24,6 @@ CREATE TABLE IF NOT EXISTS documents (
     path TEXT,
     content_hash TEXT,
     source_id TEXT REFERENCES sources(source_id),
-    dataset_id TEXT REFERENCES datasets(dataset_id),
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -82,7 +72,6 @@ class MetadataStore:
 
         for ddl in (
             _CREATE_SOURCES,
-            _CREATE_DATASETS,
             _CREATE_DOCUMENTS,
             _CREATE_TAGS,
             _CREATE_DOCUMENT_TAGS,
@@ -104,7 +93,6 @@ class MetadataStore:
         path: Optional[str] = None,
         content_hash: Optional[str] = None,
         source_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
         status: str = "active",
         embedding_model_version: str = "",
         embedding_dim: int = 0,
@@ -113,9 +101,9 @@ class MetadataStore:
         self._conn.execute(
             """
             INSERT OR REPLACE INTO documents
-            (doc_id, title, path, content_hash, source_id, dataset_id, status,
+            (doc_id, title, path, content_hash, source_id, status,
              updated_at, embedding_model_version, embedding_dim, sparse_format_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
             """,
             (
                 doc_id,
@@ -123,7 +111,6 @@ class MetadataStore:
                 path,
                 content_hash,
                 source_id,
-                dataset_id,
                 status,
                 embedding_model_version,
                 embedding_dim,
@@ -136,7 +123,7 @@ class MetadataStore:
     def get_document(self, doc_id: str) -> Optional[dict]:
         row = self._conn.execute(
             """
-            SELECT doc_id, title, path, content_hash, source_id, dataset_id,
+            SELECT doc_id, title, path, content_hash, source_id,
                    status, created_at, updated_at, ingested_at,
                    embedding_model_version, embedding_dim, sparse_format_version
             FROM documents WHERE doc_id = ?
@@ -151,14 +138,13 @@ class MetadataStore:
             "path": row[2],
             "content_hash": row[3],
             "source_id": row[4],
-            "dataset_id": row[5],
-            "status": row[6],
-            "created_at": row[7],
-            "updated_at": row[8],
-            "ingested_at": row[9],
-            "embedding_model_version": row[10],
-            "embedding_dim": row[11],
-            "sparse_format_version": row[12],
+            "status": row[5],
+            "created_at": row[6],
+            "updated_at": row[7],
+            "ingested_at": row[8],
+            "embedding_model_version": row[9],
+            "embedding_dim": row[10],
+            "sparse_format_version": row[11],
             "tags": self.get_tags_for_doc(doc_id),
         }
         return doc
@@ -174,7 +160,6 @@ class MetadataStore:
         *,
         tag: Optional[str] = None,
         source_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
         status: Optional[str] = "active",
     ) -> List[dict]:
         params: list = []
@@ -186,9 +171,6 @@ class MetadataStore:
         if source_id is not None:
             where_clauses.append("d.source_id = ?")
             params.append(source_id)
-        if dataset_id is not None:
-            where_clauses.append("d.dataset_id = ?")
-            params.append(dataset_id)
         if tag is not None:
             where_clauses.append(
                 "d.doc_id IN ("
@@ -212,7 +194,7 @@ class MetadataStore:
         rows = self._conn.execute(
             f"""
             SELECT d.doc_id, d.title, d.path, d.content_hash,
-                   d.source_id, d.dataset_id, d.status,
+                   d.source_id, d.status,
                    d.created_at, d.updated_at, d.ingested_at,
                    d.embedding_model_version, d.embedding_dim,
                    d.sparse_format_version,
@@ -231,7 +213,7 @@ class MetadataStore:
 
         results = []
         for row in rows:
-            raw_tags = row[13]
+            raw_tags = row[12]
             tags = sorted(set(raw_tags.split("|||"))) if raw_tags else []
             results.append(
                 {
@@ -240,16 +222,15 @@ class MetadataStore:
                     "path": row[2],
                     "content_hash": row[3],
                     "source_id": row[4],
-                    "dataset_id": row[5],
-                    "status": row[6],
-                    "created_at": row[7],
-                    "updated_at": row[8],
-                    "ingested_at": row[9],
-                    "embedding_model_version": row[10],
-                    "embedding_dim": row[11],
-                    "sparse_format_version": row[12],
+                    "status": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "ingested_at": row[8],
+                    "embedding_model_version": row[9],
+                    "embedding_dim": row[10],
+                    "sparse_format_version": row[11],
                     "tags": tags,
-                    "chunk_count": row[14],
+                    "chunk_count": row[13],
                 }
             )
         return results
@@ -389,49 +370,6 @@ class MetadataStore:
                 "url": r[3],
                 "created_at": r[4],
                 "doc_count": r[5],
-            }
-            for r in rows
-        ]
-
-    # ------------------------------------------------------------------
-    # Dataset operations
-    # ------------------------------------------------------------------
-
-    def upsert_dataset(
-        self,
-        dataset_id: str,
-        name: str,
-        *,
-        description: Optional[str] = None,
-    ) -> None:
-        self._conn.execute(
-            """
-            INSERT OR REPLACE INTO datasets (dataset_id, name, description)
-            VALUES (?, ?, ?)
-            """,
-            (dataset_id, name, description),
-        )
-        if self._own_conn:
-            self._conn.commit()
-
-    def list_datasets(self) -> List[dict]:
-        rows = self._conn.execute(
-            """
-            SELECT ds.dataset_id, ds.name, ds.description, ds.created_at,
-                   COUNT(d.doc_id) AS doc_count
-            FROM datasets ds
-            LEFT JOIN documents d ON ds.dataset_id = d.dataset_id
-            GROUP BY ds.dataset_id
-            ORDER BY ds.name
-            """
-        ).fetchall()
-        return [
-            {
-                "dataset_id": r[0],
-                "name": r[1],
-                "description": r[2],
-                "created_at": r[3],
-                "doc_count": r[4],
             }
             for r in rows
         ]

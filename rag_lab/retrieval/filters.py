@@ -14,7 +14,6 @@ class FilterSpec:
     tags_include: Optional[List[str]] = None
     tags_exclude: Optional[List[str]] = None
     source_id: Optional[str] = None
-    dataset_id: Optional[str] = None
     status: Optional[str] = "active"
 
     def is_empty(self) -> bool:
@@ -24,7 +23,6 @@ class FilterSpec:
             and not self.tags_include
             and not self.tags_exclude
             and self.source_id is None
-            and self.dataset_id is None
             and self.status is None
         )
 
@@ -58,10 +56,6 @@ def resolve_filter(
     if spec.source_id is not None:
         where_clauses.append("d.source_id = ?")
         params.append(spec.source_id)
-
-    if spec.dataset_id is not None:
-        where_clauses.append("d.dataset_id = ?")
-        params.append(spec.dataset_id)
 
     if spec.tags_include:
         joins.append(

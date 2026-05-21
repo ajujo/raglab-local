@@ -100,11 +100,10 @@ touching any retrieval ranking, RRF, MMR, weights, top-k, or models.
 
 | Table | Purpose |
 |-------|---------|
-| `documents` | One row per ingested doc: path, content_hash, source_id, dataset_id, status, timestamps, embedding metadata |
+| `documents` | One row per ingested doc: path, content_hash, source_id, status, timestamps, embedding metadata |
 | `tags` | Normalized tag names with auto-increment tag_id |
 | `document_tags` | Many-to-many between documents and tags (ON DELETE CASCADE) |
 | `sources` | Optional source catalogue (URL, description) |
-| `datasets` | Optional dataset groupings |
 
 Migration: `python -m rag_lab.maintenance.migrate_to_v3` — idempotent, populates
 documents from existing chunks, migrates tags from legacy doc_manager.db if present.
@@ -112,20 +111,19 @@ documents from existing chunks, migrates tags from legacy doc_manager.db if pres
 **Structured filters (`rag_lab/retrieval/filters.py`):**
 
 `FilterSpec` dataclass with `doc_ids`, `tags_include` (AND), `tags_exclude`,
-`source_id`, `dataset_id`, `status`. `resolve_filter(conn, spec)` converts it
-to a `List[str]` of doc_ids for the existing filter mechanism. `hybrid_search()`
-now accepts `filter_spec=` alongside the existing `doc_ids=`.
+`source_id`, `status`. `resolve_filter(conn, spec)` converts it to a `List[str]`
+of doc_ids for the existing filter mechanism. `hybrid_search()` now accepts
+`filter_spec=` alongside the existing `doc_ids=`.
 
 **New CLI commands (`rag-lab docs` / `rag-lab tags`):**
 
 ```
-rag-lab docs list [--tag TAG] [--source SOURCE] [--dataset DATASET] [--status STATUS]
+rag-lab docs list [--tag TAG] [--source SOURCE] [--status STATUS]
 rag-lab docs show DOC_ID
 rag-lab docs tag DOC_ID TAG_NAME
 rag-lab docs untag DOC_ID TAG_NAME
 rag-lab docs delete DOC_ID [--force]
 rag-lab docs set-source DOC_ID SOURCE_ID
-rag-lab docs set-dataset DOC_ID DATASET_ID
 rag-lab tags list
 rag-lab tags rename OLD NEW
 rag-lab tags delete NAME [--force]

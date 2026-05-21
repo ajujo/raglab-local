@@ -332,11 +332,10 @@ v1.3 adds five metadata tables to docstore.sqlite (same file as chunks):
 
 | Table | Purpose |
 |-------|---------|
-| `documents` | One row per doc: path, content_hash, source_id, dataset_id, status, timestamps |
+| `documents` | One row per doc: path, content_hash, source_id, status, timestamps |
 | `tags` | Normalized tag names (tag_id, name UNIQUE) |
 | `document_tags` | Many-to-many join, ON DELETE CASCADE |
 | `sources` | Optional source catalogue |
-| `datasets` | Optional dataset groupings |
 
 ### Initial migration
 
