@@ -112,23 +112,47 @@ def check_chromadb() -> CheckResult:
 
 
 def check_fts5() -> CheckResult:
-    """Check that chunks_fts virtual table exists and is populated."""
+    """Check that chunks_fts virtual table is in sync with chunks table.
+
+    Uses real ID set comparison instead of COUNT(*) to avoid false positives
+    from SQLite FTS5's internal segment counter, which can be inflated by
+    merge/compaction operations and doesn't reflect actual indexed content.
+    """
     try:
         ds = DocStore()
         ds.initialize()
         conn = ds._conn
+
+        # Real missing: chunks in docstore not indexed in FTS5
+        missing = conn.execute(
+            "SELECT COUNT(*) FROM chunks "
+            "WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks_fts)"
+        ).fetchone()[0]
+
+        # Real orphans: indexed in FTS5 but no longer in docstore
+        orphans = conn.execute(
+            "SELECT COUNT(*) FROM chunks_fts "
+            "WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)"
+        ).fetchone()[0]
+
         total = ds.count()
-        fts_count = conn.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0]
         ds.close()
-        if fts_count == 0:
+
+        if total == 0:
+            return CheckResult("fts5", "WARN", "DocStore is empty — FTS5 not checked")
+        if missing > 0 and total > 0 and missing == total:
             return CheckResult("fts5", "FAIL", "FTS5 table is empty — run migrate_to_v2")
-        if fts_count < total:
-            gap = total - fts_count
+        if missing > 0:
             return CheckResult(
                 "fts5", "WARN",
-                f"{fts_count}/{total} chunks indexed ({gap} missing) — run migrate_to_v2",
+                f"{missing} chunks missing from FTS5 index — run migrate_to_v2",
             )
-        return CheckResult("fts5", "OK", f"{fts_count}/{total} chunks indexed")
+        if orphans > 0:
+            return CheckResult(
+                "fts5", "WARN",
+                f"{orphans} orphan entries in FTS5 (not in DocStore) — run reconcile",
+            )
+        return CheckResult("fts5", "OK", f"{total}/{total} chunks indexed")
     except Exception as e:
         return CheckResult("fts5", "FAIL", str(e))
 
@@ -235,36 +259,62 @@ def check_ingest_health() -> CheckResult:
 
 
 def check_test_query(query: str = "What is SDMX?") -> CheckResult:
-    """Run a simple retrieval query and verify at least one result is returned."""
-    try:
-        from rag_lab.config import EMBEDDING_DEVICE
-        from rag_lab.embedding.encoder import encode_chunks
-        from rag_lab.retrieval.hybrid_search import hybrid_search
+    """Run a simple retrieval query and verify at least one result is returned.
 
+    Falls back to CPU embedding if the configured device (typically CUDA) raises
+    an out-of-memory error, returning WARN instead of FAIL so that a saturated
+    GPU in the environment doesn't mask real retrieval problems.
+    """
+    from rag_lab.embedding.encoder import encode_chunks, reset_embedding_cache
+    from rag_lab.retrieval.hybrid_search import hybrid_search
+
+    def _run(device: str):
         ds = DocStore()
         ds.initialize()
         vs = VectorStore()
         vs.initialize()
         fts = FTSStore()
         fts.initialize()
+        try:
+            dense_emb, sparse_dict = encode_chunks(
+                [{"text": query, "chunk_id": "__doctor_query__"}],
+                batch_size=1,
+                device=device,
+            )
+            query_dense = dense_emb[0]
+            query_sparse = next(iter(sparse_dict.values()), {})
+            return hybrid_search(
+                query, vs, ds, fts,
+                query_dense=query_dense,
+                query_sparse=query_sparse,
+                top_k=3,
+            )
+        finally:
+            fts.close()
+            ds.close()
 
-        dense_emb, sparse_dict = encode_chunks(
-            [{"text": query, "chunk_id": "__doctor_query__"}],
-            batch_size=1,
-            device=EMBEDDING_DEVICE,
-        )
-        query_dense = dense_emb[0]
-        query_sparse = next(iter(sparse_dict.values()), {})
-
-        results = hybrid_search(
-            query, vs, ds, fts,
-            query_dense=query_dense,
-            query_sparse=query_sparse,
-            top_k=3,
-        )
-
-        fts.close()
-        ds.close()
+    try:
+        from rag_lab.config import EMBEDDING_DEVICE
+        device = EMBEDDING_DEVICE
+        try:
+            results = _run(device)
+        except RuntimeError as exc:
+            if "out of memory" not in str(exc).lower() or device == "cpu":
+                raise
+            # GPU OOM: retry on CPU and report WARN instead of FAIL
+            reset_embedding_cache()
+            results = _run("cpu")
+            if not results:
+                return CheckResult(
+                    "test_query", "FAIL",
+                    f"No results for query: {query!r} (ran on CPU after GPU OOM)",
+                )
+            top = results[0]
+            return CheckResult(
+                "test_query", "WARN",
+                f"{len(results)} results on CPU fallback (GPU OOM) — "
+                f"top: {top.get('doc_id','?')} rrf={top.get('rrf_score', 0):.4f}",
+            )
 
         if not results:
             return CheckResult("test_query", "FAIL", f"No results for query: {query!r}")

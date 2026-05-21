@@ -4,6 +4,41 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.5.1 — 2026-05-21
+
+### Operational cleanup (no new features)
+
+Hardens operational hygiene before v1.6. No changes to ranking, retrieval, or models.
+
+**Store contamination fix:**
+- Deleted the `test_doc` phantom document that polluted production DocStore from a
+  prior unguarded CLI integration test.
+- Fixed `tests/integration/test_full_pipeline.py` to patch both `config` AND the
+  module-level bindings in `docstore.py` / `vector_store.py` so that CLI ingest
+  tests always write to `tmp_path` stores, never to production.
+
+**Integration test guard:**
+- Added `tests/integration/conftest.py` with `@pytest.mark.integration` auto-marker.
+- Added `guard_read_only_integration` fixture to `TestBenchmarks` — raises
+  `AssertionError` if any test in that class attempts to write to production stores.
+- Registered `integration` marker in root `conftest.py` (eliminates warning).
+
+**Doctor improvements:**
+- `check_fts5`: replaced `COUNT(*)` comparison (inflated by FTS5 internal segments)
+  with real-ID set comparison. Now reports missing/orphan chunk counts instead of
+  a cosmetic false-positive mismatch.
+- `check_test_query`: on CUDA OOM, retries on CPU and returns WARN instead of FAIL.
+  A saturated GPU in the environment no longer masks real retrieval problems.
+
+**Packaging:**
+- Added `pyproject.toml` with `rag-lab` entry point → `rag_lab.cli:app`.
+- `pip install -e .` installs the `rag-lab` CLI wrapper to PATH.
+
+**Test count:** 518 (514 from v1.5 + 4 new: FTS5 orphan WARN, FTS5 no-false-positive,
+CPU fallback WARN, CPU fallback FAIL).
+
+---
+
 ## v1.4 — 2026-05-21
 
 ### Transactional ingest with rollback compensation

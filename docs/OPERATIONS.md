@@ -44,9 +44,23 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 
 ---
 
+## Installation
+
+Install the `rag-lab` CLI wrapper with editable mode:
+
+```bash
+pip install -e .
+which rag-lab      # → /path/to/envs/rag-lab/bin/rag-lab
+rag-lab --help
+```
+
+After this, `rag-lab ingest`, `rag-lab docs`, `rag-lab tags`, etc. all work from PATH.
+
+---
+
 ## Doctor command
 
-`python -m rag_lab.doctor` runs 7 sequential health checks and exits with a clear status.
+`python -m rag_lab.doctor` runs 8 sequential health checks and exits with a clear status.
 
 ### Checks
 
@@ -55,10 +69,11 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | `config` | Required config constants exist and have valid values |
 | `docstore` | SQLite DocStore opens and contains chunks |
 | `chromadb` | ChromaDB collection is reachable and non-empty |
-| `fts5` | FTS5 virtual table exists and is fully populated |
+| `fts5` | FTS5 index is in sync — uses real ID comparison, not COUNT(*). Reports missing/orphan chunks, not cosmetic counter inflation. |
 | `sparse_coverage` | Fraction of chunks with sparse BLOBs meets `SPARSE_COVERAGE_THRESHOLD` |
 | `reconcile` | Cross-store consistency (DocStore vs ChromaDB); calls reconcile internally |
-| `test_query` | End-to-end retrieval returns at least one result for the test query |
+| `ingest_health` | No stale IN_PROGRESS runs (>30 min) or FAILED runs without rollback |
+| `test_query` | End-to-end retrieval returns at least one result for the test query. Falls back to CPU if GPU is OOM (WARN, not FAIL). |
 
 ### Exit codes
 
@@ -402,3 +417,58 @@ After v3 migration, reconcile also checks:
 ```bash
 python -m rag_lab.maintenance.reconcile
 ```
+
+---
+
+## Test isolation
+
+Unit tests always use `tmp_path` fixtures and never touch production stores.
+
+Integration tests in `tests/integration/` fall into two categories:
+
+1. **Read-only regression tests** (`test_benchmarks.py`): Access production stores
+   to validate retrieval quality on the live corpus. Protected by
+   `guard_read_only_integration` fixture which raises `AssertionError` on any write.
+
+2. **Full-pipeline isolation tests** (`test_full_pipeline.py`): Write to stores
+   located in `tmp_path` by patching both `rag_lab.config` AND the module-level
+   bindings in `docstore.py` / `vector_store.py`. After the test, bindings are
+   restored to production paths.
+
+To run only integration tests:
+```bash
+pytest tests/integration/ -v -m integration
+```
+
+To run only unit tests (skip integration):
+```bash
+pytest tests/ -v -m "not integration"
+```
+
+---
+
+## Operational audit checklist
+
+Before starting a new version branch, verify:
+
+```bash
+# 1. Tests
+pytest tests/ -q
+
+# 2. Store consistency
+python -m rag_lab.maintenance.reconcile --check
+
+# 3. System health
+python -m rag_lab.doctor
+
+# 4. Benchmark regression
+python -m rag_lab.benchmark.compare \
+  --baseline data/benchmark_v1_1_mmr_20260521.json \
+  --current data/benchmark_results_latest.json \
+  --variant hybrid
+
+# 5. Scope guard (no tabular/dataset references)
+rg -n -i "dataset|csv|parquet|duckdb|forecast|automl" rag_lab tests
+```
+
+All commands must exit 0 (or WARN-only for doctor with justified reason).
