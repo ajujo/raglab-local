@@ -127,3 +127,199 @@ queries:
       SDMX_2-1_User_Guide_6: 2
     notes: >
       Version comparison. Technical notes for SDMX 2.1 cover evolution explicitly.
+
+  # -----------------------------------------------------------------------
+  # Edge case queries (q013-q028) — added 2026-05-21
+  # Purpose: stress-test MMR behaviour across three categories:
+  #   A) User_Guide dominance  (multi-chunk answer expected — MMR must not over-penalise)
+  #   B) Glossary dominance    (single-source definition queries)
+  #   C) Notas_Tecnicas dominance (Spanish tech notes)
+  #   D) Multi-chunk same-doc stress tests
+  #   E) Cross-lingual Spanish queries
+  # -----------------------------------------------------------------------
+
+  # --- A: User_Guide should dominate (multi-chunk answers expected) ------
+
+  - id: q013
+    text: "What are the different types of metadata targets defined in SDMX 2.1?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      User Guide section 4.4.1.1.x defines six metadata target types (Full Target,
+      Key Descriptor Values Target, Dataset Target, Report Period Target, Primary Measure
+      Value Target, Metadata Attribute Value Target). Answer genuinely spans 3-6 consecutive
+      User_Guide chunks. MMR stress test: should preserve multiple User_Guide chunks if
+      they carry distinct information.
+
+  - id: q014
+    text: "How do you retrieve statistical data using the SDMX RESTful web services API?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      REST API queries (section 16.x of the User Guide). Multi-chunk answer covering
+      URL structure, query parameters, response formats. Only User_Guide has this
+      level of API detail; training intro barely mentions it.
+
+  - id: q015
+    text: "What is the difference between an attachment constraint and a content constraint in SDMX?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Constraint types. User Guide covers both in detail for data constraint usage.
+      Glossary has canonical definitions. Technical notes discuss constraint application.
+      Multi-doc query but User_Guide is deepest source.
+
+  # --- B: Glossary should dominate (single-source definitions) ----------
+
+  - id: q016
+    text: "What is a dataflow in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX-Training-introduction-2015: 2
+      SDMX_2-1_User_Guide_6: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Dataflow is a core SDMX artefact — Glossary has the authoritative definition
+      (section ~line 2744). Training intro and User Guide explain it in context.
+      Glossary should dominate. Also tests that MMR does not aggressively block Glossary
+      results after picking one Glossary chunk.
+
+  - id: q017
+    text: "What is an agency scheme in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Agency Scheme is a maintenance-agency structural artefact. Canonical definition
+      is in Glossary (~line 939). User Guide mentions it briefly. Single-source query
+      where Glossary should dominate with 1-2 chunks.
+
+  - id: q018
+    text: "What is a Metadata Structure Definition (MSD) in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      MSD definition. Glossary primary (~line 4770). User Guide covers usage context.
+      Notas mentions it tangentially. Glossary chunks should appear at top.
+
+  - id: q019
+    text: "What is a Data Provider Scheme in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Data Provider Scheme — structural artefact for defining data providers.
+      Glossary (~line 2811) is the primary and almost exclusive source.
+      Tests that retrieval isn't distracted by User_Guide for a narrow Glossary term.
+
+  - id: q020
+    text: "What is a cross-domain codelist in SDMX?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Cross-Domain Codelist is a specific type of codelist. Glossary (~line 2476)
+      is the main definition. Another narrow Glossary-dominant query.
+
+  - id: q021
+    text: "What is a category scheme in SDMX and how is it used?"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Category Scheme — Glossary (~line 1284) is canonical. Technical notes may
+      reference it in the context of data categorisation. Tests Glossary dominance.
+
+  # --- C: Notas_Tecnicas should dominate --------------------------------
+
+  - id: q022
+    text: "What character encoding and format requirements apply to SDMX-ML messages?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      SDMX-ML encoding/format requirements (section 3.3.1 of Notas). Technical notes
+      cover character sets, namespaces, and XML requirements. Training intro mentions
+      SDMX-ML at a high level only. Notas should dominate strongly.
+
+  - id: q023
+    text: "What types of constraints can be applied to SDMX dataflows?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 2
+      SDMX_Glossary: 1
+    notes: >
+      Dataflow constraints (Notas section 9.x). Technical notes detail allowed/actual
+      data constraints for dataflows. User Guide covers the same from the structure side.
+      Glossary defines the terms. Notas should be primary.
+
+  - id: q024
+    text: "How does SDMX 2.1 define a Data Structure Definition and what are its mandatory components?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_Glossary: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      DSD definition with component requirements (Notas section 3.4.1.2). Notas provides
+      the most prescriptive technical definition. Glossary has the canonical term.
+      User Guide covers DSD in usage context. All three are relevant; Notas is primary.
+
+  # --- D: Multi-chunk same-doc stress tests for MMR ---------------------
+
+  - id: q025
+    text: "List and describe all the structural metadata artefact types defined in SDMX"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      MMR stress test (Glossary). The complete list of structural artefacts spans many
+      Glossary entries (Codelist, Concept Scheme, Agency Scheme, Category Scheme, DSD,
+      Dataflow, MSD, Provision Agreement, etc.). If MMR is correctly calibrated, it
+      should allow multiple Glossary chunks because each covers a distinct artefact type.
+      Verifies MMR does not collapse to one chunk per doc when content is genuinely
+      diverse within the same document.
+
+  - id: q026
+    text: "What components make up an SDMX Data Structure Definition and how are they organised?"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      MMR stress test (User_Guide). DSD component hierarchy (dimensions, measures,
+      attributes, groups) spans multiple User_Guide chunks. Answer requires 3-5 chunks
+      from User_Guide covering different component types. Tests that λ=0.7 preserves
+      multiple User_Guide chunks when each adds genuinely new information.
+
+  # --- E: Cross-lingual Spanish queries ---------------------------------
+
+  - id: q027
+    text: "¿Qué es un flujo de datos en SDMX?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_Glossary: 2
+    notes: >
+      Spanish query for "dataflow" concept. Notas covers it in Spanish (directly
+      answers Spanish-speaking users). Glossary has the English definition which BM25
+      will score low due to language mismatch. Tests dense retrieval cross-lingual
+      alignment and whether hybrid correctly surfaces the Spanish source.
+
+  - id: q028
+    text: "¿Cómo se define una estructura de datos en SDMX y cuáles son sus componentes?"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_Glossary: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Spanish query about DSD definition and components. Notas is the Spanish-language
+      primary source. Glossary and User_Guide are relevant but English. Tests cross-lingual
+      dense retrieval ability and BM25's limitations with Spanish queries against
+      English corpus. Also useful for tracking language-gap improvements over time.

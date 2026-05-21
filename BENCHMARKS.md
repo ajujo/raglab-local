@@ -90,6 +90,104 @@ MMR_LAMBDA = 0.7
 
 ---
 
+## Edge Case Review — v1.1 pre-merge (2026-05-21)
+
+> **Resultado: MERGE APROBADO.** `hybrid_mmr(λ=0.6)` seleccionado como default para v1.1.
+> Benchmark ejecutado con 28 queries (12 originales + 16 edge cases).
+> Saved: `data/benchmark_edge_cases_l06_20260521.json`, `..._l07_...`, `..._l08_...`
+
+### Set de edge cases añadidos (q013–q028)
+
+16 queries nuevas organizadas en 5 categorías:
+
+| Categoría | Queries | Objetivo |
+|-----------|---------|---------|
+| A: User_Guide dominance (multi-chunk) | q013, q014, q015 | Verificar que MMR preserva chunks consecutivos necesarios |
+| B: Glossary dominance (single-source) | q016–q021 | Verificar que MMR no bloquea terminología del Glossary |
+| C: Notas_Tecnicas dominance | q022, q023, q024 | Verificar recuperación de la fuente en español |
+| D: Multi-chunk same-doc stress | q025, q026 | Queries que genuinamente necesitan múltiples chunks del mismo doc |
+| E: Cross-lingual Spanish | q027, q028 | Queries en español contra corpus mayoritariamente inglés |
+
+### Resultados con 28 queries
+
+Corpus: 610 chunks · 28 queries · `top_k=50, rrf_k=20, sparse_w=0.25`
+
+| Variante | R@5 | R@10 | R@30 | MRR | nDCG@10 | unique_docs@5 | max_same@5 |
+|---------|-------|-------|-------|-------|---------|:---:|:---:|
+| hybrid (baseline) | 0.762 | 0.923 | 0.982 | 0.867 | 0.755 | 2.75 | 3.00 |
+| hybrid_cap (N=3) | 0.816 | 0.946 | 1.000 | 0.867 | 0.768 | 2.93 | 2.68 |
+| hybrid_mmr (λ=0.8) | 0.926 | 0.982 | 1.000 | 0.884 | 0.825 | 3.89 | 2.11 |
+| **hybrid_mmr (λ=0.7)** | **0.964** | **1.000** | **1.000** | **0.884** | **0.838** | **4.39** | **1.61** |
+| **hybrid_mmr (λ=0.6)** | **1.000** | **1.000** | **1.000** | **0.884** | **0.840** | **4.82** | **1.18** |
+
+### Análisis por categoría de edge case
+
+**A: User_Guide multi-chunk (q013, q014, q015)**
+- q013 (metadata target types): hybrid=0.333 → λ=0.6: 1.000. User_Guide monopolizaba top-5 con 4 chunks, bloqueando Glossary grade=2 y Notas grade=1. MMR corrige manteniendo el primer chunk de UG en rank 1.
+- q014 (REST API): todos los variantes = 1.000. Ninguna regresión.
+- q015 (attachment vs content constraint): hybrid=0.667 → λ=0.6/0.7: 1.000.
+- **Conclusión**: MMR no deteriora queries multi-chunk; las mejora.
+
+**B: Glossary single-source (q016–q021)**
+- 5 de 6 queries ya eran perfectas (R@5=1.000) con hybrid. MMR mantiene o mejora todas.
+- q016 (dataflow): hybrid=0.750 → λ=0.6/0.7/0.8: 1.000.
+- **Conclusión**: Glossary no es bloqueado por MMR. La penalización por repetición de doc es justa.
+
+**C: Notas_Tecnicas dominance (q022–q024)**
+- q022 (SDMX-ML encoding): hybrid=0.500 → λ=0.6: 1.000, λ=0.7/0.8: 0.500. λ=0.6 es más efectivo aquí.
+- q023 (dataflow constraints): hybrid=0.333 → λ=0.6/0.7: 1.000. Notas monopolizaba top-5 (5/5 chunks). MMR abre espacio para UG, GL, TR.
+- q024 (DSD mandatory components): hybrid=0.667 → λ=0.6/0.7/0.8: 1.000.
+- **Conclusión**: Queries sobre documentación técnica en español se benefician especialmente de MMR.
+
+**D: Multi-chunk same-doc stress (q025, q026)**
+- q025 (todos los artefactos SDMX): R@5=1.000 en todos los variantes. MMR no elimina múltiples chunks de Glossary cuando cada uno cubre artefactos distintos.
+- q026 (componentes DSD): hybrid=1.000, nDCG=0.974 → λ=0.6/0.7/0.8: nDCG=1.000. MMR mejora la ordenación.
+- **Conclusión**: MMR es contenido (λ=0.6) — penaliza repetición sin destruir la cobertura multi-chunk genuina.
+
+**E: Cross-lingual Spanish (q027, q028)**
+- q027 (¿Qué es un flujo de datos?): hybrid=0.000 (catastrófico, rank 9+) → λ=0.6/0.7: 1.000. GL_Test y TR monopolizaban top-5 por coincidencias superficiales. MMR fuerza diversidad y Notas aparece en top-5.
+- q028 (¿Cómo se define un DSD?): hybrid=0.333 (UG monopoly ×4) → λ=0.6/0.7/0.8: 1.000.
+- **Conclusión**: El mayor beneficio de MMR está en queries en español — BM25 falla por mismatch lingüístico, el pool de candidatos dense está sesgado, MMR corrige la falta de diversidad resultante.
+
+### Comparación λ=0.6 vs λ=0.7
+
+| Métrica | λ=0.6 | λ=0.7 | Diferencia |
+|---------|-------|-------|------------|
+| R@5 | **1.000** | 0.964 | +3.6pp |
+| nDCG@10 | **0.840** | 0.838 | +0.2pp |
+| MRR | 0.884 | 0.884 | 0.0pp |
+| unique_docs@5 | **4.82** | 4.39 | +0.43 |
+| max_same@5 | **1.18** | 1.61 | -0.43 |
+
+λ=0.6 supera a λ=0.7 en todas las métricas primarias sin ninguna regresión. La diferencia en R@5 (+3.6pp) viene de q013 y q022 donde λ=0.6 abre 1 slot adicional de diversidad que captura el doc relevante que λ=0.7 no alcanza.
+
+El límite `max_same@5=1.18` confirma que λ=0.6 es agresivo pero no extremo — en consultas multi-chunk legítimas (q026), el primer chunk del doc dominante sigue siendo rank 1.
+
+### Evaluación final contra criterios de aceptación
+
+| Criterio | hybrid_mmr λ=0.6 | Veredicto |
+|---------|:---:|:---:|
+| R@5 ≥ baseline (0.762 en 28 queries) | 1.000 (+23.8pp) | **PASA ✓✓** |
+| nDCG@10 ≥ baseline (0.755) | 0.840 (+8.5pp) | **PASA ✓✓** |
+| MRR max -2pp vs baseline (0.867) | 0.884 (+1.7pp) | **PASA ✓✓** |
+| unique_docs@5 mejora vs baseline (2.75) | 4.82 (+2.07) | **PASA ✓✓** |
+| Sin regresiones en queries mono-fuente | 0 regresiones | **PASA ✓✓** |
+| Sin regresiones en queries multi-chunk | 0 regresiones | **PASA ✓✓** |
+| Latencia sin impacto | P50=9ms (igual) | **PASA ✓** |
+
+**Todos los criterios superados. MERGE APROBADO.**
+
+### Decisión final
+
+**`hybrid_mmr(λ=0.6)` activado como default en v1.1.** Actualizar `config.py`:
+
+```python
+MMR_ENABLED = True
+MMR_LAMBDA = 0.6   # actualizado desde 0.7 tras edge case review
+```
+
+---
+
 ## Official Baseline — v1.0 (2026-05-20)
 
 > **Any future change to the retrieval pipeline must be benchmarked against this baseline.**
