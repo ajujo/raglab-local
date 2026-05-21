@@ -29,6 +29,67 @@ Compares five retrieval pipeline variants across standard IR metrics to measure 
 | `Pool` | Mean candidate pool size entering the fusion/rerank stage. |
 | `dense/bm25/sparse coverage` | Fraction of returned results that carry each retrieval signal. |
 
+## Experimento: Document Diversity (rama v1.1-doc-diversity)
+
+> **Estado: EXPERIMENTAL.** No activado por defecto.
+> Resultados medidos 2026-05-21 contra baseline v1.0.
+> Criterio de activación: mantener o mejorar nDCG@10 y R@5 sin degradar MRR ni latencia.
+
+### Estrategias implementadas
+
+| Estrategia | Descripción | Parámetros |
+|-----------|-------------|------------|
+| `hybrid_cap` | Límite duro de N chunks por doc_id tras RRF | `DOC_CAP_N=3` |
+| `hybrid_mmr` | MMR doc-diversity: penaliza chunks de docs ya representados | `MMR_LAMBDA=0.7` |
+
+Ambas son post-procesado sobre `weighted_rrf` — overhead de latencia ≈ 0 (operaciones Python sobre lista corta).
+
+### Resultados del experimento
+
+Corpus: 610 chunks · 12 queries · `top_k=50, rrf_k=20, sparse_w=0.25` (mismo config que baseline v1.0)
+
+| Variante | R@5 | R@10 | R@30 | MRR | nDCG@10 | unique_docs@5 | max_same@5 |
+|---------|-------|-------|-------|-------|---------|:---:|:---:|
+| hybrid (baseline v1.0) | 0.812 | 0.958 | 0.958 | 0.847 | 0.750 | 2.75 | 2.92 |
+| hybrid_cap (N=3) | 0.854 | 0.958 | **1.000** | 0.847 | 0.754 | 2.83 | 2.75 |
+| **hybrid_mmr (λ=0.7)** | **0.958** | **1.000** | **1.000** | **0.875** | **0.828** | **4.42** | **1.58** |
+
+Saved: `data/benchmark_diversity_20260520.json`
+
+### Evaluación contra criterios de aceptación
+
+| Criterio | hybrid_cap | hybrid_mmr | Veredicto |
+|---------|:---:|:---:|:---:|
+| R@5 mantiene o mejora vs v1.0 | +4.2pp ✓ | +14.6pp ✓✓ | PASA |
+| nDCG@10 mantiene o mejora | +0.4pp ✓ | +7.8pp ✓✓ | PASA |
+| MRR no empeora significativamente | 0.0pp ✓ | +2.8pp ✓✓ | PASA |
+| Latencia P50/P95 sin impacto | ✓ | ✓ | PASA |
+
+**Ambas estrategias superan todos los criterios.** `hybrid_mmr(λ=0.7)` es el resultado más fuerte.
+
+### Análisis
+
+El problema que resuelven: con top_k=50, los documentos grandes (SDMX_2-1_User_Guide_6, 197 chunks) podían ocupar múltiples slots en top-5/10, reduciendo el recall de documentos relevantes más pequeños. La métrica nDCG@10 penaliza esto (cuenta cada doc solo en su primera aparición), pero hasta ahora el pipeline no lo corregía.
+
+**hybrid_mmr(λ=0.7)** es especialmente efectivo porque:
+- Penaliza suavemente (no elimina) chunks repetidos — si un segundo chunk del mismo doc es muy superior, sigue subiendo
+- `unique_docs@5`: 2.75 → 4.42 (de media, 4 docs distintos en top-5 en lugar de 2.75)
+- `max_chunks_same_doc@5`: 2.92 → 1.58 (el doc más repetido pasa de 3 chunks a 1.6 de media)
+
+### Decisión de activación
+
+`hybrid_mmr(λ=0.7)` cumple y supera todos los criterios.
+**Recomendación: activar como default en v1.1** tras revisión de casos edge.
+
+Para activar manualmente antes de la decisión oficial:
+```bash
+# En config.py
+MMR_ENABLED = True
+MMR_LAMBDA = 0.7
+```
+
+---
+
 ## Official Baseline — v1.0 (2026-05-20)
 
 > **Any future change to the retrieval pipeline must be benchmarked against this baseline.**

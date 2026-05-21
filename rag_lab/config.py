@@ -237,6 +237,26 @@ IMPORTANTE: Al citar, copia los valores de Fuente, Sección y Líneas EXACTAMENT
 Si la respuesta no está en los fragmentos, indícalo explícitamente.
 """
 
+# =============================================================================
+# 11. DIVERSIDAD DOCUMENTAL (experimental — desactivado por defecto)
+# =============================================================================
+
+# document_cap: máximo de chunks por doc_id en el resultado final.
+# Activar solo después de validar contra baseline v1.0.
+DOC_CAP_ENABLED = False
+DOC_CAP_N = 3           # límite por doc — calibrar con benchmark de diversidad
+
+# MMR doc-diversity reranking (aplicado después del RRF weighted).
+# lambda_ = 1.0 → solo relevancia (igual a sin MMR)
+# lambda_ = 0.0 → solo diversidad (sin importar score)
+# Rango útil calibrado: 0.5–0.8
+MMR_ENABLED = False
+MMR_LAMBDA = 0.7
+
+# =============================================================================
+# 12. LOGGING
+# =============================================================================
+
 LOG_LEVEL = "INFO"
 LOG_FILE = "rag_lab.log"
 

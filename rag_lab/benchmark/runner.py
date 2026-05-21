@@ -20,15 +20,18 @@ import numpy as np
 
 from rag_lab.benchmark.metrics import (
     aggregate_metrics,
+    diversity_stats,
     latency_percentiles,
     mrr,
     ndcg_at_k,
     recall_at_k,
     signal_stats,
 )
-from rag_lab.benchmark.pipeline_variants import VARIANT_NAMES, run_variant
+from rag_lab.benchmark.pipeline_variants import ALL_VARIANT_NAMES, VARIANT_NAMES, run_variant
 from rag_lab.config import (
+    DOC_CAP_N,
     EMBEDDING_DEVICE,
+    MMR_LAMBDA,
     RERANKER_DEVICE,
     RETRIEVAL_TOP_K,
     RRF_K,
@@ -50,11 +53,15 @@ class BenchmarkRunner:
         rrf_k: int = RRF_K,
         embedding_device: str = None,
         rerank_device: str = None,
+        doc_cap: int = DOC_CAP_N,
+        mmr_lambda: float = MMR_LAMBDA,
     ):
         self.top_k = top_k
         self.rrf_k = rrf_k
         self.embedding_device = embedding_device or EMBEDDING_DEVICE
         self.rerank_device = rerank_device or RERANKER_DEVICE
+        self.doc_cap = doc_cap
+        self.mmr_lambda = mmr_lambda
         self._stores_initialized = False
 
     # ------------------------------------------------------------------
@@ -136,9 +143,9 @@ class BenchmarkRunner:
             Full result dict with per-query and aggregate metrics.
         """
         variants = variants or VARIANT_NAMES
-        unknown = [v for v in variants if v not in VARIANT_NAMES]
+        unknown = [v for v in variants if v not in ALL_VARIANT_NAMES]
         if unknown:
-            raise ValueError(f"Unknown variants: {unknown}. Valid: {VARIANT_NAMES}")
+            raise ValueError(f"Unknown variants: {unknown}. Valid: {ALL_VARIANT_NAMES}")
 
         self._init_stores()
 
@@ -149,6 +156,8 @@ class BenchmarkRunner:
             "config": {
                 "top_k": self.top_k,
                 "rrf_k": self.rrf_k,
+                "doc_cap": self.doc_cap,
+                "mmr_lambda": self.mmr_lambda,
                 "embedding_device": self.embedding_device,
                 "rerank_device": self.rerank_device,
                 "n_queries": len(queries),
@@ -176,6 +185,8 @@ class BenchmarkRunner:
                         self.vector_store, self.doc_store, self.fts_store,
                         top_k=self.top_k, rrf_k=self.rrf_k,
                         rerank_device=self.rerank_device,
+                        doc_cap=self.doc_cap,
+                        mmr_lambda=self.mmr_lambda,
                     )
                 except Exception as exc:
                     logger.error(f"Variant {variant} failed on query {qid}: {exc}")
@@ -201,6 +212,7 @@ class BenchmarkRunner:
                     "mrr": mrr(chunks, qitem),
                     "ndcg@10": ndcg_at_k(chunks, qitem, 10),
                     **signal_stats(chunks),
+                    **diversity_stats(chunks),
                     "top5_doc_ids": [c.get("doc_id", "") for c in chunks[:5]],
                 }
                 per_query.append(pq)
@@ -277,7 +289,6 @@ class BenchmarkRunner:
         lines.append("")
         lines.append("### Signal coverage (mean fraction of results with each signal)")
         lines.append("")
-        cov_cols = ["dense_coverage", "bm25_coverage", "sparse_coverage"]
         lines.append("| Variant | Dense | BM25 | Sparse |")
         lines.append("|---------|-------|------|--------|")
         for v in variants:
@@ -288,6 +299,24 @@ class BenchmarkRunner:
                 f"{agg.get('sparse_coverage', 0):.2f}",
             ]
             lines.append(f"| {v:<12} | " + " | ".join(row) + " |")
+
+        # Diversity table — only when any diversity metric is present
+        first_agg = result["results"][variants[0]]["aggregate"]
+        if "unique_docs@5" in first_agg:
+            lines.append("")
+            lines.append("### Document diversity (mean per query)")
+            lines.append("")
+            lines.append("| Variant | unique_docs@5 | max_same@5 | unique_docs@10 | max_same@10 |")
+            lines.append("|---------|:---:|:---:|:---:|:---:|")
+            for v in variants:
+                agg = result["results"][v]["aggregate"]
+                row = [
+                    f"{agg.get('unique_docs@5', 0):.2f}",
+                    f"{agg.get('max_chunks_same_doc@5', 0):.2f}",
+                    f"{agg.get('unique_docs@10', 0):.2f}",
+                    f"{agg.get('max_chunks_same_doc@10', 0):.2f}",
+                ]
+                lines.append(f"| {v:<12} | " + " | ".join(row) + " |")
 
         return "\n".join(lines)
 

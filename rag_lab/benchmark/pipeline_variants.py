@@ -25,6 +25,9 @@ from rag_lab.storage.fts_store import FTSStore
 from rag_lab.storage.vector_store import VectorStore
 
 VARIANT_NAMES = ["dense", "bm25", "dense_bm25", "hybrid", "full"]
+# Experimental diversity variants — not included in default runs; opt-in via --variants
+DIVERSITY_VARIANT_NAMES = ["hybrid_cap", "hybrid_mmr"]
+ALL_VARIANT_NAMES = VARIANT_NAMES + DIVERSITY_VARIANT_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +226,80 @@ def run_full(
 
 
 # ---------------------------------------------------------------------------
+# Diversity variants
+# ---------------------------------------------------------------------------
+
+def run_hybrid_cap(
+    query: str,
+    query_dense: np.ndarray,
+    query_sparse: Dict[int, float],
+    vector_store: VectorStore,
+    doc_store: DocStore,
+    fts_store: FTSStore,
+    top_k: int,
+    rrf_k: int,
+    doc_cap: int = 3,
+    doc_ids: Optional[List[str]] = None,
+) -> Tuple[List[dict], dict]:
+    """Hybrid + document_cap(N=doc_cap) post-processing."""
+    t0 = time.perf_counter()
+
+    chunks, hs_stats = hybrid_search(
+        query,
+        vector_store,
+        doc_store,
+        fts_store,
+        query_dense=query_dense,
+        query_sparse=query_sparse,
+        top_k=top_k,
+        rrf_k=rrf_k,
+        doc_ids=doc_ids,
+        diversity_mode="cap",
+        doc_cap=doc_cap,
+        _return_stats=True,
+    )
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+    stats = {"latency_ms": latency_ms, "doc_cap": doc_cap} | hs_stats
+    return chunks, stats
+
+
+def run_hybrid_mmr(
+    query: str,
+    query_dense: np.ndarray,
+    query_sparse: Dict[int, float],
+    vector_store: VectorStore,
+    doc_store: DocStore,
+    fts_store: FTSStore,
+    top_k: int,
+    rrf_k: int,
+    mmr_lambda: float = 0.7,
+    doc_ids: Optional[List[str]] = None,
+) -> Tuple[List[dict], dict]:
+    """Hybrid + MMR doc-diversity reranking."""
+    t0 = time.perf_counter()
+
+    chunks, hs_stats = hybrid_search(
+        query,
+        vector_store,
+        doc_store,
+        fts_store,
+        query_dense=query_dense,
+        query_sparse=query_sparse,
+        top_k=top_k,
+        rrf_k=rrf_k,
+        doc_ids=doc_ids,
+        diversity_mode="mmr",
+        mmr_lambda=mmr_lambda,
+        _return_stats=True,
+    )
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+    stats = {"latency_ms": latency_ms, "mmr_lambda": mmr_lambda} | hs_stats
+    return chunks, stats
+
+
+# ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -238,6 +315,8 @@ def run_variant(
     rrf_k: int,
     rerank_device: str,
     doc_ids: Optional[List[str]] = None,
+    doc_cap: int = 3,
+    mmr_lambda: float = 0.7,
 ) -> Tuple[List[dict], dict]:
     """Run one named variant. Returns (chunks, stats)."""
     if name == "dense":
@@ -253,4 +332,10 @@ def run_variant(
     if name == "full":
         return run_full(query, query_dense, query_sparse, vector_store, doc_store,
                         fts_store, top_k, rrf_k, rerank_device, doc_ids)
-    raise ValueError(f"Unknown variant: {name!r}. Choose from: {VARIANT_NAMES}")
+    if name == "hybrid_cap":
+        return run_hybrid_cap(query, query_dense, query_sparse, vector_store, doc_store,
+                              fts_store, top_k, rrf_k, doc_cap=doc_cap, doc_ids=doc_ids)
+    if name == "hybrid_mmr":
+        return run_hybrid_mmr(query, query_dense, query_sparse, vector_store, doc_store,
+                              fts_store, top_k, rrf_k, mmr_lambda=mmr_lambda, doc_ids=doc_ids)
+    raise ValueError(f"Unknown variant: {name!r}. Choose from: {ALL_VARIANT_NAMES}")

@@ -19,9 +19,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from rag_lab.benchmark.pipeline_variants import VARIANT_NAMES
+from rag_lab.benchmark.pipeline_variants import ALL_VARIANT_NAMES, VARIANT_NAMES
 from rag_lab.benchmark.runner import BenchmarkRunner
-from rag_lab.config import RETRIEVAL_TOP_K, RRF_K
+from rag_lab.config import DOC_CAP_N, MMR_LAMBDA, RETRIEVAL_TOP_K, RRF_K
 from rag_lab.logging_config import setup_logging
 
 _DEFAULT_QUERIES = Path(__file__).parent.parent.parent / "data" / "benchmark_queries.yaml"
@@ -40,10 +40,13 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--variants",
         nargs="+",
-        choices=VARIANT_NAMES,
+        choices=ALL_VARIANT_NAMES,
         default=None,
         metavar="VARIANT",
-        help=f"Variants to run (default: all). Choices: {VARIANT_NAMES}",
+        help=(
+            f"Variants to run (default: {VARIANT_NAMES}). "
+            f"Diversity variants (opt-in): hybrid_cap, hybrid_mmr"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -83,6 +86,18 @@ def main(argv=None) -> int:
         help="Suppress markdown table output",
     )
     parser.add_argument(
+        "--doc-cap",
+        type=int,
+        default=DOC_CAP_N,
+        help=f"Max chunks per doc for hybrid_cap variant (default: {DOC_CAP_N} from config)",
+    )
+    parser.add_argument(
+        "--mmr-lambda",
+        type=float,
+        default=MMR_LAMBDA,
+        help=f"MMR lambda for hybrid_mmr variant (default: {MMR_LAMBDA} from config)",
+    )
+    parser.add_argument(
         "--log-level",
         default="WARNING",
         help="Logging level (default: WARNING)",
@@ -108,6 +123,8 @@ def main(argv=None) -> int:
         rrf_k=args.rrf_k,
         embedding_device=args.device,
         rerank_device=args.rerank_device,
+        doc_cap=args.doc_cap,
+        mmr_lambda=args.mmr_lambda,
     )
 
     print("\nRunning benchmark…")
