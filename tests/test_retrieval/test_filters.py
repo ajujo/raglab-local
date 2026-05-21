@@ -15,12 +15,12 @@ from rag_lab.storage.metadata_store import MetadataStore
 def metadata_conn(tmp_path):
     """
     Open an in-memory-style temp SQLite connection with v3 tables.
-    Inserts 4 test documents with doc_ids, tags, source_id, dataset_id.
+    Inserts 4 test documents with doc_ids, tags, source_id.
 
-    doc_glossary  — tag:glossary, source:sdmx, dataset:core, status:active
-    doc_guide     — tag:guide,    source:sdmx,              status:active
-    doc_notas     — tag:guide,    dataset:core,             status:active
-    doc_test      —               tag:test,                 status:archived
+    doc_glossary  — tag:glossary, source:sdmx, status:active
+    doc_guide     — tag:guide,    source:sdmx, status:active
+    doc_notas     — tag:guide,                 status:active
+    doc_test      — tag:test,                  status:archived
     """
     db_path = tmp_path / "meta.sqlite"
     conn = sqlite3.connect(str(db_path))
@@ -29,15 +29,13 @@ def metadata_conn(tmp_path):
     meta = MetadataStore(conn=conn)
     meta.initialize()
 
-    # Source and dataset rows must exist before documents reference them (FK constraint)
     meta.upsert_source("sdmx", "SDMX Registry")
-    meta.upsert_dataset("core", "Core Dataset")
     conn.commit()
 
-    meta.upsert_document("doc_glossary", source_id="sdmx", dataset_id="core", status="active")
-    meta.upsert_document("doc_guide",    source_id="sdmx",                     status="active")
-    meta.upsert_document("doc_notas",                       dataset_id="core", status="active")
-    meta.upsert_document("doc_test",                                            status="archived")
+    meta.upsert_document("doc_glossary", source_id="sdmx", status="active")
+    meta.upsert_document("doc_guide",    source_id="sdmx", status="active")
+    meta.upsert_document("doc_notas",                      status="active")
+    meta.upsert_document("doc_test",                       status="archived")
     conn.commit()
 
     meta.assign_tag("doc_glossary", "glossary")
@@ -112,11 +110,6 @@ class TestResolveFilter:
         spec = FilterSpec(source_id="sdmx", status=None)
         result = resolve_filter(metadata_conn, spec)
         assert sorted(result) == ["doc_glossary", "doc_guide"]
-
-    def test_filter_by_dataset_id(self, metadata_conn):
-        spec = FilterSpec(dataset_id="core", status=None)
-        result = resolve_filter(metadata_conn, spec)
-        assert sorted(result) == ["doc_glossary", "doc_notas"]
 
     def test_combined_tag_and_source(self, metadata_conn):
         spec = FilterSpec(tags_include=["guide"], source_id="sdmx", status=None)

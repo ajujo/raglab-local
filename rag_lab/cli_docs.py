@@ -25,7 +25,6 @@ console = Console()
 def docs_list(
     tag: Optional[str] = typer.Option(None, "--tag", help="Filter by tag name."),
     source: Optional[str] = typer.Option(None, "--source", help="Filter by source_id."),
-    dataset: Optional[str] = typer.Option(None, "--dataset", help="Filter by dataset_id."),
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status (default: all statuses)."),
 ):
     """List documents with optional filters."""
@@ -37,7 +36,6 @@ def docs_list(
         docs = store.list_documents(
             tag=tag,
             source_id=source,
-            dataset_id=dataset,
             status=status,
         )
     finally:
@@ -94,7 +92,7 @@ def docs_show(doc_id: str = typer.Argument(..., help="Document ID to inspect."))
 
     console.print(f"\n[bold cyan]Document:[/bold cyan] {doc_id}\n")
     for key in (
-        "title", "path", "content_hash", "source_id", "dataset_id",
+        "title", "path", "content_hash", "source_id",
         "status", "created_at", "updated_at", "ingested_at",
         "embedding_model_version", "embedding_dim", "sparse_format_version",
     ):
@@ -223,31 +221,6 @@ def docs_set_source(
         store.close()
 
     console.print(f"source_id for {doc_id} set to '{source_id}'.")
-
-
-@docs_app.command("set-dataset")
-def docs_set_dataset(
-    doc_id: str = typer.Argument(...),
-    dataset_id: str = typer.Argument(...),
-):
-    """Set the dataset_id for a document."""
-    from rag_lab.storage.metadata_store import MetadataStore
-
-    store = MetadataStore(db_path=DOCDSTORE_SQLITE_PATH)
-    store.initialize()
-    try:
-        if store.get_document(doc_id) is None:
-            console.print(f"[red]Document not found: {doc_id}[/red]")
-            raise typer.Exit(1)
-        store._conn.execute(
-            "UPDATE documents SET dataset_id = ?, updated_at = datetime('now') WHERE doc_id = ?",
-            (dataset_id, doc_id),
-        )
-        store._conn.commit()
-    finally:
-        store.close()
-
-    console.print(f"dataset_id for {doc_id} set to '{dataset_id}'.")
 
 
 # ---------------------------------------------------------------------------

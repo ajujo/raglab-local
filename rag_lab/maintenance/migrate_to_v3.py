@@ -1,4 +1,4 @@
-"""Migration to schema v3: documents / tags / document_tags / sources / datasets tables.
+"""Migration to schema v3: documents / tags / document_tags / sources tables.
 
 What this script does:
   1. Opens DocStore — initialize() runs _migrate_v3() which creates the v3 metadata

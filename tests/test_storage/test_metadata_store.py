@@ -32,7 +32,7 @@ class TestInitialize:
     def test_initialize_creates_tables(self, tmp_path):
         store = _fresh_store(tmp_path)
         tables = _table_names(store._conn)
-        for expected in ("sources", "datasets", "documents", "tags", "document_tags"):
+        for expected in ("sources", "documents", "tags", "document_tags"):
             assert expected in tables, f"Missing table: {expected}"
         store.close()
 
@@ -50,7 +50,6 @@ class TestUpsertDocument:
             path="/data/my_doc.md",
             content_hash="abc123",
             source_id=None,
-            dataset_id=None,
             status="active",
             embedding_model_version="2024-09",
             embedding_dim=1024,
@@ -281,24 +280,6 @@ class TestSources:
         assert s["description"] == "Official SDMX docs"
         assert s["url"] == "https://sdmx.org"
         assert s["doc_count"] == 0
-        store.close()
-
-
-# ---------------------------------------------------------------------------
-# Datasets
-# ---------------------------------------------------------------------------
-
-class TestDatasets:
-    def test_upsert_dataset_and_list(self, tmp_path):
-        store = _fresh_store(tmp_path)
-        store.upsert_dataset("core", "Core Dataset", description="Main dataset")
-        datasets = store.list_datasets()
-        assert len(datasets) == 1
-        d = datasets[0]
-        assert d["dataset_id"] == "core"
-        assert d["name"] == "Core Dataset"
-        assert d["description"] == "Main dataset"
-        assert d["doc_count"] == 0
         store.close()
 
 

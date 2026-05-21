@@ -90,7 +90,7 @@ def hybrid_search(
         top_k: Number of final results after fusion.
         rrf_k: RRF smoothing constant (lower = more discriminative).
         doc_ids: Optional explicit doc_id list filter.
-        filter_spec: Optional structured filter (tags, source, dataset, status).
+        filter_spec: Optional structured filter (tags, source, status).
           Resolved to doc_ids via MetadataStore before retrieval.
           If both doc_ids and filter_spec are provided, filter_spec takes precedence.
         dense_weight: RRF weight for dense signal (default from config).
