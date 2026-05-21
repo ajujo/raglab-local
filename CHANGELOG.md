@@ -4,6 +4,80 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.1 — 2026-05-21
+
+### MMR document-diversity post-processing
+
+This release activates MMR (Maximal Marginal Relevance) doc-diversity reranking
+by default, addressing the large-document monopoly problem identified during the
+v1.0 baseline analysis.
+
+**Problem solved:** With `top_k=50`, large documents (e.g. SDMX_2-1_User_Guide_6
+with 197 chunks) could occupy multiple result slots in top-5/10, blocking smaller
+but equally relevant documents. This degraded nDCG@10 (which counts each doc only
+at first occurrence) and reduced the diversity of context passed to the LLM.
+
+**Solution:** MMR post-processing applied after weighted RRF fusion. Greedy
+selection penalises chunks from already-represented documents with a configurable
+λ parameter. At λ=0.6, relevance still dominates — a second chunk from the same
+document survives if its rrf_score justifiably outweighs the diversity penalty.
+
+**Configuration changes (`rag_lab/config.py`):**
+
+| Parameter | Before (v1.0) | After (v1.1) | Reason |
+|-----------|--------------|--------------|--------|
+| `MMR_ENABLED` | `False` | `True` | Activated after edge case validation |
+| `MMR_LAMBDA` | `0.7` | `0.6` | λ=0.6 achieves perfect R@5=1.000 on 28-query set |
+
+To compare against v1.0 baseline: set `MMR_ENABLED = False` in `config.py`.
+`DOC_CAP_ENABLED` remains `False` — `hybrid_mmr` provides superior diversity
+without a hard per-document limit.
+
+**New code (`rag_lab/retrieval/diversity.py`):**
+
+- `apply_document_cap(chunks, cap)` — hard per-doc-id limit, O(n). Validated,
+  kept as experimental alternative (`hybrid_cap` variant).
+- `apply_mmr(chunks, lambda_, k)` — doc-diversity MMR greedy selection. Adds
+  `mmr_score` field to each result. Does not mutate inputs.
+
+**New benchmark infrastructure:**
+
+- `rag_lab/benchmark/metrics.diversity_stats()` — `unique_docs@k` and
+  `max_chunks_same_doc@k` metrics.
+- Two new benchmark variants: `hybrid_cap` and `hybrid_mmr` (opt-in via
+  `--variants`; not included in the default five-variant run).
+- `hybrid_search()` accepts `diversity_mode` parameter (`"cap"`, `"mmr"`, or
+  `None`) and passes through doc_cap / mmr_lambda.
+
+**Test suite:** 343 tests, EXIT_CODE=0 (was 323 in v1.0; +20 new diversity tests).
+
+**Benchmark results — v1.1 official** (`top_k=50, rrf_k=20, sparse_w=0.25,
+mmr_lambda=0.6`, 28 queries — see `data/benchmark_v1_1_mmr_20260521.json`):
+
+| Variant | R@5 | R@10 | R@30 | MRR | nDCG@10 | unique_docs@5 |
+|---------|-----|------|------|-----|---------|:---:|
+| hybrid (v1.0 baseline) | 0.762 | 0.923 | 0.982 | 0.867 | 0.755 | 2.75 |
+| hybrid_cap (N=3)       | 0.816 | 0.946 | 1.000 | 0.867 | 0.768 | 2.93 |
+| **hybrid_mmr (λ=0.6)** | **1.000** | **1.000** | **1.000** | **0.884** | **0.840** | **4.82** |
+
+**Corpus state:** 610 chunks / 610 ChromaDB / 610 FTS5 / 610 sparse BLOBs (100%).
+
+**Key edge case findings (16 new annotated queries, q013–q028):**
+- Spanish queries (q027, q028): hybrid R@5=0.000–0.333 → hybrid_mmr R@5=1.000.
+  BM25 language mismatch + dense bias had produced a monopoly of marginally-relevant
+  English chunks. MMR's diversity pressure surfaces the Spanish-language source.
+- Multi-chunk same-doc queries (q013, q026): MMR never causes regression.
+  At λ=0.6, the first chunk of the dominant doc stays at rank 1; subsequent chunks
+  survive only if their rrf_score justifies the diversity penalty (confirmed for q026
+  where nDCG@10 improved 0.974 → 1.000).
+- Single-source Glossary queries (q016–q021): zero regressions. Glossary terminology
+  is not blocked by MMR when each chunk covers a distinct artefact type.
+
+**Recalibration triggers (same as v1.0):** corpus changes ≥20% size increase,
+model updates (BGE-M3 or reranker), cross-lingual query distribution shifts.
+
+---
+
 ## Baseline v1.0 — 2026-05-20
 
 ### Retrieval baseline: weighted RRF + calibrated parameters

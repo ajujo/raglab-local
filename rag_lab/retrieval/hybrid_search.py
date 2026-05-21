@@ -24,11 +24,16 @@ import numpy as np
 from rag_lab.config import (
     BM25_RRF_WEIGHT,
     DENSE_RRF_WEIGHT,
+    DOC_CAP_ENABLED,
+    DOC_CAP_N,
+    MMR_ENABLED,
+    MMR_LAMBDA,
     RRF_K,
     RETRIEVAL_TOP_K,
     SPARSE_COVERAGE_THRESHOLD,
     SPARSE_RRF_WEIGHT,
 )
+from rag_lab.retrieval.diversity import apply_document_cap, apply_mmr
 from rag_lab.retrieval.fusion import weighted_rrf
 from rag_lab.retrieval.sparse_scorer import load_sparse_for_chunks, rank_candidates_by_sparse
 from rag_lab.storage.docstore import DocStore
@@ -66,6 +71,9 @@ def hybrid_search(
     dense_weight: float = None,
     bm25_weight: float = None,
     sparse_weight: float = None,
+    diversity_mode: Optional[str] = None,
+    doc_cap: Optional[int] = None,
+    mmr_lambda: Optional[float] = None,
     _return_stats: bool = False,
 ) -> List[dict]:
     """Perform two-stage hybrid search with weighted RRF fusion.
@@ -83,6 +91,11 @@ def hybrid_search(
         dense_weight: RRF weight for dense signal (default from config).
         bm25_weight: RRF weight for BM25 signal (default from config).
         sparse_weight: RRF weight for sparse signal (default from config, 0.25 = secondary).
+        diversity_mode: Optional post-processing: "cap", "mmr", "off", or None.
+          None = use DOC_CAP_ENABLED / MMR_ENABLED from config.
+          "off" = explicitly disable diversity regardless of config.
+        doc_cap: Max chunks per doc_id for "cap" mode (default from config DOC_CAP_N).
+        mmr_lambda: Lambda for "mmr" mode (default from config MMR_LAMBDA).
 
     Returns:
         List of chunk dicts sorted by rrf_score, each with five-score fields.
@@ -170,6 +183,30 @@ def hybrid_search(
 
     # Sort by rrf_score to match fusion order
     chunks.sort(key=lambda c: c.get("rrf_score", 0.0), reverse=True)
+
+    # ------------------------------------------------------------------
+    # Optional diversity post-processing
+    # diversity_mode="off" → explicitly disabled regardless of config flags.
+    # diversity_mode=None  → honour DOC_CAP_ENABLED / MMR_ENABLED from config.
+    # diversity_mode="cap"/"mmr" → explicit override.
+    # ------------------------------------------------------------------
+    effective_mode = diversity_mode
+    if effective_mode is None:
+        if DOC_CAP_ENABLED:
+            effective_mode = "cap"
+        elif MMR_ENABLED:
+            effective_mode = "mmr"
+    elif effective_mode == "off":
+        effective_mode = None  # treat as no-op
+
+    if effective_mode == "cap":
+        cap = doc_cap if doc_cap is not None else DOC_CAP_N
+        chunks = apply_document_cap(chunks, cap)
+        logger.debug(f"document_cap(N={cap}): {len(chunks)} chunks after capping")
+    elif effective_mode == "mmr":
+        lam = mmr_lambda if mmr_lambda is not None else MMR_LAMBDA
+        chunks = apply_mmr(chunks, lambda_=lam, k=top_k)
+        logger.debug(f"MMR(lambda={lam}): {len(chunks)} chunks after reranking")
 
     logger.info(
         f"Hybrid search: {len(dense_ids)} dense + {len(bm25_results)} BM25 → "

@@ -89,12 +89,14 @@ class TestHybridSearchV2:
         mock_vs = MagicMock()
         mock_vs.query.return_value = {"ids": ["c1", "c2", "c3"], "distances": [0.1, 0.2, 0.3]}
 
+        # diversity_mode="off" explicitly bypasses MMR so results remain sorted by rrf_score
         results = hybrid_search(
             "SDMX",
             mock_vs, ds, fts,
             query_dense=np.zeros(4, dtype="float32"),
             query_sparse={1: 1.0},
             top_k=5,
+            diversity_mode="off",
         )
 
         scores = [r["rrf_score"] for r in results]

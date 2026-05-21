@@ -13,6 +13,7 @@ Relevance resolution order per result:
 """
 
 import math
+from collections import Counter
 from typing import Dict, List, Sequence, Tuple
 
 
@@ -167,6 +168,32 @@ def signal_stats(results: List[dict]) -> Dict[str, float]:
         "bm25_coverage": sum(1 for r in results if r.get("in_bm25_topk")) / n,
         "sparse_coverage": sum(1 for r in results if r.get("in_sparse_topk")) / n,
     }
+
+
+# ---------------------------------------------------------------------------
+# Diversity metrics
+# ---------------------------------------------------------------------------
+
+def diversity_stats(
+    chunks: List[dict],
+    k_values: Tuple[int, ...] = (5, 10),
+) -> Dict[str, float]:
+    """Document diversity metrics for the given result list.
+
+    For each k in k_values:
+      unique_docs@k          — number of distinct doc_ids in top-k
+      max_chunks_same_doc@k  — max number of chunks from a single doc in top-k
+
+    These are per-query signals; aggregate them with aggregate_metrics().
+    """
+    result: Dict[str, float] = {}
+    for k in k_values:
+        top = chunks[:k]
+        doc_ids = [c.get("doc_id", "") for c in top]
+        counts = Counter(doc_ids)
+        result[f"unique_docs@{k}"] = float(len(counts))
+        result[f"max_chunks_same_doc@{k}"] = float(max(counts.values(), default=0))
+    return result
 
 
 # ---------------------------------------------------------------------------
