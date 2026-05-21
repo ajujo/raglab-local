@@ -29,11 +29,11 @@ Compares five retrieval pipeline variants across standard IR metrics to measure 
 | `Pool` | Mean candidate pool size entering the fusion/rerank stage. |
 | `dense/bm25/sparse coverage` | Fraction of returned results that carry each retrieval signal. |
 
-## Experimento: Document Diversity (rama v1.1-doc-diversity)
+## Document Diversity — v1.1 (activado por defecto)
 
-> **Estado: EXPERIMENTAL.** No activado por defecto.
+> **Estado: ACTIVADO en v1.1.** `MMR_ENABLED=True, MMR_LAMBDA=0.6` en `config.py`.
 > Resultados medidos 2026-05-21 contra baseline v1.0.
-> Criterio de activación: mantener o mejorar nDCG@10 y R@5 sin degradar MRR ni latencia.
+> Todos los criterios de aceptación superados tras validación con 28 queries.
 
 ### Estrategias implementadas
 
@@ -78,21 +78,20 @@ El problema que resuelven: con top_k=50, los documentos grandes (SDMX_2-1_User_G
 
 ### Decisión de activación
 
-`hybrid_mmr(λ=0.7)` cumple y supera todos los criterios.
-**Recomendación: activar como default en v1.1** tras revisión de casos edge.
+`hybrid_mmr(λ=0.6)` cumple y supera todos los criterios.
+**Activado como default en v1.1** tras validación con 28 queries (ver sección Edge Case Review).
 
-Para activar manualmente antes de la decisión oficial:
+Para desactivar y comparar contra baseline v1.0:
 ```bash
 # En config.py
-MMR_ENABLED = True
-MMR_LAMBDA = 0.7
+MMR_ENABLED = False
 ```
 
 ---
 
-## Edge Case Review — v1.1 pre-merge (2026-05-21)
+## Edge Case Review — v1.1 (2026-05-21)
 
-> **Resultado: MERGE APROBADO.** `hybrid_mmr(λ=0.6)` seleccionado como default para v1.1.
+> **Resultado: MERGE COMPLETADO.** `hybrid_mmr(λ=0.6)` activado como default en v1.1.
 > Benchmark ejecutado con 28 queries (12 originales + 16 edge cases).
 > Saved: `data/benchmark_edge_cases_l06_20260521.json`, `..._l07_...`, `..._l08_...`
 
@@ -179,12 +178,14 @@ El límite `max_same@5=1.18` confirma que λ=0.6 es agresivo pero no extremo —
 
 ### Decisión final
 
-**`hybrid_mmr(λ=0.6)` activado como default en v1.1.** Actualizar `config.py`:
+**`hybrid_mmr(λ=0.6)` activado como default en v1.1.** Aplicado en `config.py`:
 
 ```python
 MMR_ENABLED = True
-MMR_LAMBDA = 0.6   # actualizado desde 0.7 tras edge case review
+MMR_LAMBDA = 0.6   # calibrado sobre 28 queries; λ=0.6 maximiza R@5 y nDCG@10
 ```
+
+Para comparar contra v1.0: set `MMR_ENABLED = False`.
 
 ---
 

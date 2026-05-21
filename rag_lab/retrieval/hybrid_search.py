@@ -91,8 +91,9 @@ def hybrid_search(
         dense_weight: RRF weight for dense signal (default from config).
         bm25_weight: RRF weight for BM25 signal (default from config).
         sparse_weight: RRF weight for sparse signal (default from config, 0.25 = secondary).
-        diversity_mode: Optional post-processing: "cap" or "mmr". None = no diversity.
-          Overrides config flags DOC_CAP_ENABLED / MMR_ENABLED when explicitly set.
+        diversity_mode: Optional post-processing: "cap", "mmr", "off", or None.
+          None = use DOC_CAP_ENABLED / MMR_ENABLED from config.
+          "off" = explicitly disable diversity regardless of config.
         doc_cap: Max chunks per doc_id for "cap" mode (default from config DOC_CAP_N).
         mmr_lambda: Lambda for "mmr" mode (default from config MMR_LAMBDA).
 
@@ -184,7 +185,10 @@ def hybrid_search(
     chunks.sort(key=lambda c: c.get("rrf_score", 0.0), reverse=True)
 
     # ------------------------------------------------------------------
-    # Optional diversity post-processing (experimental)
+    # Optional diversity post-processing
+    # diversity_mode="off" → explicitly disabled regardless of config flags.
+    # diversity_mode=None  → honour DOC_CAP_ENABLED / MMR_ENABLED from config.
+    # diversity_mode="cap"/"mmr" → explicit override.
     # ------------------------------------------------------------------
     effective_mode = diversity_mode
     if effective_mode is None:
@@ -192,6 +196,8 @@ def hybrid_search(
             effective_mode = "cap"
         elif MMR_ENABLED:
             effective_mode = "mmr"
+    elif effective_mode == "off":
+        effective_mode = None  # treat as no-op
 
     if effective_mode == "cap":
         cap = doc_cap if doc_cap is not None else DOC_CAP_N

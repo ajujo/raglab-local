@@ -238,20 +238,22 @@ Si la respuesta no está en los fragmentos, indícalo explícitamente.
 """
 
 # =============================================================================
-# 11. DIVERSIDAD DOCUMENTAL (experimental — desactivado por defecto)
+# 11. DIVERSIDAD DOCUMENTAL
 # =============================================================================
 
 # document_cap: máximo de chunks por doc_id en el resultado final.
-# Activar solo después de validar contra baseline v1.0.
+# Desactivado por defecto — hybrid_mmr ofrece mejor diversidad sin límite duro.
 DOC_CAP_ENABLED = False
-DOC_CAP_N = 3           # límite por doc — calibrar con benchmark de diversidad
+DOC_CAP_N = 3           # límite por doc si se activa
 
 # MMR doc-diversity reranking (aplicado después del RRF weighted).
-# lambda_ = 1.0 → solo relevancia (igual a sin MMR)
+# Activado por defecto en v1.1 con λ=0.6 (calibrado sobre 28 queries, 610 chunks).
+# lambda_ = 1.0 → solo relevancia (igual a sin MMR, equivale a v1.0)
 # lambda_ = 0.0 → solo diversidad (sin importar score)
-# Rango útil calibrado: 0.5–0.8
-MMR_ENABLED = False
-MMR_LAMBDA = 0.7
+# Rango calibrado: 0.5–0.8; λ=0.6 maximiza R@5 y nDCG@10 simultáneamente.
+# Para comparar contra baseline v1.0: set MMR_ENABLED = False
+MMR_ENABLED = True
+MMR_LAMBDA = 0.6
 
 # =============================================================================
 # 12. LOGGING

@@ -129,7 +129,7 @@ def run_dense_bm25(
 ) -> Tuple[List[dict], dict]:
     t0 = time.perf_counter()
 
-    # Pass query_sparse=None to disable sparse stage in hybrid_search
+    # query_sparse=None disables sparse stage; diversity_mode="off" disables MMR
     chunks, hs_stats = hybrid_search(
         query,
         vector_store,
@@ -140,6 +140,7 @@ def run_dense_bm25(
         top_k=top_k,
         rrf_k=rrf_k,
         doc_ids=doc_ids,
+        diversity_mode="off",
         _return_stats=True,
     )
 
@@ -165,6 +166,7 @@ def run_hybrid(
 ) -> Tuple[List[dict], dict]:
     t0 = time.perf_counter()
 
+    # diversity_mode="off" keeps this variant as the clean baseline regardless of config
     chunks, hs_stats = hybrid_search(
         query,
         vector_store,
@@ -175,6 +177,7 @@ def run_hybrid(
         top_k=top_k,
         rrf_k=rrf_k,
         doc_ids=doc_ids,
+        diversity_mode="off",
         _return_stats=True,
     )
 
@@ -203,6 +206,7 @@ def run_full(
 
     t0 = time.perf_counter()
 
+    # diversity_mode="off": reranker provides its own ordering — no pre-MMR needed
     chunks, hs_stats = hybrid_search(
         query,
         vector_store,
@@ -213,6 +217,7 @@ def run_full(
         top_k=top_k,
         rrf_k=rrf_k,
         doc_ids=doc_ids,
+        diversity_mode="off",
         _return_stats=True,
     )
 
