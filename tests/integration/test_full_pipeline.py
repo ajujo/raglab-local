@@ -36,25 +36,46 @@ class TestFullPipeline:
 
     @pytest.fixture(autouse=True)
     def _setup(self, tmp_path):
-        """Set up temporary directories for each test."""
-        # Create temp data and storage directories
+        """Set up temporary directories for each test.
+
+        Patches all config path constants so the CLI and stores use tmp paths,
+        preventing any writes to the production docstore.sqlite or ChromaDB.
+        """
         data_dir = tmp_path / "data"
         data_dir.mkdir()
         storage_dir = tmp_path / "storage"
         storage_dir.mkdir()
 
-        # Patch config paths for this test
         import rag_lab.config as config
-        original_data_dir = config.DATA_DIR
-        original_storage_dir = config.STORAGE_DIR
+        import rag_lab.storage.docstore as _ds_mod
+        import rag_lab.storage.vector_store as _vs_mod
+
+        originals = {
+            "config.DATA_DIR": config.DATA_DIR,
+            "config.STORAGE_DIR": config.STORAGE_DIR,
+            "config.DOCDSTORE_SQLITE_PATH": config.DOCDSTORE_SQLITE_PATH,
+            "config.VECTOR_STORE_PATH": config.VECTOR_STORE_PATH,
+            "config.SPARSE_INDEX_PATH": config.SPARSE_INDEX_PATH,
+            "ds.DOCDSTORE_SQLITE_PATH": _ds_mod.DOCDSTORE_SQLITE_PATH,
+            "vs.VECTOR_STORE_PATH": _vs_mod.VECTOR_STORE_PATH,
+        }
         config.DATA_DIR = data_dir
         config.STORAGE_DIR = storage_dir
+        config.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
+        config.VECTOR_STORE_PATH = storage_dir / "chroma_db"
+        config.SPARSE_INDEX_PATH = storage_dir / "sparse_index.json"
+        _ds_mod.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
+        _vs_mod.VECTOR_STORE_PATH = storage_dir / "chroma_db"
 
         yield
 
-        # Restore original paths
-        config.DATA_DIR = original_data_dir
-        config.STORAGE_DIR = original_storage_dir
+        config.DATA_DIR = originals["config.DATA_DIR"]
+        config.STORAGE_DIR = originals["config.STORAGE_DIR"]
+        config.DOCDSTORE_SQLITE_PATH = originals["config.DOCDSTORE_SQLITE_PATH"]
+        config.VECTOR_STORE_PATH = originals["config.VECTOR_STORE_PATH"]
+        config.SPARSE_INDEX_PATH = originals["config.SPARSE_INDEX_PATH"]
+        _ds_mod.DOCDSTORE_SQLITE_PATH = originals["ds.DOCDSTORE_SQLITE_PATH"]
+        _vs_mod.VECTOR_STORE_PATH = originals["vs.VECTOR_STORE_PATH"]
 
     def test_full_ingest_pipeline(self, tmp_path, sample_text):
         """Test the complete ingestion pipeline: clean → chunk → embed → store."""
@@ -141,6 +162,42 @@ class TestFullPipeline:
 
 class TestCLIIntegration:
     """Integration tests for CLI commands."""
+
+    @pytest.fixture(autouse=True)
+    def _isolate_stores(self, tmp_path):
+        """Redirect all store paths to tmp_path so CLI writes don't hit production."""
+        storage_dir = tmp_path / "storage"
+        storage_dir.mkdir()
+        import rag_lab.config as config
+        import rag_lab.storage.docstore as _ds_mod
+        import rag_lab.storage.vector_store as _vs_mod
+
+        orig = {
+            "c.DATA_DIR": config.DATA_DIR,
+            "c.STORAGE_DIR": config.STORAGE_DIR,
+            "c.DOCDSTORE_SQLITE_PATH": config.DOCDSTORE_SQLITE_PATH,
+            "c.VECTOR_STORE_PATH": config.VECTOR_STORE_PATH,
+            "c.SPARSE_INDEX_PATH": config.SPARSE_INDEX_PATH,
+            "ds.DOCDSTORE_SQLITE_PATH": _ds_mod.DOCDSTORE_SQLITE_PATH,
+            "vs.VECTOR_STORE_PATH": _vs_mod.VECTOR_STORE_PATH,
+        }
+        config.DATA_DIR = tmp_path / "data"
+        config.STORAGE_DIR = storage_dir
+        config.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
+        config.VECTOR_STORE_PATH = storage_dir / "chroma_db"
+        config.SPARSE_INDEX_PATH = storage_dir / "sparse_index.json"
+        _ds_mod.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
+        _vs_mod.VECTOR_STORE_PATH = storage_dir / "chroma_db"
+
+        yield
+
+        config.DATA_DIR = orig["c.DATA_DIR"]
+        config.STORAGE_DIR = orig["c.STORAGE_DIR"]
+        config.DOCDSTORE_SQLITE_PATH = orig["c.DOCDSTORE_SQLITE_PATH"]
+        config.VECTOR_STORE_PATH = orig["c.VECTOR_STORE_PATH"]
+        config.SPARSE_INDEX_PATH = orig["c.SPARSE_INDEX_PATH"]
+        _ds_mod.DOCDSTORE_SQLITE_PATH = orig["ds.DOCDSTORE_SQLITE_PATH"]
+        _vs_mod.VECTOR_STORE_PATH = orig["vs.VECTOR_STORE_PATH"]
 
     def test_ingest_cli(self, tmp_path, sample_text):
         """Test the ingest CLI command end-to-end."""

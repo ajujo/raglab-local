@@ -1,7 +1,8 @@
 """Tests de regresión (benchmarks) para el sistema RAG.
 
-Estos tests verifican que las respuestas del sistema sean correctas
-para preguntas específicas sobre SDMX.
+Estos tests son READ-ONLY: acceden a los stores de producción para verificar
+la calidad del retrieval contra el corpus real, pero no escriben en ellos.
+La escritura accidental queda bloqueada por el fixture guard_read_only_integration.
 
 Benchmarks:
 - Q1: Formatos de intercambio (SDMX-ML, SDMX-EDI, etc.)
@@ -24,9 +25,13 @@ from rag_lab.embedding.encoder import encode_chunks
 class TestBenchmarks:
     """Tests de regresión para verificar la calidad de las respuestas."""
 
+    @pytest.fixture(autouse=True)
+    def _protect_production_stores(self, guard_read_only_integration):
+        """Apply write-guard to all tests in this class."""
+
     @pytest.fixture
     def stores(self):
-        """Crear instancias de almacenes para los tests."""
+        """Abrir stores de producción en modo lectura para los tests."""
         vector_store = VectorStore()
         doc_store = DocStore()
         fts_store = FTSStore()

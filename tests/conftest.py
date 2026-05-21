@@ -22,6 +22,10 @@ def pytest_configure(config):
         "markers",
         "llm_required: mark test as requiring a live LLM server — skipped when unavailable",
     )
+    config.addinivalue_line(
+        "markers",
+        "integration: mark test as an integration test that may access production stores (read-only)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):

@@ -117,9 +117,24 @@ class TestCheckChromaDB:
 # ---------------------------------------------------------------------------
 
 class TestCheckFts5:
+    def _make_conn(self, missing: int, orphans: int):
+        """Return a mock connection where:
+          - first execute() → missing count
+          - second execute() → orphan count
+        """
+        responses = iter([(missing,), (orphans,)])
+
+        def _side_effect(sql):
+            m = MagicMock()
+            m.fetchone.return_value = next(responses)
+            return m
+
+        conn = MagicMock()
+        conn.execute.side_effect = _side_effect
+        return conn
+
     def test_ok_when_fully_indexed(self):
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchone.return_value = (10,)
+        mock_conn = self._make_conn(missing=0, orphans=0)
         mock_ds = MagicMock()
         mock_ds.count.return_value = 10
         mock_ds._conn = mock_conn
@@ -127,23 +142,36 @@ class TestCheckFts5:
             result = check_fts5()
         assert result.status == "OK"
 
-    def test_warn_when_partial(self):
-        def _side_effect(sql):
-            m = MagicMock()
-            if "chunks_fts" in sql:
-                m.fetchone.return_value = (5,)
-            else:
-                m.fetchone.return_value = (5,)
-            return m
-
-        mock_conn = MagicMock()
-        mock_conn.execute.side_effect = _side_effect
+    def test_warn_when_chunks_missing_from_fts5(self):
+        mock_conn = self._make_conn(missing=3, orphans=0)
         mock_ds = MagicMock()
         mock_ds.count.return_value = 10
         mock_ds._conn = mock_conn
         with patch("rag_lab.doctor.DocStore", return_value=mock_ds):
             result = check_fts5()
-        assert result.status in ("WARN", "FAIL")
+        assert result.status == "WARN"
+        assert "missing" in (result.reason or "").lower()
+
+    def test_warn_when_orphans_in_fts5(self):
+        mock_conn = self._make_conn(missing=0, orphans=2)
+        mock_ds = MagicMock()
+        mock_ds.count.return_value = 10
+        mock_ds._conn = mock_conn
+        with patch("rag_lab.doctor.DocStore", return_value=mock_ds):
+            result = check_fts5()
+        assert result.status == "WARN"
+        assert "orphan" in (result.reason or "").lower()
+
+    def test_no_false_positive_from_inflated_fts5_count(self):
+        """COUNT(*) on FTS5 can be inflated; we only fail on real missing/orphans."""
+        mock_conn = self._make_conn(missing=0, orphans=0)
+        mock_ds = MagicMock()
+        mock_ds.count.return_value = 10
+        mock_ds._conn = mock_conn
+        with patch("rag_lab.doctor.DocStore", return_value=mock_ds):
+            result = check_fts5()
+        # Even if FTS5 internal counter says 32 rows vs 10 chunks, result is OK
+        assert result.status == "OK"
 
     def test_fail_on_exception(self):
         mock_conn = MagicMock()
@@ -271,6 +299,63 @@ class TestCheckTestQuery:
     def test_fail_on_exception(self):
         with patch("rag_lab.doctor.DocStore", side_effect=Exception("store unavailable")):
             result = check_test_query("query")
+        assert result.status == "FAIL"
+
+    def test_warn_on_gpu_oom_with_cpu_fallback(self):
+        """GPU OOM → CPU fallback succeeds → WARN (not FAIL)."""
+        mock_results = [{"doc_id": "SDMX_Glossary", "rrf_score": 0.05, "chunk_id": "abc"}]
+        call_count = [0]
+
+        def _encode_side_effect(chunks, batch_size, device):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("CUDA out of memory. Tried to allocate 200 MiB")
+            return ([MagicMock()], {"__doctor_query__": {}})
+
+        with patch("rag_lab.doctor.DocStore") as MockDS, \
+             patch("rag_lab.doctor.VectorStore") as MockVS, \
+             patch("rag_lab.doctor.FTSStore") as MockFTS, \
+             patch("rag_lab.embedding.encoder.encode_chunks", side_effect=_encode_side_effect), \
+             patch("rag_lab.embedding.encoder.reset_embedding_cache"), \
+             patch("rag_lab.retrieval.hybrid_search.hybrid_search", return_value=mock_results), \
+             patch("rag_lab.doctor.EMBEDDING_DEVICE", "cuda", create=True):
+
+            MockDS.return_value = MagicMock()
+            MockVS.return_value = MagicMock()
+            MockFTS.return_value = MagicMock()
+
+            # Simulate non-cpu device by patching inside the function
+            with patch("rag_lab.config.EMBEDDING_DEVICE", "cuda"):
+                result = check_test_query("What is SDMX?")
+
+        assert result.status == "WARN"
+        assert "cpu" in (result.reason or "").lower()
+        assert "oom" in (result.reason or "").lower() or "fallback" in (result.reason or "").lower()
+
+    def test_fail_on_gpu_oom_and_cpu_also_fails(self):
+        """GPU OOM → CPU fallback also returns no results → FAIL."""
+        call_count = [0]
+
+        def _encode_side_effect(chunks, batch_size, device):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("CUDA out of memory.")
+            return ([MagicMock()], {"__doctor_query__": {}})
+
+        with patch("rag_lab.doctor.DocStore") as MockDS, \
+             patch("rag_lab.doctor.VectorStore") as MockVS, \
+             patch("rag_lab.doctor.FTSStore") as MockFTS, \
+             patch("rag_lab.embedding.encoder.encode_chunks", side_effect=_encode_side_effect), \
+             patch("rag_lab.embedding.encoder.reset_embedding_cache"), \
+             patch("rag_lab.retrieval.hybrid_search.hybrid_search", return_value=[]), \
+             patch("rag_lab.config.EMBEDDING_DEVICE", "cuda"):
+
+            MockDS.return_value = MagicMock()
+            MockVS.return_value = MagicMock()
+            MockFTS.return_value = MagicMock()
+
+            result = check_test_query("What is SDMX?")
+
         assert result.status == "FAIL"
 
 

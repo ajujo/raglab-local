@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-lab"
+version = "1.5.1"
+description = "RAG documental puro para documentos técnicos SDMX"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rag_lab*"]
+
+[project.scripts]
+rag-lab = "rag_lab.cli:app"
