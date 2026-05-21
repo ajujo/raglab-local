@@ -136,11 +136,21 @@ class VectorStore:
             self.initialize()
         return self._collection.count()
 
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        """Delete all vectors for a given doc_id. Returns count deleted."""
+        if self._collection is None:
+            self.initialize()
+        result = self._collection.get(where={"doc_id": {"$eq": doc_id}}, include=[])
+        ids = result.get("ids", [])
+        if ids:
+            self._collection.delete(ids=ids)
+        logger.info(f"Deleted {len(ids)} vectors for doc_id={doc_id!r}")
+        return len(ids)
+
     def delete_all(self) -> None:
         """Delete all vectors from the store."""
         if self._collection is None:
             self.initialize()
-        # Delete all items by iterating over all IDs
         all_ids = self._collection.get(include=[])["ids"]
         if all_ids:
             self._collection.delete(ids=all_ids)

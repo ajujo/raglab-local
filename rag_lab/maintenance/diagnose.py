@@ -14,13 +14,20 @@ import logging
 import sys
 
 from rag_lab.logging_config import setup_logging
+from rag_lab.retrieval.filters import FilterSpec, filter_stats
 from rag_lab.storage.docstore import DocStore
 from rag_lab.storage.vector_store import VectorStore
 
 logger = logging.getLogger("rag_lab")
 
 
-def diagnose(query: str = None, explain: bool = False) -> dict:
+def diagnose(
+    query: str = None,
+    explain: bool = False,
+    doc_id: str = None,
+    tags_include: list = None,
+    tags_exclude: list = None,
+) -> dict:
     """Run full system diagnostic.
 
     Args:
@@ -39,6 +46,13 @@ def diagnose(query: str = None, explain: bool = False) -> dict:
     ds = DocStore()
     ds.initialize()
     conn = ds._conn
+
+    # Build filter spec (may be empty)
+    _filter_spec = FilterSpec(
+        doc_ids=[doc_id] if doc_id else None,
+        tags_include=tags_include or None,
+        tags_exclude=tags_exclude or None,
+    )
 
     # --- DocStore ---
     total_chunks = ds.count()
@@ -138,8 +152,18 @@ def diagnose(query: str = None, explain: bool = False) -> dict:
 
     if query:
         print(f"\n  Test query: {query!r}")
+        if not _filter_spec.is_empty():
+            stats = filter_stats(conn, _filter_spec)
+            print(f"  Filters active:")
+            if _filter_spec.tags_include:
+                print(f"    tags_include : {_filter_spec.tags_include}")
+            if _filter_spec.tags_exclude:
+                print(f"    tags_exclude : {_filter_spec.tags_exclude}")
+            if _filter_spec.doc_ids:
+                print(f"    doc_ids      : {_filter_spec.doc_ids}")
+            print(f"    → {stats['matched_documents']}/{stats['total_documents']} documents match filter")
         print("  " + "·" * 50)
-        _run_test_query(query, ds, explain=explain)
+        _run_test_query(query, ds, explain=explain, filter_spec=_filter_spec)
 
     ds.close()
 
@@ -165,14 +189,13 @@ def diagnose(query: str = None, explain: bool = False) -> dict:
     return result
 
 
-def _run_test_query(query: str, ds: DocStore, explain: bool = False) -> None:
-    """Run a retrieval test and print five-score details.
-
-    Args:
-        query: Query text.
-        ds: Initialised DocStore (shared connection).
-        explain: If True, print per-signal rank breakdown for every result.
-    """
+def _run_test_query(
+    query: str,
+    ds: DocStore,
+    explain: bool = False,
+    filter_spec=None,
+) -> None:
+    """Run a retrieval test and print five-score details."""
     try:
         from rag_lab.config import EMBEDDING_DEVICE
         from rag_lab.embedding.encoder import encode_chunks
@@ -198,6 +221,7 @@ def _run_test_query(query: str, ds: DocStore, explain: bool = False) -> None:
             query_dense=query_dense,
             query_sparse=query_sparse,
             top_k=5,
+            filter_spec=filter_spec,
         )
 
         if not results:
@@ -253,8 +277,20 @@ if __name__ == "__main__":
     parser.add_argument("--query", default=None, help="Optional test query")
     parser.add_argument("--explain", action="store_true",
                         help="Show per-signal rank breakdown for each result (requires --query)")
+    parser.add_argument("--doc-id", default=None, metavar="DOC_ID",
+                        help="Restrict query to a single document")
+    parser.add_argument("--tag", action="append", dest="tags_include", metavar="TAG",
+                        help="Include only documents with this tag (repeatable)")
+    parser.add_argument("--exclude-tag", action="append", dest="tags_exclude", metavar="TAG",
+                        help="Exclude documents with this tag (repeatable)")
     args = parser.parse_args()
     if args.explain and not args.query:
         parser.error("--explain requires --query")
-    result = diagnose(query=args.query, explain=args.explain)
+    result = diagnose(
+        query=args.query,
+        explain=args.explain,
+        doc_id=args.doc_id,
+        tags_include=args.tags_include,
+        tags_exclude=args.tags_exclude,
+    )
     sys.exit(1 if result.get("duplicates", 0) > 0 else 0)

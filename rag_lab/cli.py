@@ -52,12 +52,15 @@ from rag_lab.feedback.feedback_store import (
 from rag_lab.performance.timer import PhaseTimer
 from rag_lab.performance.report import generate_report, save_report_json
 from rag_lab.logging_config import setup_logging
+from rag_lab.cli_docs import docs_app, tags_app
 
 app = typer.Typer(
     name="rag-lab",
     help="RAG system for SDMX Technical Notes",
     add_completion=True,
 )
+app.add_typer(docs_app, name="docs")
+app.add_typer(tags_app, name="tags")
 
 console = Console()
 
