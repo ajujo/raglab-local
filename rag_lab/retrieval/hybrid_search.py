@@ -34,6 +34,7 @@ from rag_lab.config import (
     SPARSE_RRF_WEIGHT,
 )
 from rag_lab.retrieval.diversity import apply_document_cap, apply_mmr
+from rag_lab.retrieval.filters import FilterSpec, resolve_filter
 from rag_lab.retrieval.fusion import weighted_rrf
 from rag_lab.retrieval.sparse_scorer import load_sparse_for_chunks, rank_candidates_by_sparse
 from rag_lab.storage.docstore import DocStore
@@ -68,6 +69,7 @@ def hybrid_search(
     top_k: int = None,
     rrf_k: int = None,
     doc_ids: Optional[List[str]] = None,
+    filter_spec: Optional[FilterSpec] = None,
     dense_weight: float = None,
     bm25_weight: float = None,
     sparse_weight: float = None,
@@ -87,7 +89,10 @@ def hybrid_search(
         query_sparse: Sparse embedding {token_id: weight} for the query.
         top_k: Number of final results after fusion.
         rrf_k: RRF smoothing constant (lower = more discriminative).
-        doc_ids: Optional filter by document IDs.
+        doc_ids: Optional explicit doc_id list filter.
+        filter_spec: Optional structured filter (tags, source, dataset, status).
+          Resolved to doc_ids via MetadataStore before retrieval.
+          If both doc_ids and filter_spec are provided, filter_spec takes precedence.
         dense_weight: RRF weight for dense signal (default from config).
         bm25_weight: RRF weight for BM25 signal (default from config).
         sparse_weight: RRF weight for sparse signal (default from config, 0.25 = secondary).
@@ -107,11 +112,19 @@ def hybrid_search(
     sparse_weight = sparse_weight if sparse_weight is not None else SPARSE_RRF_WEIGHT
     candidate_k = top_k * _CANDIDATE_MULTIPLIER
 
+    # Resolve structured filter → effective doc_ids (filter_spec overrides raw doc_ids)
+    effective_doc_ids = doc_ids
+    if filter_spec is not None and not filter_spec.is_empty() and doc_store._conn is not None:
+        resolved = resolve_filter(doc_store._conn, filter_spec)
+        if resolved is not None:
+            effective_doc_ids = resolved
+            logger.debug(f"filter_spec resolved to {len(resolved)} doc_ids")
+
     # ------------------------------------------------------------------
     # Stage 1a: Dense search
     # ------------------------------------------------------------------
     if query_dense is not None:
-        dense_results = vector_store.query(query_dense, candidate_k, doc_ids=doc_ids)
+        dense_results = vector_store.query(query_dense, candidate_k, doc_ids=effective_doc_ids)
         dense_ids: List[str] = dense_results["ids"]
     else:
         dense_ids = []
@@ -119,7 +132,7 @@ def hybrid_search(
     # ------------------------------------------------------------------
     # Stage 1b: BM25 search
     # ------------------------------------------------------------------
-    bm25_results = fts_store.query(query, candidate_k, doc_ids=doc_ids)
+    bm25_results = fts_store.query(query, candidate_k, doc_ids=effective_doc_ids)
 
     # ------------------------------------------------------------------
     # Candidate pool = ordered union (dense order preserved first)

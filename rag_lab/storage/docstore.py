@@ -50,6 +50,7 @@ class DocStore:
 
         # Idempotent v2 migration
         self._migrate_v2()
+        self._migrate_v3()
         self._conn.commit()
         logger.info(f"Initialized docstore at {self.db_path}")
 
@@ -93,6 +94,11 @@ class DocStore:
             "CREATE INDEX IF NOT EXISTS idx_chunks_model "
             "ON chunks(embedding_model_name, embedding_model_version)"
         )
+
+    def _migrate_v3(self) -> None:
+        """Create v3 metadata tables if they don't exist yet."""
+        from rag_lab.storage.metadata_store import MetadataStore
+        MetadataStore(conn=self._conn).initialize()
 
     # ------------------------------------------------------------------
     # Write
@@ -210,6 +216,20 @@ class DocStore:
     # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------
+
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        if self._conn is None:
+            self.initialize()
+        cursor = self._conn.execute(
+            "DELETE FROM chunks WHERE doc_id = ?", (doc_id,)
+        )
+        count = cursor.rowcount
+        self._conn.execute("DELETE FROM chunks_fts WHERE doc_id = ?", (doc_id,))
+        from rag_lab.storage.metadata_store import MetadataStore
+        MetadataStore(conn=self._conn).delete_document(doc_id)
+        self._conn.commit()
+        logger.info(f"Deleted {count} chunks for doc_id={doc_id!r}")
+        return count
 
     def delete_all(self) -> None:
         if self._conn is None:

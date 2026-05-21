@@ -4,6 +4,75 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.3 — 2026-05-21
+
+### Metadata, tags, and structured filters
+
+Adds a normalized metadata layer and structured document filtering without
+touching any retrieval ranking, RRF, MMR, weights, top-k, or models.
+
+**New schema (v3) in docstore.sqlite:**
+
+| Table | Purpose |
+|-------|---------|
+| `documents` | One row per ingested doc: path, content_hash, source_id, dataset_id, status, timestamps, embedding metadata |
+| `tags` | Normalized tag names with auto-increment tag_id |
+| `document_tags` | Many-to-many between documents and tags (ON DELETE CASCADE) |
+| `sources` | Optional source catalogue (URL, description) |
+| `datasets` | Optional dataset groupings |
+
+Migration: `python -m rag_lab.maintenance.migrate_to_v3` — idempotent, populates
+documents from existing chunks, migrates tags from legacy doc_manager.db if present.
+
+**Structured filters (`rag_lab/retrieval/filters.py`):**
+
+`FilterSpec` dataclass with `doc_ids`, `tags_include` (AND), `tags_exclude`,
+`source_id`, `dataset_id`, `status`. `resolve_filter(conn, spec)` converts it
+to a `List[str]` of doc_ids for the existing filter mechanism. `hybrid_search()`
+now accepts `filter_spec=` alongside the existing `doc_ids=`.
+
+**New CLI commands (`rag-lab docs` / `rag-lab tags`):**
+
+```
+rag-lab docs list [--tag TAG] [--source SOURCE] [--dataset DATASET] [--status STATUS]
+rag-lab docs show DOC_ID
+rag-lab docs tag DOC_ID TAG_NAME
+rag-lab docs untag DOC_ID TAG_NAME
+rag-lab docs delete DOC_ID [--force]
+rag-lab docs set-source DOC_ID SOURCE_ID
+rag-lab docs set-dataset DOC_ID DATASET_ID
+rag-lab tags list
+rag-lab tags rename OLD NEW
+rag-lab tags delete NAME [--force]
+```
+
+`docs delete` removes consistently from chunks (SQLite + FTS5 + documents table)
+and ChromaDB. `DocStore.delete_by_doc_id()` and `VectorStore.delete_by_doc_id()`
+added as first-class methods.
+
+**Diagnose filter support:**
+
+```
+python -m rag_lab.maintenance.diagnose --query "..." --tag glossary
+python -m rag_lab.maintenance.diagnose --query "..." --doc-id SDMX_Glossary --explain
+python -m rag_lab.maintenance.diagnose --query "..." --exclude-tag test
+```
+
+`--explain` now also shows which filters were applied and how many documents
+matched before retrieval.
+
+**Reconcile metadata checks:**
+
+Reconcile now reports orphaned documents (documents table row with no chunks),
+doc_ids in chunks with no documents row, and document_tags pointing to
+non-existent documents.
+
+**Test suite:** 476 tests, EXIT_CODE=0 (was 427 in v1.2; +49 new tests
+covering MetadataStore CRUD, FilterSpec resolution, migration idempotency, and
+delete_by_doc_id).
+
+---
+
 ## v1.2 — 2026-05-21
 
 ### Reliability and observability

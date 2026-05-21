@@ -143,6 +143,37 @@ def reconcile(
     in_chroma_not_docstore = chroma_ids - docstore_ids
     in_docstore_not_chroma = docstore_ids - chroma_ids
 
+    # --- v3 metadata checks (documents / tags / document_tags) ---
+    # Documents with no chunks (orphaned document rows)
+    try:
+        rows = conn.execute(
+            "SELECT doc_id FROM documents "
+            "WHERE doc_id NOT IN (SELECT DISTINCT doc_id FROM chunks)"
+        ).fetchall()
+        orphaned_documents = [r[0] for r in rows]
+    except Exception:
+        orphaned_documents = []
+
+    # Chunks whose doc_id has no matching documents row (only matters if migration ran)
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT doc_id FROM chunks "
+            "WHERE doc_id NOT IN (SELECT doc_id FROM documents)"
+        ).fetchall()
+        chunks_without_document = [r[0] for r in rows]
+    except Exception:
+        chunks_without_document = []
+
+    # document_tags pointing to a doc_id not in documents
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT doc_id FROM document_tags "
+            "WHERE doc_id NOT IN (SELECT doc_id FROM documents)"
+        ).fetchall()
+        orphaned_document_tags = [r[0] for r in rows]
+    except Exception:
+        orphaned_document_tags = []
+
     result = {
         "docstore_count": len(docstore_ids),
         "chroma_count": len(chroma_ids),
@@ -154,6 +185,9 @@ def reconcile(
         "model_version_mismatches": model_version_mismatches,
         "embedding_dim_mismatches": embedding_dim_mismatches,
         "sparse_format_version_mismatches": sparse_format_version_mismatches,
+        "orphaned_documents": orphaned_documents,
+        "chunks_without_document": chunks_without_document,
+        "orphaned_document_tags": orphaned_document_tags,
         "repaired": False,
     }
 
@@ -209,6 +243,14 @@ def _print_report(result: dict, docstore_count: int) -> None:
     if result["sparse_format_version_mismatches"]:
         print(f"  ⚠ {len(result['sparse_format_version_mismatches'])} chunks with stale sparse_format_version")
 
+    if result.get("orphaned_documents"):
+        print(f"  ⚠ {len(result['orphaned_documents'])} documents with no chunks")
+    if result.get("chunks_without_document"):
+        print(f"  ℹ {len(result['chunks_without_document'])} doc_ids in chunks missing from documents table"
+              " — run: python -m rag_lab.maintenance.migrate_to_v3")
+    if result.get("orphaned_document_tags"):
+        print(f"  ⚠ {len(result['orphaned_document_tags'])} document_tags pointing to non-existent documents")
+
     if sparse < docstore_count:
         missing = docstore_count - sparse
         print(f"  ℹ {missing} chunks without sparse BLOBs — run: python -m rag_lab.cli ingest --force")
@@ -236,6 +278,8 @@ def _has_issues(result: dict) -> bool:
         or result.get("model_version_mismatches")
         or result.get("embedding_dim_mismatches")
         or result.get("sparse_format_version_mismatches")
+        or result.get("orphaned_documents")
+        or result.get("orphaned_document_tags")
     )
 
 

@@ -18,11 +18,21 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Full system diagnostic | `python -m rag_lab.maintenance.diagnose` |
 | Diagnostic with test query | `python -m rag_lab.maintenance.diagnose --query "What is SDMX?"` |
 | Diagnostic with signal breakdown | `python -m rag_lab.maintenance.diagnose --query "..." --explain` |
+| Diagnostic with filter | `python -m rag_lab.maintenance.diagnose --query "..." --tag glossary --explain` |
 | Benchmark regression check | `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current data/benchmark_latest.json` |
 | Run benchmark | `python -m rag_lab.benchmark --variants hybrid hybrid_mmr --output data/benchmark_latest.json` |
 | Ingest all documents | `python -m rag_lab.cli ingest` |
 | Backfill sparse BLOBs | `python -m rag_lab.maintenance.backfill_sparse` |
 | Migrate to schema v2 | `python -m rag_lab.maintenance.migrate_to_v2` |
+| Migrate to schema v3 (metadata) | `python -m rag_lab.maintenance.migrate_to_v3` |
+| List documents | `python -m rag_lab.cli docs list` |
+| List documents by tag | `python -m rag_lab.cli docs list --tag glossary` |
+| Show document details | `python -m rag_lab.cli docs show SDMX_Glossary` |
+| Tag a document | `python -m rag_lab.cli docs tag SDMX_Glossary glossary` |
+| Untag a document | `python -m rag_lab.cli docs untag SDMX_Glossary glossary` |
+| Delete document (all stores) | `python -m rag_lab.cli docs delete SDMX_Glossary` |
+| List all tags | `python -m rag_lab.cli tags list` |
+| Rename a tag | `python -m rag_lab.cli tags rename old-name new-name` |
 
 ---
 
@@ -250,4 +260,86 @@ Chunks were ingested with an older config. Re-ingest the affected documents:
 
 ```bash
 python -m rag_lab.cli ingest --doc path/to/document.md --force
+```
+
+---
+
+## Document metadata and tags (v1.3+)
+
+### Schema
+
+v1.3 adds five metadata tables to docstore.sqlite (same file as chunks):
+
+| Table | Purpose |
+|-------|---------|
+| `documents` | One row per doc: path, content_hash, source_id, dataset_id, status, timestamps |
+| `tags` | Normalized tag names (tag_id, name UNIQUE) |
+| `document_tags` | Many-to-many join, ON DELETE CASCADE |
+| `sources` | Optional source catalogue |
+| `datasets` | Optional dataset groupings |
+
+### Initial migration
+
+After upgrading to v1.3, run once to populate the documents table from chunks
+and migrate any tags from the legacy doc_manager.db:
+
+```bash
+python -m rag_lab.maintenance.migrate_to_v3
+```
+
+Safe to re-run — fully idempotent.
+
+### Tagging documents
+
+```bash
+rag-lab docs tag SDMX_Glossary glossary
+rag-lab docs tag SDMX_Glossary sdmx-core
+rag-lab docs tag SDMX_2-1_User_Guide_6 user-guide
+rag-lab tags rename sdmx-core sdmx
+```
+
+### Filtering retrieval by tags
+
+Tags are resolved to doc_ids before any retrieval call. The ranking pipeline
+(RRF, MMR, etc.) is unchanged — tags only restrict the candidate pool.
+
+Via diagnose (for debugging):
+```bash
+python -m rag_lab.maintenance.diagnose --query "code list" --tag glossary
+python -m rag_lab.maintenance.diagnose --query "REST API" --exclude-tag test --explain
+```
+
+Via Python (`hybrid_search`):
+```python
+from rag_lab.retrieval.filters import FilterSpec
+results = hybrid_search(
+    query, vs, ds, fts,
+    query_dense=emb,
+    query_sparse=sparse,
+    filter_spec=FilterSpec(tags_include=["glossary"]),
+)
+```
+
+### tag include logic (AND)
+
+`tags_include=["glossary", "sdmx-core"]` returns only documents that have
+**all** listed tags. Use multiple `--tag` flags in diagnose for AND logic.
+
+### Deleting a document consistently
+
+```bash
+rag-lab docs delete SDMX_Glossary_Test
+```
+
+Removes from: SQLite chunks + FTS5 + documents table + ChromaDB vectors.
+
+### Reconcile metadata checks
+
+After v3 migration, reconcile also checks:
+- Documents in documents table with no chunks (possible after manual deletion)
+- Chunk doc_ids with no documents row (migration not run yet)
+- document_tags pointing to deleted documents (should be zero due to CASCADE)
+
+```bash
+python -m rag_lab.maintenance.reconcile
 ```
