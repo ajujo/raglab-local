@@ -9,6 +9,14 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Goal | Command |
 |------|---------|
 | Full health check | `python -m rag_lab.doctor` |
+| Ingest a document (transactional) | `rag-lab ingest --doc path/to/doc.md` |
+| Ingest all sources | `rag-lab ingest` |
+| Resume crashed ingest runs | `rag-lab ingest --resume` |
+| Retry all failed ingest runs | `rag-lab ingest --retry-failed` |
+| List ingest run history | `rag-lab ingest runs` |
+| Show a specific ingest run | `rag-lab ingest show <run_id>` |
+| Roll back a failed run manually | `rag-lab ingest rollback <run_id>` |
+| Retry a specific failed run | `rag-lab ingest retry <run_id>` |
 | Health check with test query | `python -m rag_lab.doctor --query "What is SDMX?"` |
 | Run specific checks only | `python -m rag_lab.doctor --checks config,docstore,chromadb` |
 | Store consistency report | `python -m rag_lab.maintenance.reconcile` |
@@ -214,6 +222,58 @@ Key metrics (28 queries, `hybrid_mmr` variant, λ=0.6):
 | MRR | 0.884 |
 | nDCG@10 | 0.840 |
 | unique_docs@5 | 4.82 |
+
+---
+
+## Ingest transactions (v1.4+)
+
+Every document ingest is now wrapped in a logical transaction that tracks
+progress and performs rollback compensation on failure.
+
+### Status transitions
+
+```
+IN_PROGRESS → COMMITTED     (success)
+IN_PROGRESS → FAILED        (exception raised mid-ingest)
+FAILED      → ROLLED_BACK   (after compensation: delete from ChromaDB + DocStore + FTS5 + documents)
+```
+
+### Checking ingest history
+
+```bash
+rag-lab ingest runs                      # last 20 runs
+rag-lab ingest runs --status FAILED      # only failed
+rag-lab ingest runs --doc SDMX_Glossary  # runs for one doc
+rag-lab ingest show abc123def456         # full details
+```
+
+### Recovering from failures
+
+After a crash or partial ingest:
+
+```bash
+# Automatic: roll back stale IN_PROGRESS + FAILED, then re-ingest
+rag-lab ingest --resume          # stale IN_PROGRESS only
+rag-lab ingest --retry-failed    # FAILED only
+
+# Manual: roll back a specific run, then re-ingest separately
+rag-lab ingest rollback abc123def456
+rag-lab ingest --doc path/to/doc.md --force
+```
+
+`rollback` is **idempotent** — safe to run multiple times.
+
+### What rollback does
+
+1. Delete from ChromaDB: `VectorStore.delete_by_doc_id(doc_id)`
+2. Delete from SQLite chunks + FTS5 + documents table
+3. Mark run status as `ROLLED_BACK`
+
+### Stale IN_PROGRESS detection
+
+Runs that have been `IN_PROGRESS` for more than 30 minutes are considered
+stale (process likely crashed). Both `reconcile` and `doctor ingest_health`
+detect and report them.
 
 ---
 

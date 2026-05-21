@@ -34,6 +34,7 @@ ALL_CHECKS = [
     "fts5",
     "sparse_coverage",
     "reconcile",
+    "ingest_health",
     "test_query",
 ]
 
@@ -188,6 +189,49 @@ def check_reconcile() -> CheckResult:
         return CheckResult("reconcile", severity, "; ".join(issues))
     except Exception as e:
         return CheckResult("reconcile", "FAIL", str(e))
+
+
+def check_ingest_health() -> CheckResult:
+    """Check for failed or stale in-progress ingest runs."""
+    try:
+        ds = DocStore()
+        ds.initialize()
+        conn = ds._conn
+
+        failed = conn.execute(
+            "SELECT COUNT(*) FROM ingest_runs WHERE status = 'FAILED'"
+        ).fetchone()[0]
+
+        stale = conn.execute(
+            "SELECT COUNT(*) FROM ingest_runs "
+            "WHERE status = 'IN_PROGRESS' "
+            "AND started_at < datetime('now', '-30 minutes')"
+        ).fetchone()[0]
+
+        last_row = conn.execute(
+            "SELECT doc_id, finished_at FROM ingest_runs "
+            "WHERE status = 'COMMITTED' ORDER BY finished_at DESC LIMIT 1"
+        ).fetchone()
+
+        ds.close()
+
+        if stale > 0:
+            return CheckResult(
+                "ingest_health", "FAIL",
+                f"{stale} stale IN_PROGRESS run(s) — run: rag-lab ingest --resume",
+            )
+        if failed > 0:
+            return CheckResult(
+                "ingest_health", "WARN",
+                f"{failed} FAILED run(s) — run: rag-lab ingest --retry-failed",
+            )
+
+        last_info = (
+            f"last: {last_row[0]} at {last_row[1]}" if last_row else "no runs yet"
+        )
+        return CheckResult("ingest_health", "OK", last_info)
+    except Exception as e:
+        return CheckResult("ingest_health", "FAIL", str(e))
 
 
 def check_test_query(query: str = "What is SDMX?") -> CheckResult:

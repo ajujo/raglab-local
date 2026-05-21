@@ -4,6 +4,91 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.4 — 2026-05-21
+
+### Transactional ingest with rollback compensation
+
+Makes document ingestion logically transactional, recoverable, and safe against
+partial failures spanning DocStore (SQLite), FTS5, ChromaDB, and the metadata
+store.  No changes to ranking, MMR, weighted RRF, weights, top-k, or models.
+
+**New schema (v4) in docstore.sqlite:**
+
+`ingest_runs` table tracks every ingest attempt:
+
+| Column | Purpose |
+|--------|---------|
+| `run_id` | 12-char hex UUID, primary key |
+| `doc_id` | Document being ingested |
+| `source_path` | Original file path (for retry) |
+| `started_at` / `finished_at` | ISO timestamps |
+| `status` | `IN_PROGRESS` → `COMMITTED` \| `FAILED` → `ROLLED_BACK` |
+| `error_message` | First 500 chars of exception on failure |
+| `chunks_expected` | Total chunks produced by chunker |
+| `chunks_written_docstore` / `_fts5` / `_chroma` / `_sparse` | Per-store write counts |
+| `metadata_written` | 1 once the documents table row is upserted |
+
+**New module `rag_lab/ingest/transaction.py`:**
+
+- `IngestRunStore` — CRUD on `ingest_runs` (create, update, get, list, get_failed,
+  get_stale_in_progress).
+- `IngestTransaction` — context manager that creates an `IN_PROGRESS` run on enter,
+  marks it `COMMITTED` on clean exit, or `FAILED` + triggers rollback on exception.
+- `rollback()` — compensation: deletes from ChromaDB (`delete_by_doc_id`), SQLite
+  chunks + FTS5 + documents table.  Idempotent (safe to call twice).
+
+**Ingest pipeline wrapped in IngestTransaction:**
+
+Every document ingest now runs inside `with IngestTransaction(doc_id, path, ds):`.
+The transaction records progress after each stage: `chunks_expected`,
+`chunks_written_chroma`, `chunks_written_docstore/fts5/sparse`, `metadata_written`.
+MetadataStore.upsert_document() is now called at the end of every successful ingest
+(documents table is populated automatically — no manual `migrate_to_v3` needed for
+newly ingested docs).
+
+**Failure scenarios handled:**
+
+| Failure point | Effect of rollback |
+|---------------|-------------------|
+| Before ChromaDB | No data written; run ROLLED_BACK |
+| After ChromaDB, before DocStore | ChromaDB vectors deleted; run ROLLED_BACK |
+| After DocStore, before metadata | Chunks + FTS5 + ChromaDB deleted; run ROLLED_BACK |
+
+**New CLI commands (`rag-lab ingest` sub-app):**
+
+```
+rag-lab ingest [--doc PATH] [--force] [--resume] [--retry-failed] [--cpu-embedding]
+rag-lab ingest runs   [--doc DOC_ID] [--status STATUS] [--limit N]
+rag-lab ingest show   RUN_ID
+rag-lab ingest rollback RUN_ID [--force]
+rag-lab ingest retry    RUN_ID [--force] [--cpu-embedding]
+```
+
+`--resume` rolls back stale `IN_PROGRESS` runs (started > 30 min ago) and
+re-ingests from the stored source path.  `--retry-failed` does the same for
+`FAILED` runs.
+
+**Reconcile integration:**
+
+Two new fields in reconcile output:
+- `stale_ingest_runs` — IN_PROGRESS runs > 30 min old (likely crashed)
+- `failed_ingest_runs` — FAILED runs awaiting retry or manual rollback
+
+Both cause `exit 1` and appear in the reconcile report with recovery commands.
+
+**Doctor integration:**
+
+New `ingest_health` check (added between `reconcile` and `test_query`):
+- `FAIL` — stale IN_PROGRESS runs found
+- `WARN` — FAILED runs awaiting retry
+- `OK` — no issues; reports last committed ingest
+
+**Test suite:** 510 tests, EXIT_CODE=0 (was 476 in v1.3; +34 new tests covering
+IngestRunStore CRUD, IngestTransaction lifecycle, chaos/failure injection at each
+stage, reconcile stale/failed detection, and check_ingest_health).
+
+---
+
 ## v1.3 — 2026-05-21
 
 ### Metadata, tags, and structured filters

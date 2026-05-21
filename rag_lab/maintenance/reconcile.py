@@ -174,6 +174,33 @@ def reconcile(
     except Exception:
         orphaned_document_tags = []
 
+    # --- v4 ingest transaction checks ---
+    # Stale IN_PROGRESS runs (started > 30 min ago — likely crashed)
+    try:
+        rows = conn.execute(
+            "SELECT run_id, doc_id, started_at FROM ingest_runs "
+            "WHERE status = 'IN_PROGRESS' "
+            "AND started_at < datetime('now', '-30 minutes')"
+        ).fetchall()
+        stale_ingest_runs = [
+            {"run_id": r[0], "doc_id": r[1], "started_at": r[2]} for r in rows
+        ]
+    except Exception:
+        stale_ingest_runs = []
+
+    # FAILED runs not yet rolled back
+    try:
+        rows = conn.execute(
+            "SELECT run_id, doc_id, started_at, error_message FROM ingest_runs "
+            "WHERE status = 'FAILED'"
+        ).fetchall()
+        failed_ingest_runs = [
+            {"run_id": r[0], "doc_id": r[1], "started_at": r[2], "error_message": r[3]}
+            for r in rows
+        ]
+    except Exception:
+        failed_ingest_runs = []
+
     result = {
         "docstore_count": len(docstore_ids),
         "chroma_count": len(chroma_ids),
@@ -188,6 +215,8 @@ def reconcile(
         "orphaned_documents": orphaned_documents,
         "chunks_without_document": chunks_without_document,
         "orphaned_document_tags": orphaned_document_tags,
+        "stale_ingest_runs": stale_ingest_runs,
+        "failed_ingest_runs": failed_ingest_runs,
         "repaired": False,
     }
 
@@ -251,6 +280,18 @@ def _print_report(result: dict, docstore_count: int) -> None:
     if result.get("orphaned_document_tags"):
         print(f"  ⚠ {len(result['orphaned_document_tags'])} document_tags pointing to non-existent documents")
 
+    if result.get("stale_ingest_runs"):
+        n = len(result["stale_ingest_runs"])
+        ids = ", ".join(r["run_id"] for r in result["stale_ingest_runs"])
+        print(f"  ⚠ {n} stale IN_PROGRESS ingest run(s): {ids}")
+        print(f"    → run: rag-lab ingest --resume")
+
+    if result.get("failed_ingest_runs"):
+        n = len(result["failed_ingest_runs"])
+        ids = ", ".join(r["run_id"] for r in result["failed_ingest_runs"])
+        print(f"  ⚠ {n} FAILED ingest run(s): {ids}")
+        print(f"    → run: rag-lab ingest --retry-failed  OR  rag-lab ingest rollback <run_id>")
+
     if sparse < docstore_count:
         missing = docstore_count - sparse
         print(f"  ℹ {missing} chunks without sparse BLOBs — run: python -m rag_lab.cli ingest --force")
@@ -280,6 +321,8 @@ def _has_issues(result: dict) -> bool:
         or result.get("sparse_format_version_mismatches")
         or result.get("orphaned_documents")
         or result.get("orphaned_document_tags")
+        or result.get("stale_ingest_runs")
+        or result.get("failed_ingest_runs")
     )
 
 
