@@ -4,6 +4,92 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.8 — 2026-05-22
+
+### Benchmark complete and continuous evaluation (6.3.6)
+
+**Scope note:** v1.8 completes the *framework* for continuous evaluation.
+The official benchmark currently has 28 validated queries; expanding it to
+60-100+ queries across all categories is a separate curation phase (post-v1.8).
+Candidate queries (44, `validated:false`) do not block CI.
+
+No retrieval changes. No ranking/MMR/RRF/FTS5/ChromaDB/embedding changes.
+No multi-format (PDF/DOCX/HTML). No CSV/datasets/tabular data.
+
+**Baseline canónico v1.7**
+
+- Created `data/baselines/v1.7_official.json`: canonical retrieval baseline for v1.7.
+  - 28 queries (q001–q028), variant `full` (hybrid RRF3 + BGE reranker), top_k=50, rrf_k=20,
+    corpus 610 chunks, git tag v1.7, sha `00882e3`.
+  - Rich metadata: git_tag, git_sha, corpus_chunks, embedding/reranker models,
+    production_differences, command, queries_file.
+  - All existing `benchmark_full_latest.json` etc. remain as historical reference only.
+
+**Nuevo formato de queries YAML (retrocompatible)**
+
+- `data/benchmark_queries.yaml` upgraded from v1.7 to v1.8 format.
+  - New fields per query: `category`, `language`, `suite`, `validated`, `expected_behavior`,
+    `source_of_truth`.
+  - Backward compatible: v1.7 queries (no new fields) load and behave identically.
+  - Missing `suite` treated as `official`; missing `validated` treated as `true`.
+
+**Two-tier query system**
+
+- **official** (28 queries, `validated: true`): used by CI regression guard.
+- **candidate** (44 queries, `validated: false`): backlog for human review; excluded from guard.
+- Total: 72 queries across 10 categories.
+
+**10 categories covered**
+
+`glossary_definition` (18), `technical_standard` (15), `acronym_or_exact_term` (5),
+`multi_chunk_same_doc` (4), `cross_lingual_es_en` (5), `multi_doc_synthesis` (5),
+`table_or_structured_reference` (5), `negative_no_answer` (5), `ambiguity_test` (5),
+`regression_known_hard` (5).
+
+**Benchmark runner (`runner.py`)**
+
+- `BenchmarkRunner.filter_queries(queries, suite, validated_only)` — new utility.
+- `run()` now includes `category`, `language`, `suite` in per-query results.
+- `run()` now produces `per_category` aggregate in each variant's results.
+
+**Benchmark CLI (`__main__.py`)**
+
+- `--suite official|candidates|all` — filter by suite before running.
+- `--validated-only` — keep only validated queries.
+- `--report PATH` — generate Markdown report alongside JSON output.
+
+**Regression guard (`compare.py`)**
+
+- Added `recall@10` (WARN, drop > 3 pp) to `DEFAULT_THRESHOLDS`.
+- Added `recall@30` (WARN, drop > 3 pp) to `DEFAULT_THRESHOLDS`.
+- Added `p99` (WARN, relative increase > 30%) to `DEFAULT_THRESHOLDS`.
+- Default variant changed from `hybrid_mmr` to `full`.
+
+**Report module (`report.py`)** — new
+
+- `generate_report(result, variant)` → structured report dict.
+- `format_markdown(report)` → human-readable Markdown with per-category table.
+- `format_json(report)` → machine-readable JSON.
+- `python -m rag_lab.benchmark.report <file> [--variant] [--json] [--output]`
+
+**Documentation**
+
+- Created `docs/BENCHMARKS.md` (no previous benchmark doc existed at this path).
+  - Baseline v1.7 documented with full metadata and production differences.
+  - Query format v1.8 documented with suite/category semantics.
+  - All CLI commands documented.
+
+**Tests**
+
+- `tests/test_benchmark/test_format.py` (new): 25 tests for YAML format, filter_queries,
+  backward compatibility, real YAML validation.
+- `tests/test_benchmark/test_report.py` (new): 18 tests for generate_report, format_markdown,
+  format_json.
+- `tests/test_benchmark/test_compare.py`: 9 new tests for v1.8 thresholds (recall@30, p99,
+  strong/within-tolerance regression detection).
+
+---
+
 ## v1.7 — 2026-05-22
 
 ### Technical debt cleanup (no new features, no retrieval changes)
