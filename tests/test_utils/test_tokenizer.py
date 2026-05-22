@@ -30,6 +30,32 @@ class TestFallback:
             result = count_tokens("hello world!")  # 12 chars → 12//4 = 3
             assert result == max(1, len("hello world!") // 4)
 
+    def test_fallback_when_model_not_in_local_cache(self):
+        """Simulate offline: local_files_only=True raises OSError → fast fallback."""
+        mock_at = MagicMock()
+        mock_at.from_pretrained.side_effect = OSError(
+            "Couldn't find the files, and couldn't connect to 'https://huggingface.co'"
+        )
+        with patch.dict("sys.modules", {"transformers": MagicMock(AutoTokenizer=mock_at)}):
+            reset_tokenizer_cache()
+            result = count_tokens("test text for offline fallback")
+            assert result >= 1
+            # Verify fallback is the heuristic
+            text = "test text for offline fallback"
+            assert result == max(1, len(text) // 4)
+
+    def test_fallback_no_retry_after_first_failure(self):
+        """_load_attempted prevents repeated from_pretrained calls on failure."""
+        mock_at = MagicMock()
+        mock_at.from_pretrained.side_effect = OSError("not cached")
+        with patch.dict("sys.modules", {"transformers": MagicMock(AutoTokenizer=mock_at)}):
+            reset_tokenizer_cache()
+            count_tokens("first call")
+            count_tokens("second call")
+            count_tokens("third call")
+            # from_pretrained must be called at most once (gated by _load_attempted)
+            assert mock_at.from_pretrained.call_count <= 1
+
     def test_fallback_when_from_pretrained_raises(self, monkeypatch):
         """If AutoTokenizer.from_pretrained raises, fall back gracefully."""
         mock_at = MagicMock()

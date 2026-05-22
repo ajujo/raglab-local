@@ -49,18 +49,25 @@ def _load_tokenizer() -> Optional[Any]:
     try:
         from transformers import AutoTokenizer
 
+        # local_files_only=True: never attempt a network download.
+        # If the tokenizer is not in the HuggingFace local cache it fails
+        # immediately (OSError, no hang), triggering the fallback below.
+        # BAAI/bge-m3 tokenizer files are always present on systems that have
+        # run the embedding pipeline at least once.
         tok = AutoTokenizer.from_pretrained(
             TOKENIZER_MODEL_NAME,
             use_fast=True,
+            local_files_only=True,
         )
         _tokenizer = tok
         logger.debug("token counting: loaded tokenizer '%s'", TOKENIZER_MODEL_NAME)
         return _tokenizer
 
-    except Exception as exc:  # ImportError, OSError, network error, etc.
+    except Exception as exc:  # ImportError, OSError (not in cache), etc.
         logger.warning(
-            "token counting: tokenizer unavailable (%s); "
-            "falling back to char-based approximation (len(text) // 4)",
+            "token counting: tokenizer not available locally (%s); "
+            "falling back to char-based approximation (len(text) // 4). "
+            "Set TOKEN_COUNTING_MODE='approx' to silence this warning.",
             exc,
         )
         return None

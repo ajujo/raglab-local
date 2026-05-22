@@ -13,18 +13,21 @@ No new document loaders. Pure token-counting improvement.
 
 **New module: `rag_lab/utils/tokenizer.py`**
 
-- `count_tokens(text) -> int`: lazy-loads `AutoTokenizer.from_pretrained(TOKENIZER_MODEL_NAME)`
-  (BGE-M3 / XLM-RoBERTa subword tokeniser). Caches result globally — tokeniser loaded once
-  per process, tokeniser files only, full model weights not loaded.
-- Fallback to `max(1, len(text) // 4)` if tokeniser unavailable (offline env, ImportError,
-  OSError). Logs a one-time warning.
+- `count_tokens(text) -> int`: lazy-loads `AutoTokenizer.from_pretrained(TOKENIZER_MODEL_NAME,
+  local_files_only=True)` (BGE-M3 / XLM-RoBERTa subword tokeniser). Cached globally after
+  first call — tokeniser files only, full model weights never loaded.
+- `local_files_only=True` guarantees no network access: if the tokeniser is not in the local
+  HuggingFace cache it fails immediately (OSError, no hang). On any system that has run the
+  embedding pipeline at least once, the tokeniser files are already cached.
+- Fallback to `max(1, len(text) // 4)` if tokeniser unavailable (offline, ImportError, OSError).
+  Logs a one-time warning; `_load_attempted` prevents repeated failed attempts.
 - `reset_tokenizer_cache()` for test isolation.
 - Configurable via `TOKEN_COUNTING_MODE` ("real" / "approx") and `TOKENIZER_MODEL_NAME`.
 
 **Config additions (`rag_lab/config.py`)**
 
 - `TOKENIZER_MODEL_NAME = EMBEDDING_MODEL` (→ "BAAI/bge-m3")
-- `TOKEN_COUNTING_MODE = "real"` (set "approx" to bypass tokeniser)
+- `TOKEN_COUNTING_MODE = "real"` (set `"approx"` to bypass tokeniser entirely)
 
 **Integration points updated**
 
@@ -34,10 +37,10 @@ No new document loaders. Pure token-counting improvement.
   Public API preserved.
 - `rag_lab/retrieval/query_processor.py`: HyDE token-count log line uses `count_tokens`.
 
-**Tests (16 new in `tests/test_utils/test_tokenizer.py`)**
+**Tests (18 in `tests/test_utils/test_tokenizer.py`)**
 
-- Fallback: transformers unavailable, from_pretrained raises, approx mode, empty text,
-  proportionality.
+- Fallback: transformers unavailable, model not in local cache (offline fast-fail), no-retry
+  after first failure, from_pretrained raises, approx mode, empty text, proportionality.
 - Caching: tokeniser loaded once, reset_tokenizer_cache works.
 - Real tokeniser: positive count, empty/whitespace→1, length monotone, Spanish text,
   Markdown table, plausible vs heuristic, no FlagModel loaded.
@@ -49,6 +52,23 @@ No new document loaders. Pure token-counting improvement.
   (heuristic-specific), replaced with behavioral contracts (monotone, positive, non-ASCII).
 - `tests/test_ingest/test_validation.py::test_count_tokens_approx`: same — removed
   `== 100` assertion, replaced with proportionality check.
+
+**Reproducibility and ingest impact**
+
+> **Important:** v1.9 does NOT modify the already-ingested corpus.
+> All 610 existing chunks, their chunk_ids, embeddings, and sparse vectors remain unchanged.
+> The retrieval benchmark is unaffected (Δ+0.0000 on all metrics).
+>
+> However, **future re-ingests** will use BGE-M3 subword token counts instead of the
+> `len(text)//4` heuristic. This can alter chunk boundaries, the number of chunks produced,
+> and therefore chunk_ids. After a full re-ingest the benchmark baseline should be regenerated.
+>
+> For reproducibility across machines:
+> - All machines should use the same `TOKENIZER_MODEL_NAME` and `TOKEN_COUNTING_MODE`.
+> - Machines without `BAAI/bge-m3` in local HuggingFace cache will fall back to the
+>   heuristic automatically. Set `TOKEN_COUNTING_MODE=approx` in `.env` to make this
+>   explicit and silence the warning.
+> - `TOKEN_COUNTING_MODE=approx` restores pre-v1.9 chunking behaviour identically.
 
 **Benchmark**
 
