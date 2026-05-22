@@ -224,6 +224,214 @@ def docs_set_source(
 
 
 # ---------------------------------------------------------------------------
+# docs validate / inspect / preview-chunks
+# ---------------------------------------------------------------------------
+
+
+@docs_app.command("validate")
+def docs_validate(
+    path: str = typer.Argument(..., help="Path to the Markdown file to validate."),
+    strict: bool = typer.Option(
+        False, "--strict", help="Treat warnings as errors (exit 1 on any warning)."
+    ),
+) -> None:
+    """Validate a Markdown document against the canonical contract."""
+    from pathlib import Path as P
+    from rag_lab.ingest.markdown_contract import validate_markdown
+    from rag_lab.ingest.validation import ValidationSeverity
+
+    doc_path = P(path)
+    if not doc_path.exists():
+        console.print(f"[red]File not found: {path}[/red]")
+        raise typer.Exit(1)
+
+    report = validate_markdown(doc_path)
+
+    if not report.issues:
+        console.print(f"[green]✓[/green] {doc_path.name} — OK")
+        return
+
+    _SEVERITY_COLOR = {
+        ValidationSeverity.ERROR: "red",
+        ValidationSeverity.WARN: "yellow",
+        ValidationSeverity.INFO: "dim",
+    }
+    for issue in report.issues:
+        color = _SEVERITY_COLOR[issue.severity]
+        loc = f" (line {issue.line_number})" if issue.line_number else ""
+        console.print(
+            f"[{color}]{issue.severity.value:<5}[/{color}]  "
+            f"[{issue.code}]{loc}: {issue.message}"
+        )
+
+    if report.has_errors:
+        console.print(f"\n[red]INVALID[/red] — {report.summary()}")
+        raise typer.Exit(1)
+    elif strict and report.has_warnings:
+        console.print(f"\n[yellow]INVALID[/yellow] (--strict) — {report.summary()}")
+        raise typer.Exit(1)
+    else:
+        console.print(f"\n[yellow]VALID with warnings[/yellow] — {report.summary()}")
+
+
+@docs_app.command("inspect")
+def docs_inspect(
+    path: str = typer.Argument(..., help="Path to the Markdown file."),
+) -> None:
+    """Show structural summary of a Markdown document."""
+    import re
+    from pathlib import Path as P
+    from rag_lab.ingest.markdown_contract import (
+        MarkdownValidationConfig,
+        validate_markdown,
+    )
+    from rag_lab.ingest.validation import ValidationSeverity, count_tokens_approx
+    from rag_lab.config import CHUNK_MAX_TOKENS
+
+    doc_path = P(path)
+    if not doc_path.exists():
+        console.print(f"[red]File not found: {path}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        text = doc_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        console.print(f"[red]File is not valid UTF-8[/red]")
+        raise typer.Exit(1)
+
+    lines = text.splitlines()
+    total_tokens = count_tokens_approx(text)
+    estimated_chunks = max(1, total_tokens // CHUNK_MAX_TOKENS)
+
+    heading_counts: dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+    title: Optional[str] = None
+    for line in lines:
+        m = re.match(r'^(#{1,6})\s+(.*)', line)
+        if m:
+            level = len(m.group(1))
+            heading_counts[level] += 1
+            if level == 1 and title is None:
+                title = m.group(2).strip()
+
+    total_headings = sum(heading_counts.values())
+
+    in_table = False
+    table_count = 0
+    for line in lines:
+        stripped = line.strip()
+        is_table = stripped.startswith("|") and "|" in stripped
+        if is_table and not in_table:
+            in_table = True
+            table_count += 1
+        elif not is_table:
+            in_table = False
+
+    report = validate_markdown(doc_path, MarkdownValidationConfig())
+    file_size_kb = doc_path.stat().st_size / 1024
+
+    console.print(f"\n[bold cyan]Inspect:[/bold cyan] {doc_path.name}\n")
+    console.print(f"  {'doc_id':<24} {doc_path.stem}")
+    console.print(f"  {'title':<24} {title or '(none)'}")
+    console.print(f"  {'file_size':<24} {file_size_kb:.1f} KB")
+    console.print(f"  {'total_lines':<24} {len(lines):,}")
+    console.print(f"  {'total_tokens (~)':<24} {total_tokens:,}")
+    console.print(f"  {'estimated_chunks (~)':<24} {estimated_chunks}")
+    console.print(f"  {'total_headings':<24} {total_headings}")
+    for level in range(1, 7):
+        if heading_counts[level] > 0:
+            console.print(f"  {'  H' + str(level):<24} {heading_counts[level]}")
+    console.print(f"  {'tables':<24} {table_count}")
+
+    n_errors = len(report.errors)
+    n_warns = len(report.warnings)
+    if not report.issues:
+        val_status = "[green]OK[/green]"
+    elif n_errors:
+        val_status = f"[red]{n_errors} error(s)[/red]"
+        if n_warns:
+            val_status += f", [yellow]{n_warns} warning(s)[/yellow]"
+    else:
+        val_status = f"[yellow]{n_warns} warning(s)[/yellow]"
+    console.print(f"  {'validation':<24} {val_status}")
+
+    if report.issues:
+        console.print()
+        _COLOR = {
+            ValidationSeverity.ERROR: "red",
+            ValidationSeverity.WARN: "yellow",
+            ValidationSeverity.INFO: "dim",
+        }
+        for issue in report.issues:
+            color = _COLOR[issue.severity]
+            loc = f"  line {issue.line_number}" if issue.line_number else ""
+            console.print(
+                f"    [{color}]{issue.severity.value:<5}[/{color}] "
+                f"[{issue.code}]{loc}: {issue.message}"
+            )
+    console.print()
+
+
+@docs_app.command("preview-chunks")
+def docs_preview_chunks(
+    path: str = typer.Argument(..., help="Path to the Markdown file."),
+    limit: int = typer.Option(0, "--limit", help="Max chunks to display (0 = all)."),
+) -> None:
+    """Preview how a document will be chunked without writing to stores."""
+    import tempfile
+    from pathlib import Path as P
+    from rag_lab.ingest.cleaner import clean_document
+    from rag_lab.chunking.splitter import chunk_document
+
+    doc_path = P(path)
+    if not doc_path.exists():
+        console.print(f"[red]File not found: {path}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cleaned_path = clean_document(doc_path, output_dir=P(tmpdir))
+            text = cleaned_path.read_text(encoding="utf-8")
+    except Exception as exc:
+        console.print(f"[red]Failed to read/clean document: {exc}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        chunks = chunk_document(text, doc_id=doc_path.stem)
+    except Exception as exc:
+        console.print(f"[red]Chunking failed: {exc}[/red]")
+        raise typer.Exit(1)
+
+    total = len(chunks)
+    shown = chunks[:limit] if limit > 0 else chunks
+
+    console.print(
+        f"\n[bold cyan]Chunk preview:[/bold cyan] {doc_path.name}  "
+        f"[dim]({total} chunks total)[/dim]\n"
+    )
+    console.rule()
+
+    for i, chunk in enumerate(shown, start=1):
+        console.print(
+            f"[bold]\\[{i}/{total}][/bold]  [cyan]{chunk.heading_path}[/cyan]"
+        )
+        console.print(
+            f"        tipo=[yellow]{chunk.tipo}[/yellow]  "
+            f"tokens=[green]{chunk.n_tokens}[/green]  "
+            f"lines={chunk.line_start}-{chunk.line_end}"
+        )
+        preview = chunk.text[:120].replace("\n", " ")
+        if len(chunk.text) > 120:
+            preview += "…"
+        console.print(f"        [dim]{preview}[/dim]")
+        console.print()
+
+    if limit > 0 and total > limit:
+        console.print(
+            f"[dim]… {total - limit} more chunks. Use --limit 0 to see all.[/dim]"
+        )
+
+
+# ---------------------------------------------------------------------------
 # tags commands
 # ---------------------------------------------------------------------------
 
