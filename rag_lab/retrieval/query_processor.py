@@ -8,7 +8,17 @@ from typing import List
 
 from rag_lab.config import (
     HYDE_ENABLED,
+    HYDE_MAX_TOKENS,
+    HYDE_TEMPERATURE,
+    HYDE_FORCE_NO_THINKING,
+    HYDE_TIMEOUT_SECONDS,
+    HYDE_USE_FOR_DENSE,
+    HYDE_USE_FOR_BM25,
+    HYDE_USE_FOR_SPARSE,
     QUERY_REWRITING_ENABLED,
+    QUERY_REWRITING_MAX_TOKENS,
+    QUERY_REWRITING_TEMPERATURE,
+    QUERY_REWRITING_TIMEOUT_SECONDS,
     QUERY_VARIANT_STOPWORD_ENABLED,
     QUERY_VARIANT_LAST_TERMS_ENABLED,
 )
@@ -38,9 +48,17 @@ def process_query(
     """
     # Step 1: Query rewriting (if enabled)
     if use_rewriting:
+        _rw_timeout = QUERY_REWRITING_TIMEOUT_SECONDS or None
         query = rewrite_query(
             query,
-            llm_call=lambda prompt: generate_response("", prompt),
+            llm_call=lambda prompt: generate_response(
+                "",
+                prompt,
+                max_tokens=QUERY_REWRITING_MAX_TOKENS,
+                temperature=QUERY_REWRITING_TEMPERATURE,
+                timeout=_rw_timeout,
+                force_no_thinking=True,
+            ),
         )
 
     queries = [{"text": query, "type": "original"}]
@@ -48,10 +66,13 @@ def process_query(
     # Step 2: HyDE (if enabled, operates on the potentially rewritten query)
     if use_hyde:
         hypothetical = _generate_hypothetical_answer(query)
-        if hypothetical:
+        if hypothetical and hypothetical != query:
             queries.append({
                 "text": hypothetical,
                 "type": "hyde",
+                "use_for_dense": HYDE_USE_FOR_DENSE,
+                "use_for_bm25": HYDE_USE_FOR_BM25,
+                "use_for_sparse": HYDE_USE_FOR_SPARSE,
             })
 
     # Step 3: Query expansion variants (disabled by default — see A/B results in v1.11)
@@ -77,15 +98,12 @@ HYDE_USER_PROMPT_TEMPLATE = """\
 Genera un párrafo técnico de 3-5 oraciones que respondería directamente
 a la siguiente pregunta, usando el vocabulario especializado del dominio.
 No cites fuentes. No uses expresiones como "según los documentos".
+No rarones en voz alta. No expliques pasos intermedios.
 Escribe como si fueras un experto respondiendo desde su conocimiento.
+Sé conciso: máximo 3-5 oraciones.
 
 Pregunta: {question}
 """
-
-# HyDE only needs a short hypothetical paragraph — bounded to prevent thinking
-# mode or verbose generation from consuming large token budgets.
-HYDE_MAX_TOKENS = 300
-HYDE_TEMPERATURE = 0.1
 
 
 def _generate_hypothetical_answer(query: str) -> str:
@@ -94,9 +112,10 @@ def _generate_hypothetical_answer(query: str) -> str:
     Calls the LLM to generate a plausible technical answer to the query,
     which is then used as a hypothetical document for embedding-based retrieval.
 
-    Uses HYDE_MAX_TOKENS=300 and HYDE_TEMPERATURE=0.1 to keep generation short
-    and focused. generate_response already passes enable_thinking=False via
-    chat_template_kwargs, so thinking mode is suppressed on supporting servers.
+    Uses HYDE_MAX_TOKENS and HYDE_TEMPERATURE from config. When
+    HYDE_FORCE_NO_THINKING=True, skips the thinking token multiplier and
+    passes enable_thinking=False — the token budget is used entirely for
+    the hypothetical answer, not for reasoning chains.
 
     Args:
         query: The user's question.
@@ -105,6 +124,7 @@ def _generate_hypothetical_answer(query: str) -> str:
         Hypothetical answer text, or original query on LLM failure.
     """
     user_prompt = HYDE_USER_PROMPT_TEMPLATE.format(question=query)
+    _timeout = HYDE_TIMEOUT_SECONDS if HYDE_TIMEOUT_SECONDS > 0 else None
 
     try:
         hypothetical = generate_response(
@@ -112,19 +132,22 @@ def _generate_hypothetical_answer(query: str) -> str:
             user_prompt,
             max_tokens=HYDE_MAX_TOKENS,
             temperature=HYDE_TEMPERATURE,
+            timeout=_timeout,
+            force_no_thinking=HYDE_FORCE_NO_THINKING,
         )
         if hypothetical:
             n_tokens = _count_tokens(hypothetical)
             logger.info(
-                f"HyDE: hipótesis generada ({n_tokens} tokens) para query: \"{query[:60]}...\""
+                "HyDE: hypothesis generated (%d tokens) for query: \"%s...\"",
+                n_tokens, query[:60],
             )
             return hypothetical
         else:
-            logger.warning("HyDE: LLM devolvió texto vacío, usando query original como fallback")
+            logger.warning("HyDE: LLM returned empty text, falling back to original query")
             return query
 
     except Exception as e:
-        logger.warning(f"HyDE: error al llamar al LLM: {e}. Usando query original como fallback.")
+        logger.warning("HyDE: LLM call failed (%s). Falling back to original query.", e)
         return query
 
 

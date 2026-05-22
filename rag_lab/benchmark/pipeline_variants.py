@@ -27,7 +27,9 @@ from rag_lab.storage.vector_store import VectorStore
 VARIANT_NAMES = ["dense", "bm25", "dense_bm25", "hybrid", "full"]
 # Experimental diversity variants — not included in default runs; opt-in via --variants
 DIVERSITY_VARIANT_NAMES = ["hybrid_cap", "hybrid_mmr"]
-ALL_VARIANT_NAMES = VARIANT_NAMES + DIVERSITY_VARIANT_NAMES
+# HyDE variant — requires LLM server; falls back to full if LLM unavailable
+HYDE_VARIANT_NAMES = ["full_hyde"]
+ALL_VARIANT_NAMES = VARIANT_NAMES + DIVERSITY_VARIANT_NAMES + HYDE_VARIANT_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +233,77 @@ def run_full(
 
 
 # ---------------------------------------------------------------------------
+# Full pipeline with HyDE dense augmentation
+# ---------------------------------------------------------------------------
+
+def run_full_hyde(
+    query: str,
+    query_dense: np.ndarray,
+    query_sparse: Dict[int, float],
+    vector_store: VectorStore,
+    doc_store: DocStore,
+    fts_store: FTSStore,
+    top_k: int,
+    rrf_k: int,
+    rerank_device: str,
+    embedding_device: str = "cuda",
+    doc_ids: Optional[List[str]] = None,
+) -> Tuple[List[dict], dict]:
+    """Full pipeline where the dense query is replaced by a HyDE hypothetical.
+
+    Generates a hypothetical answer via LLM, encodes it for dense retrieval,
+    and uses the original query for BM25/sparse. Falls back to the standard
+    full pipeline if the LLM call fails or returns the original query unchanged.
+
+    Requires a live LLM server. Results are meaningless (identical to full)
+    when the server is unavailable and the fallback triggers.
+    """
+    from rag_lab.retrieval.reranker import rerank
+    from rag_lab.retrieval.query_processor import _generate_hypothetical_answer
+    from rag_lab.embedding.encoder import encode_chunks
+
+    t0 = time.perf_counter()
+
+    # Step 1: Generate hypothetical answer
+    hyde_text = _generate_hypothetical_answer(query)
+    hyde_used = hyde_text != query
+
+    if hyde_used:
+        # Step 2: Encode hypothetical for dense signal only
+        dense_emb, _ = encode_chunks(
+            [{"text": hyde_text, "chunk_id": "__hyde_query__"}],
+            batch_size=1,
+            device=embedding_device,
+        )
+        effective_dense = dense_emb[0]
+    else:
+        effective_dense = query_dense  # fallback: use original
+
+    # Step 3: Hybrid search — original text for BM25, hyde dense for vector
+    chunks, hs_stats = hybrid_search(
+        query,           # original text → BM25 search (never contaminated by LLM)
+        vector_store,
+        doc_store,
+        fts_store,
+        query_dense=effective_dense,   # hypothetical (or original fallback)
+        query_sparse=query_sparse,     # original sparse weights
+        top_k=top_k,
+        rrf_k=rrf_k,
+        doc_ids=doc_ids,
+        diversity_mode="off",
+        _return_stats=True,
+    )
+
+    # Step 4: Cross-encoder reranker uses original query (not hypothetical)
+    if chunks:
+        chunks = rerank(query, chunks, top_k=len(chunks), device=rerank_device)
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+    stats = {"latency_ms": latency_ms, "hyde_used": hyde_used} | hs_stats
+    return chunks, stats
+
+
+# ---------------------------------------------------------------------------
 # Diversity variants
 # ---------------------------------------------------------------------------
 
@@ -322,6 +395,7 @@ def run_variant(
     doc_ids: Optional[List[str]] = None,
     doc_cap: int = 3,
     mmr_lambda: float = 0.7,
+    embedding_device: str = "cuda",
 ) -> Tuple[List[dict], dict]:
     """Run one named variant. Returns (chunks, stats)."""
     if name == "dense":
@@ -337,6 +411,10 @@ def run_variant(
     if name == "full":
         return run_full(query, query_dense, query_sparse, vector_store, doc_store,
                         fts_store, top_k, rrf_k, rerank_device, doc_ids)
+    if name == "full_hyde":
+        return run_full_hyde(query, query_dense, query_sparse, vector_store, doc_store,
+                             fts_store, top_k, rrf_k, rerank_device,
+                             embedding_device=embedding_device, doc_ids=doc_ids)
     if name == "hybrid_cap":
         return run_hybrid_cap(query, query_dense, query_sparse, vector_store, doc_store,
                               fts_store, top_k, rrf_k, doc_cap=doc_cap, doc_ids=doc_ids)

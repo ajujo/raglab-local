@@ -2,7 +2,7 @@
 
 Tests:
 - process_query (original always present, variants config-controlled)
-- _generate_hypothetical_answer (including HyDE max_tokens regression, bug 3.10)
+- _generate_hypothetical_answer (HyDE: max_tokens, force_no_thinking, timeout, fallback)
 - _generate_stopword_variant / _generate_last_terms_variant / _generate_query_variant (legacy)
 """
 
@@ -16,9 +16,8 @@ from rag_lab.retrieval.query_processor import (
     _generate_stopword_variant,
     _generate_last_terms_variant,
     _filtered_terms,
-    HYDE_MAX_TOKENS,
-    HYDE_TEMPERATURE,
 )
+from rag_lab.config import HYDE_MAX_TOKENS, HYDE_TEMPERATURE
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +86,9 @@ class TestProcessQuery:
         assert queries[0]["type"] == "original"
 
     def test_with_hyde(self):
-        queries = process_query("What is SDMX?", use_hyde=True)
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="SDMX is a standard for statistical data exchange."):
+            queries = process_query("What is SDMX?", use_hyde=True)
         assert len(queries) >= 2
         assert queries[0]["type"] == "original"
         assert queries[1]["type"] == "hyde"
@@ -266,22 +267,25 @@ class TestGenerateQueryVariantLegacy:
 
 
 # ---------------------------------------------------------------------------
-# HyDE tests (unchanged from v1.10)
+# HyDE tests (v1.12: config-driven, force_no_thinking, timeout, use_for_* flags)
 # ---------------------------------------------------------------------------
 
 class TestGenerateHypotheticalAnswer:
-    def test_basic(self):
-        result = _generate_hypothetical_answer("What is SDMX?")
-        assert len(result) > 0
-        assert "sdmx" in result.lower()
+    def test_basic_fallback_when_llm_unavailable(self):
+        """When LLM is unavailable, returns original query (usable as fallback)."""
+        from rag_lab.exceptions import LLMConnectionError
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   side_effect=LLMConnectionError("LLM unavailable")):
+            result = _generate_hypothetical_answer("What is SDMX?")
+        assert result == "What is SDMX?"
 
     @pytest.mark.llm_required
-    def test_empty(self):
-        result = _generate_hypothetical_answer("")
+    def test_live_llm_returns_nonempty(self):
+        result = _generate_hypothetical_answer("What is SDMX?")
         assert len(result) > 0
 
     def test_calls_generate_response_with_bounded_max_tokens(self):
-        """HyDE must pass HYDE_MAX_TOKENS to generate_response (bug 3.10 regression)."""
+        """HyDE must pass HYDE_MAX_TOKENS=300 to generate_response (bug 3.10 regression)."""
         with patch("rag_lab.retrieval.query_processor.generate_response",
                    return_value="Hypothetical SDMX answer.") as mock_gen:
             _generate_hypothetical_answer("What is SDMX?")
@@ -296,10 +300,40 @@ class TestGenerateHypotheticalAnswer:
         _, kwargs = mock_gen.call_args
         assert kwargs.get("temperature") == HYDE_TEMPERATURE
 
-    def test_hyde_max_tokens_constant_is_bounded(self):
+    def test_hyde_max_tokens_value_is_300(self):
+        assert HYDE_MAX_TOKENS == 300
+
+    def test_hyde_max_tokens_is_bounded(self):
         from rag_lab.config import LLM_MAX_TOKENS
         assert HYDE_MAX_TOKENS <= 512
         assert HYDE_MAX_TOKENS < LLM_MAX_TOKENS
+
+    def test_force_no_thinking_passed_to_generate_response(self):
+        """HYDE_FORCE_NO_THINKING=True must be forwarded to generate_response."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="Hypothetical answer.") as mock_gen:
+            with patch("rag_lab.retrieval.query_processor.HYDE_FORCE_NO_THINKING", True):
+                _generate_hypothetical_answer("What is SDMX?")
+        _, kwargs = mock_gen.call_args
+        assert kwargs.get("force_no_thinking") is True
+
+    def test_timeout_passed_to_generate_response(self):
+        """HYDE_TIMEOUT_SECONDS must be forwarded as timeout to generate_response."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="Hypothetical answer.") as mock_gen:
+            with patch("rag_lab.retrieval.query_processor.HYDE_TIMEOUT_SECONDS", 15):
+                _generate_hypothetical_answer("What is SDMX?")
+        _, kwargs = mock_gen.call_args
+        assert kwargs.get("timeout") == 15
+
+    def test_zero_timeout_passes_none(self):
+        """HYDE_TIMEOUT_SECONDS=0 means no timeout (None passed)."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="Hypothetical answer.") as mock_gen:
+            with patch("rag_lab.retrieval.query_processor.HYDE_TIMEOUT_SECONDS", 0):
+                _generate_hypothetical_answer("What is SDMX?")
+        _, kwargs = mock_gen.call_args
+        assert kwargs.get("timeout") is None
 
     def test_llm_failure_falls_back_to_original_query(self):
         from rag_lab.exceptions import LLMConnectionError
@@ -312,6 +346,69 @@ class TestGenerateHypotheticalAnswer:
         with patch("rag_lab.retrieval.query_processor.generate_response", return_value=""):
             result = _generate_hypothetical_answer("What is SDMX?")
         assert result == "What is SDMX?"
+
+    def test_process_query_hyde_disabled_by_default(self):
+        """process_query must NOT call generate_response when use_hyde=False."""
+        with patch("rag_lab.retrieval.query_processor.generate_response") as mock_gen:
+            process_query("What is SDMX?", use_hyde=False)
+        mock_gen.assert_not_called()
+
+    def test_process_query_no_hyde_type_by_default(self):
+        """Default call produces only the original query, no hyde type."""
+        queries = process_query("What is SDMX?", use_hyde=False)
+        types = [q["type"] for q in queries]
+        assert "hyde" not in types
+
+    def test_process_query_hyde_query_marks_use_for_dense(self):
+        """Hyde query dict must carry use_for_dense=True."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="SDMX enables structured data exchange."):
+            queries = process_query("What is SDMX?", use_hyde=True)
+        hyde_queries = [q for q in queries if q["type"] == "hyde"]
+        assert len(hyde_queries) == 1
+        assert hyde_queries[0].get("use_for_dense") is True
+
+    def test_process_query_hyde_query_not_for_bm25(self):
+        """Hyde query dict must carry use_for_bm25=False."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="SDMX enables structured data exchange."):
+            queries = process_query("What is SDMX?", use_hyde=True)
+        hyde_queries = [q for q in queries if q["type"] == "hyde"]
+        assert hyde_queries[0].get("use_for_bm25") is False
+
+    def test_process_query_hyde_query_not_for_sparse(self):
+        """Hyde query dict must carry use_for_sparse=False."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="SDMX enables structured data exchange."):
+            queries = process_query("What is SDMX?", use_hyde=True)
+        hyde_queries = [q for q in queries if q["type"] == "hyde"]
+        assert hyde_queries[0].get("use_for_sparse") is False
+
+    def test_process_query_original_preserved_with_hyde(self):
+        """Original query is always first, regardless of HyDE."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="SDMX enables structured data exchange."):
+            queries = process_query("What is SDMX?", use_hyde=True)
+        assert queries[0]["type"] == "original"
+        assert queries[0]["text"] == "What is SDMX?"
+
+    def test_process_query_llm_failure_keeps_only_original(self):
+        """If HyDE LLM fails, only the original query is returned."""
+        from rag_lab.exceptions import LLMConnectionError
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   side_effect=LLMConnectionError("LLM unavailable")):
+            queries = process_query("What is SDMX?", use_hyde=True)
+        assert len(queries) == 1
+        assert queries[0]["type"] == "original"
+
+    def test_process_query_hyde_not_added_if_identical_to_original(self):
+        """If LLM returns the original text unchanged, no hyde entry is added."""
+        with patch("rag_lab.retrieval.query_processor.generate_response",
+                   return_value="What is SDMX?"):  # identical to original
+            queries = process_query("What is SDMX?", use_hyde=True)
+        types = [q["type"] for q in queries]
+        assert "hyde" not in types
+        assert len(queries) == 1
 
 
 if __name__ == "__main__":

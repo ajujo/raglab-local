@@ -122,6 +122,8 @@ def generate_response(
     user_prompt: str,
     temperature: float = None,
     max_tokens: int = None,
+    timeout: Optional[float] = None,
+    force_no_thinking: bool = False,
 ) -> str:
     """Generate a response from the LLM.
 
@@ -135,7 +137,12 @@ def generate_response(
         user_prompt: User message with context and question.
         temperature: Sampling temperature (default from config).
         max_tokens: Desired max tokens for the ANSWER (default from config).
-            Internally multiplied to accommodate thinking tokens.
+            Internally multiplied by _THINKING_TOKEN_MULTIPLIER unless
+            force_no_thinking=True.
+        timeout: Request timeout in seconds. None = no timeout.
+        force_no_thinking: When True, skip the thinking token multiplier and
+            always pass enable_thinking=False. Use for short-output calls
+            (HyDE, query rewriting) where thinking is suppressed at the server.
 
     Returns:
         The LLM's response as a string.
@@ -146,8 +153,12 @@ def generate_response(
     temperature = temperature if temperature is not None else LLM_TEMPERATURE
     desired_tokens = max_tokens or LLM_MAX_TOKENS
 
-    # Allocate extra budget for thinking tokens
-    actual_max_tokens = desired_tokens * _THINKING_TOKEN_MULTIPLIER
+    if force_no_thinking:
+        # Thinking is suppressed — allocate exactly the desired token budget.
+        actual_max_tokens = desired_tokens
+    else:
+        # Allocate extra budget for thinking tokens
+        actual_max_tokens = desired_tokens * _THINKING_TOKEN_MULTIPLIER
 
     try:
         client = _get_client()
@@ -160,6 +171,7 @@ def generate_response(
             ],
             temperature=temperature,
             max_tokens=actual_max_tokens,
+            timeout=timeout,
             extra_body={
                 # Try to disable thinking (works on SGLang, ignored by LM Studio)
                 "chat_template_kwargs": {"enable_thinking": False},

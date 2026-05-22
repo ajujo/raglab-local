@@ -322,12 +322,56 @@ Generados por `BenchmarkRunner.save()`. Estructura:
 
 ## Variantes disponibles
 
-| Variante     | Descripción                                      | Default |
-|-------------|--------------------------------------------------|---------|
-| `dense`     | Solo dense (ChromaDB cosine)                     | Sí      |
-| `bm25`      | Solo BM25/FTS5                                   | Sí      |
-| `dense_bm25`| RRF2: dense + BM25                               | Sí      |
-| `hybrid`    | RRF3: dense + BM25 + BGE-M3 sparse               | Sí      |
-| `full`      | hybrid + BGE cross-encoder reranker (= producción) | Sí    |
-| `hybrid_cap`| hybrid + doc_cap (opt-in)                        | No      |
-| `hybrid_mmr`| hybrid + MMR diversity (opt-in)                  | No      |
+| Variante     | Descripción                                      | Default | Requiere LLM |
+|-------------|--------------------------------------------------|---------|:---:|
+| `dense`     | Solo dense (ChromaDB cosine)                     | Sí      | No |
+| `bm25`      | Solo BM25/FTS5                                   | Sí      | No |
+| `dense_bm25`| RRF2: dense + BM25                               | Sí      | No |
+| `hybrid`    | RRF3: dense + BM25 + BGE-M3 sparse               | Sí      | No |
+| `full`      | hybrid + BGE cross-encoder reranker (= producción) | Sí    | No |
+| `hybrid_cap`| hybrid + doc_cap (opt-in)                        | No      | No |
+| `hybrid_mmr`| hybrid + MMR diversity (opt-in)                  | No      | No |
+| `full_hyde` | full + HyDE dense augmentation (opt-in, experimental) | No | Sí |
+
+---
+
+## Experimento HyDE (v1.12) — no activado por defecto
+
+**Resultado del A/B sobre 65 queries oficiales (2026-05-22):**
+
+| Métrica | full (v1.11 baseline) | full_hyde | Δ | Veredicto |
+|---------|----------------------|-----------|---|-----------|
+| R@5 | 0.8205 | 0.7821 | −0.038 | ❌ FAIL (>2pp) |
+| R@10 | 0.8962 | 0.8577 | −0.038 | ❌ |
+| R@30 | 0.9782 | 0.9756 | −0.003 | ✓ |
+| MRR | 0.9385 | 0.9385 | 0.000 | ✓ |
+| nDCG@10 | 0.8373 | 0.8187 | −0.019 | ⚠ |
+| P50 (ms) | 237 | 2966 | +2729 | ❌ 12.5× slower |
+
+**Queries que mejoran con HyDE (R@5):** q010 (+0.500), q035 (+0.333), q071 (+0.333), q013 (+0.333)
+
+**Queries que empeoran con HyDE (R@5):** q027/q041/q051/q069 (−0.500), q026/q031/q036/q056/q065 (−0.333), q057 (−0.333)
+
+**q070 cross_lingual_es_en:** R@5=0.500 tanto en `full` como en `full_hyde` — HyDE no empeora ni mejora la regresión conocida del reranker context.
+
+**Interpretación:**
+El embedding BGE-M3 ya es suficientemente fuerte en este corpus SDMX. El texto hipotético
+desplaza la búsqueda densa hacia vocabulario ligeramente diferente, causando más misses que hits.
+La latencia extra (llamada LLM por query) es inaceptable para producción.
+
+**Cuándo reconsiderar HyDE:**
+- Si el corpus crece significativamente con documentos de vocabulario más técnico o especializado
+- Si el modelo LLM local mejora en calidad y velocidad de generación
+- Si se encuentra un corpus donde la embedding de la pregunta original es sistemáticamente débil
+
+Para ejecutar el experimento:
+```bash
+python -m rag_lab.benchmark --suite official --variants full_hyde \
+    --top-k 50 --rrf-k 20 --output /tmp/hyde_experiment.json
+python -m rag_lab.benchmark.compare \
+    --baseline data/baselines/v1.11_official_full_eval.json \
+    --current /tmp/hyde_experiment.json --variant full_hyde
+```
+
+**Configuración actual:** `HYDE_ENABLED = False` en `rag_lab/config.py`.
+Para habilitar temporalmente: `HYDE_ENABLED = True` (no recomendado salvo evidencia nueva).
