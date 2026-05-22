@@ -8,36 +8,57 @@ set of SDMX queries with ground-truth relevance grades.
 
 ---
 
-## v1.10 — Resultados con reranker heading context
+## Baseline oficial: v1.10 (activo para CI)
 
-Rama `v1.10-reranker-context`. Ejecutado 2026-05-22 contra corpus 610 chunks.
+**Archivo:** `data/baselines/v1.10_official_full_eval.json`  
+**Generado:** 2026-05-22  
+**Queries:** 65 · **Variante:** `full` · **Corpus:** 610 chunks (tag `v1.10` @ `adb1a5a`)  
+**Configuración:** `top_k=50`, `rrf_k=20`, `RERANKER_USE_HEADING_CONTEXT=True`
 
-| Métrica    | v1.8.1 baseline | v1.10   | Δ       |
-|-----------|-----------------|---------|---------|
-| R@5       | 0.8000          | 0.8205  | +0.0205 |
-| R@10      | 0.9141          | 0.8962  | -0.0179 |
-| R@30      | 0.9731          | 0.9782  | +0.0051 |
-| MRR       | 0.9128          | 0.9385  | +0.0257 |
-| nDCG@10   | 0.8255          | 0.8373  | +0.0118 |
+### Métricas de referencia
 
-Compare guard: **Overall OK** — sin regresiones.
+| Métrica    | Valor  |
+|-----------|--------|
+| Recall@5  | 0.8205 |
+| Recall@10 | 0.8962 |
+| Recall@30 | 0.9782 |
+| MRR       | 0.9385 |
+| nDCG@10   | 0.8373 |
+| P50 (ms)  | 276    |
+| P95 (ms)  | 318    |
+| P99 (ms)  | 337    |
 
-El heading context mejora ambiguity_test (+0.200 MRR), acronym_or_exact_term (+0.125),
-technical_standard (+0.039). Leve regresión en cross_lingual_es_en (-0.100).
+### Comparar contra este baseline
 
-Activado por defecto (`RERANKER_USE_HEADING_CONTEXT=True`). Ver CHANGELOG.md v1.10.
+```bash
+python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
+python -m rag_lab.benchmark.compare \
+    --baseline data/baselines/v1.10_official_full_eval.json \
+    --current  /tmp/current.json
+```
+
+### Regresión conocida — q070 (`cross_lingual_es_en`)
+
+> **Query:** "¿Cómo se utilizan las restricciones en SDMX para limitar los valores permitidos?"  
+> **MRR antes (v1.9):** 1.000 · **MRR después (v1.10):** 0.500 · **Δ:** −0.500
+
+El prefijo inglés (doc_id + heading_path) afecta ligeramente la atención del cross-encoder
+en consultas en español. Para desactivarlo: `RERANKER_USE_HEADING_CONTEXT=False` en config.
 
 ---
 
-## Baseline oficial: v1.8.1 (activo para CI)
+## Baseline anterior: v1.8.1 (histórico)
 
 **Archivo:** `data/baselines/v1.8.1_official_full_eval.json`  
 **Generado:** 2026-05-22  
 **Queries:** 65 (28 originales + 37 curadas en v1.8.1)  
 **Variante:** `full`  
-**Corpus:** 610 chunks (v1.8 @ tag `e87f7ea`)
+**Corpus:** 610 chunks (tag `v1.8.1` @ `614a836`)
 
-### Métricas de referencia
+> **Nota:** v1.8.1 fue el baseline activo hasta v1.10. Conservado como referencia histórica.
+> **Usa `v1.10_official_full_eval.json` para los regression guards actuales.**
+
+### Métricas de referencia (v1.8.1)
 
 | Métrica    | Valor  |
 |-----------|--------|
@@ -49,13 +70,6 @@ Activado por defecto (`RERANKER_USE_HEADING_CONTEXT=True`). Ver CHANGELOG.md v1.
 | P50 (ms)  | 250.92 |
 | P95 (ms)  | 257.89 |
 | P99 (ms)  | 270.03 |
-
-Configuración: `top_k=50`, `rrf_k=20`, variante `full`.
-
-**Nota sobre métricas vs. v1.7:** Las métricas son más altas porque la suite pasó de 28 a 65
-queries. Las 37 nuevas queries fueron curadas verificando contra el corpus real, por lo que
-el conjunto oficial tiene mejor cobertura temática. **Usa este baseline (v1.8.1) para futuras
-comparaciones de regresión**, no el de v1.7.
 
 ---
 

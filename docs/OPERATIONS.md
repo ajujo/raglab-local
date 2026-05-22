@@ -262,18 +262,33 @@ python -m rag_lab.benchmark.compare \
 | `1` | At least one WARN |
 | `2` | At least one FAIL |
 
-### Canonical baseline
+### Canonical baseline (activo: v1.10)
 
-The v1.1 baseline JSON is stored at `data/benchmark_v1_1_mmr_20260521.json`.
+**`data/baselines/v1.10_official_full_eval.json`** — baseline activo desde v1.10.
 
-Key metrics (28 queries, `hybrid_mmr` variant, λ=0.6):
+65 queries (suite `official`), variante `full`, `top_k=50`, `rrf_k=20`,
+`RERANKER_USE_HEADING_CONTEXT=True`.
 
-| Metric | Value |
-|--------|-------|
-| R@5 | 1.000 |
-| MRR | 0.884 |
-| nDCG@10 | 0.840 |
-| unique_docs@5 | 4.82 |
+| Metric  | Value  |
+|---------|--------|
+| R@5     | 0.8205 |
+| R@10    | 0.8962 |
+| MRR     | 0.9385 |
+| nDCG@10 | 0.8373 |
+
+Comando estándar de regression guard:
+
+```bash
+python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
+python -m rag_lab.benchmark.compare \
+    --baseline data/baselines/v1.10_official_full_eval.json \
+    --current  /tmp/current.json
+```
+
+**Regresión conocida:** q070 (`cross_lingual_es_en`) perdió MRR 1.000→0.500 al activar
+heading context. Documentada en `v1.10_official_full_eval.json` meta → `known_regressions`.
+
+**Baseline anterior:** `data/baselines/v1.8.1_official_full_eval.json` (histórico, v1.9 y anterior).
 
 ---
 

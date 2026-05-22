@@ -88,6 +88,15 @@ tradeoff — all other categories are flat or improved.
   text sent to cross-encoder, text-only when disabled, candidate count unchanged, rerank_score
   still attached.
 
+**New CI baseline: `data/baselines/v1.10_official_full_eval.json`**
+
+v1.10 replaces v1.8.1 as the active regression guard baseline. The new baseline captures the
+heading-context reranker as the production default. v1.8.1 remains archived for historical
+reference.
+
+Known regression documented in baseline meta: q070 (`cross_lingual_es_en`) MRR 1.000→0.500.
+Monitor on future branches; disable with `RERANKER_USE_HEADING_CONTEXT=False` if needed.
+
 ---
 
 ## v1.9 — 2026-05-22
