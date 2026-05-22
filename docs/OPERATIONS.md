@@ -9,7 +9,12 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Goal | Command |
 |------|---------|
 | Full health check | `python -m rag_lab.doctor` |
+| Validate a document | `rag-lab docs validate path/to/doc.md` |
+| Validate (strict — warns block) | `rag-lab docs validate --strict path/to/doc.md` |
+| Inspect document structure | `rag-lab docs inspect path/to/doc.md` |
+| Preview chunks without ingesting | `rag-lab docs preview-chunks path/to/doc.md` |
 | Ingest a document (transactional) | `rag-lab ingest --doc path/to/doc.md` |
+| Ingest with strict validation | `rag-lab ingest --strict --doc path/to/doc.md` |
 | Ingest all sources | `rag-lab ingest` |
 | Resume crashed ingest runs | `rag-lab ingest --resume` |
 | Retry all failed ingest runs | `rag-lab ingest --retry-failed` |
@@ -237,6 +242,60 @@ Key metrics (28 queries, `hybrid_mmr` variant, λ=0.6):
 | MRR | 0.884 |
 | nDCG@10 | 0.840 |
 | unique_docs@5 | 4.82 |
+
+---
+
+## Markdown quality gate (v1.6+)
+
+Every ingest run validates the source document against the canonical Markdown contract before opening any transaction.
+
+### Validation checks
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `encoding_error` | ERROR | File is not valid UTF-8 |
+| `empty_file` | ERROR | File is empty or whitespace-only |
+| `frontmatter_invalid_yaml` | ERROR | YAML frontmatter fails to parse |
+| `frontmatter_unclosed` | WARN | `---` block opened but never closed |
+| `min_content` | WARN | Content below `min_content_tokens` threshold (default 50) |
+| `missing_title` | WARN | No H1 heading found |
+| `heading_hierarchy_skip` | WARN | Heading levels skip (e.g. H1→H3) |
+| `section_too_long` | WARN | Section exceeds `max_section_tokens` (default 1600) |
+| `large_table` | WARN | Table has more than `max_table_rows` rows (default 200) |
+| `estimated_chunks_high` | WARN | Document will exceed `max_estimated_chunks` (default 200) |
+| `long_line` | INFO | Line length exceeds `max_line_length` (default 500 chars) |
+
+### Blocking behaviour
+
+| Mode | Blocks on |
+|------|-----------|
+| Normal (default) | ERROR only |
+| `--strict` | ERROR + WARN |
+
+On block: no stores are written and no `IngestTransaction` is opened. Exit 0 is still returned (the run is just skipped).
+
+### CLI tools
+
+```bash
+# Validate before ingesting
+rag-lab docs validate path/to/doc.md
+rag-lab docs validate --strict path/to/doc.md  # treats warnings as errors
+
+# Inspect document structure (headings, tokens, chunks estimate, issues)
+rag-lab docs inspect path/to/doc.md
+
+# Preview chunking result without writing to stores
+rag-lab docs preview-chunks path/to/doc.md
+rag-lab docs preview-chunks path/to/doc.md --limit 10  # first 10 chunks only
+```
+
+### Ingest with strict validation
+
+```bash
+# Block on any warning (useful in CI / before bulk ingests)
+rag-lab ingest --strict --doc path/to/doc.md
+rag-lab ingest --strict  # validate all SOURCES
+```
 
 ---
 
@@ -469,6 +528,10 @@ python -m rag_lab.benchmark.compare \
 
 # 5. Scope guard (no tabular/dataset references)
 rg -n -i "dataset|csv|parquet|duckdb|forecast|automl" rag_lab tests
+
+# 6. Validate production documents
+rag-lab docs validate docs/SDMX_Glossary.md
+rag-lab docs validate docs/SDMX_2-1_User_Guide_6.md
 ```
 
 All commands must exit 0 (or WARN-only for doctor with justified reason).

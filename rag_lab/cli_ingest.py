@@ -49,6 +49,9 @@ def ingest_main(
     cpu_embedding: bool = typer.Option(
         False, "--cpu-embedding", help="Run embedding on CPU."
     ),
+    strict: bool = typer.Option(
+        False, "--strict", help="Treat validation warnings as errors."
+    ),
 ) -> None:
     """Ingest one or more documents: clean, chunk, embed, and store."""
     if ctx.invoked_subcommand is not None:
@@ -76,6 +79,7 @@ def ingest_main(
             device=device,
             resume=resume,
             retry_failed=retry_failed,
+            strict=strict,
         )
         doc_store.close()
         return
@@ -91,6 +95,7 @@ def ingest_main(
             vector_store=vector_store,
             force=force,
             device=device,
+            strict=strict,
         )
         total += n
 
@@ -232,6 +237,7 @@ def ingest_retry(
         help="Retry even if run is not in FAILED status.",
     ),
     cpu_embedding: bool = typer.Option(False, "--cpu-embedding"),
+    strict: bool = typer.Option(False, "--strict", help="Treat validation warnings as errors."),
 ) -> None:
     """Roll back a FAILED run and re-ingest the document from scratch."""
     from rag_lab.config import EMBEDDING_DEVICE
@@ -279,6 +285,7 @@ def ingest_retry(
         vector_store=vs,
         force=True,
         device=device,
+        strict=strict,
     )
     ds.close()
 
@@ -293,6 +300,7 @@ def _ingest_one(
     vector_store,
     force: bool,
     device: str,
+    strict: bool = False,
 ) -> int:
     """Ingest one document, wrapped in an IngestTransaction.
 
@@ -320,6 +328,30 @@ def _ingest_one(
 
     if not source_path.exists():
         logger.warning(f"Source file not found: {source_path} — skipping")
+        return 0
+
+    # Validation gate — runs before any store writes
+    from rag_lab.ingest.markdown_contract import validate_markdown
+    from rag_lab.ingest.validation import ValidationSeverity
+
+    report = validate_markdown(source_path)
+    if report.issues:
+        _SCOLOR = {
+            ValidationSeverity.ERROR: "red",
+            ValidationSeverity.WARN: "yellow",
+            ValidationSeverity.INFO: "dim",
+        }
+        for issue in report.issues:
+            color = _SCOLOR[issue.severity]
+            console.print(
+                f"  [{color}]{issue.severity.value:<5}[/{color}] "
+                f"[{issue.code}]: {issue.message}"
+            )
+
+    blocked = report.has_errors or (strict and report.has_warnings)
+    if blocked:
+        reason = "validation errors" if report.has_errors else "validation warnings (--strict mode)"
+        console.print(f"[red]Skipping {source_path.name}: {reason}[/red]")
         return 0
 
     console.print(f"[bold cyan]Ingesting: {source_path.name}[/bold cyan]")
@@ -402,6 +434,7 @@ def _handle_resume_retry(
     device: str,
     resume: bool,
     retry_failed: bool,
+    strict: bool = False,
 ) -> None:
     """Roll back stale/failed runs and re-ingest their documents."""
     from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
@@ -452,4 +485,5 @@ def _handle_resume_retry(
             vector_store=vector_store,
             force=True,
             device=device,
+            strict=strict,
         )
