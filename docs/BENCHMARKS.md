@@ -8,6 +8,27 @@ set of SDMX queries with ground-truth relevance grades.
 
 ---
 
+## v1.10 — Resultados con reranker heading context
+
+Rama `v1.10-reranker-context`. Ejecutado 2026-05-22 contra corpus 610 chunks.
+
+| Métrica    | v1.8.1 baseline | v1.10   | Δ       |
+|-----------|-----------------|---------|---------|
+| R@5       | 0.8000          | 0.8205  | +0.0205 |
+| R@10      | 0.9141          | 0.8962  | -0.0179 |
+| R@30      | 0.9731          | 0.9782  | +0.0051 |
+| MRR       | 0.9128          | 0.9385  | +0.0257 |
+| nDCG@10   | 0.8255          | 0.8373  | +0.0118 |
+
+Compare guard: **Overall OK** — sin regresiones.
+
+El heading context mejora ambiguity_test (+0.200 MRR), acronym_or_exact_term (+0.125),
+technical_standard (+0.039). Leve regresión en cross_lingual_es_en (-0.100).
+
+Activado por defecto (`RERANKER_USE_HEADING_CONTEXT=True`). Ver CHANGELOG.md v1.10.
+
+---
+
 ## Baseline oficial: v1.8.1 (activo para CI)
 
 **Archivo:** `data/baselines/v1.8.1_official_full_eval.json`  
