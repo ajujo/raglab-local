@@ -202,6 +202,39 @@ This is the primary tool for diagnosing why a specific chunk appears or doesn't 
 
 ---
 
+## Query expansion variants (v1.11+)
+
+`process_query()` can generate additional query variants to broaden the candidate pool.
+Both variants are **disabled by default** — A/B testing showed zero retrieval quality benefit
+at 2-2.4× per-query latency cost.
+
+### Config flags
+
+```python
+QUERY_VARIANT_STOPWORD_ENABLED: bool = False   # key-terms only (stop-words removed)
+QUERY_VARIANT_LAST_TERMS_ENABLED: bool = False  # last 5 key terms of the query
+```
+
+Set in `rag_lab/config.py` or `.env`.
+
+### When to enable
+
+Re-enable only if empirical A/B testing on your specific query distribution shows
+a measurable improvement. Each variant roughly doubles or triples embedding + search cost.
+
+### Variant types
+
+| Variant | Type tag | Example input | Example output |
+|---------|----------|--------------|----------------|
+| Stopword | `variant_stopword` | "What is the role of SDMX?" | "role sdmx" |
+| Tail terms | `variant_last_terms` | "What are the specs for DSD key families?" | "specs dsd key families" |
+
+### Legacy note
+
+Before v1.11, this was controlled by `VARIANTS_COUNT = 2`. That parameter has been removed.
+
+---
+
 ## Reranker heading context (v1.10+)
 
 The cross-encoder receives enriched text with structural context:

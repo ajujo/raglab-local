@@ -142,8 +142,11 @@ SPARSE_COVERAGE_THRESHOLD = 0.95
 # 8. CONSULTA (QUERY)
 # =============================================================================
 
-# Número de variantes de consulta para expansión
-VARIANTS_COUNT = 2
+# Query expansion variants — A/B tests (v1.11) show these add zero recall improvement
+# while doubling retrieval latency (2-2.4× cost per query). Disabled by default.
+# Set to True to re-enable; both are independent toggles.
+QUERY_VARIANT_STOPWORD_ENABLED: bool = False  # key-terms only (stop-words removed)
+QUERY_VARIANT_LAST_TERMS_ENABLED: bool = False  # last 5 key terms (tail variant)
 
 # Activar HyDE (Hypothetical Document Embeddings)
 HYDE_ENABLED = False
