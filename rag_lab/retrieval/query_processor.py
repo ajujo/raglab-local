@@ -4,11 +4,15 @@ Transforms the user's question into representations optimal for retrieval.
 """
 
 import logging
-from typing import List, Tuple
+from typing import List
 
-from rag_lab.config import EMBEDDING_MODEL, VARIANTS_COUNT, HYDE_ENABLED, QUERY_REWRITING_ENABLED
+from rag_lab.config import (
+    HYDE_ENABLED,
+    QUERY_REWRITING_ENABLED,
+    QUERY_VARIANT_STOPWORD_ENABLED,
+    QUERY_VARIANT_LAST_TERMS_ENABLED,
+)
 from rag_lab.utils.tokenizer import count_tokens as _count_tokens
-from rag_lab.embedding.encoder import load_embedding_model
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.retrieval.query_rewriter import rewrite_query
 
@@ -50,14 +54,16 @@ def process_query(
                 "type": "hyde",
             })
 
-    # Step 3: Query expansion: generate variants
-    for i in range(VARIANTS_COUNT):
-        variant = _generate_query_variant(query, i)
+    # Step 3: Query expansion variants (disabled by default — see A/B results in v1.11)
+    if QUERY_VARIANT_STOPWORD_ENABLED:
+        variant = _generate_stopword_variant(query)
         if variant and variant != query:
-            queries.append({
-                "text": variant,
-                "type": "expanded",
-            })
+            queries.append({"text": variant, "type": "variant_stopword"})
+
+    if QUERY_VARIANT_LAST_TERMS_ENABLED:
+        variant = _generate_last_terms_variant(query)
+        if variant and variant != query and not any(q["text"] == variant for q in queries):
+            queries.append({"text": variant, "type": "variant_last_terms"})
 
     logger.info(f"Processed query into {len(queries)} query variants")
     return queries
@@ -122,39 +128,58 @@ def _generate_hypothetical_answer(query: str) -> str:
         return query
 
 
-def _generate_query_variant(query: str, variant_idx: int) -> str:
-    """Generate a query variant for expansion.
+_STOP_WORDS = frozenset({
+    # English
+    "what", "is", "the", "of", "in", "on", "about", "how", "which",
+    "are", "was", "were", "do", "does", "did", "a", "an", "and", "or",
+    "to", "for", "with", "by", "from", "at", "that", "this", "it",
+    # Spanish
+    "qué", "cuál", "cuáles", "cómo", "dónde", "cuando", "cuándo",
+    "quién", "quiénes", "por", "para", "una", "uno", "un", "los",
+    "las", "del", "con", "que", "se", "en", "el", "la", "es", "son",
+    "de", "al", "como", "este", "esta", "estos", "estas",
+    # Punctuation-like
+    "¿", "?",
+})
 
-    Args:
-        query: The original query.
-        variant_idx: Index of the variant.
 
-    Returns:
-        A variant of the query.
-    """
-    stop_words = {
-        # English
-        "what", "is", "the", "of", "in", "on", "about", "how", "which",
-        "are", "was", "were", "do", "does", "did", "a", "an", "and", "or",
-        "to", "for", "with", "by", "from", "at", "that", "this", "it",
-        # Spanish
-        "qué", "cuál", "cuáles", "cómo", "dónde", "cuando", "cuándo",
-        "quién", "quiénes", "por", "para", "una", "uno", "un", "los",
-        "las", "del", "con", "que", "se", "en", "el", "la", "es", "son",
-        "de", "al", "como", "este", "esta", "estos", "estas",
-        # Punctuation-like
-        "¿", "?",
-    }
-
+def _filtered_terms(query: str) -> list:
+    """Return query words that are not stop words, lowercased, stripped of punctuation."""
     words = query.lower().replace("¿", "").replace("?", "").split()
-    filtered = [w for w in words if w.strip("'\"(),.:;") not in stop_words]
+    stripped = [w.strip("'\"(),.:;") for w in words]
+    return [w for w in stripped if w and w not in _STOP_WORDS]
 
+
+def _generate_stopword_variant(query: str) -> str:
+    """Return query with stop words removed (key terms only).
+
+    Example: "What is the role of SDMX?" → "role sdmx"
+    Falls back to original query when no terms remain after filtering.
+    """
+    filtered = _filtered_terms(query)
+    return " ".join(filtered) if filtered else query
+
+
+def _generate_last_terms_variant(query: str) -> str:
+    """Return the last 5 key terms of the query (tail focus).
+
+    Useful for long queries where the specific topic is mentioned last.
+    Example: "What are the rules for DSD key families in SDMX?" → "rules dsd key families sdmx"
+    Falls back to original query when no terms remain after filtering.
+    """
+    filtered = _filtered_terms(query)
     if not filtered:
         return query
+    return " ".join(filtered[max(0, len(filtered) - 5):])
 
+
+def _generate_query_variant(query: str, variant_idx: int) -> str:
+    """Legacy dispatcher kept for backward compatibility.
+
+    Prefer _generate_stopword_variant / _generate_last_terms_variant directly.
+    """
     if variant_idx == 0:
-        # Key terms only
-        return " ".join(filtered)
+        return _generate_stopword_variant(query)
     elif variant_idx == 1:
-        # Tail terms (often contain the specific topic)
-        return " ".join(filtered[max(0, len(filtered) - 5):])
+        return _generate_last_terms_variant(query)
+    return query

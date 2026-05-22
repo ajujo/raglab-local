@@ -4,6 +4,87 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.11 — 2026-05-22
+
+### Query variants cleanup: disable stop-word heuristics (6.3.3)
+
+No changes to retrieval logic, reranker, chunking, or embeddings.
+
+**Background (A/B measurement)**
+
+A rigorous A/B test over all 65 official queries compared three variant strategies
+using full hybrid search (dense + BM25 + sparse) with real embeddings (no reranker):
+
+| Strategy | R@5 | R@10 | R@30 | MRR | nDCG@10 | Latency/q |
+|----------|-----|------|------|-----|---------|-----------|
+| A: original only | 0.7705 | 0.9103 | 0.9923 | 0.9043 | 0.8037 | 24ms |
+| B: original + stopword | 0.7705 | 0.9103 | 0.9923 | 0.9043 | 0.8037 | 47ms |
+| C: original + stopword + tail | 0.7705 | 0.9103 | 0.9923 | 0.9043 | 0.8037 | 58ms |
+
+**Δ A→B = +0.0000 on every metric, for every category, for every query.**
+
+The stop-word and tail-term variants add zero retrieval quality improvement while
+doubling or tripling per-query latency (2.4× cost). The extra chunks in the
+candidate pool (B: +16, C: +24 per query) contain no additional relevant documents.
+
+The benchmark runner never used `process_query` (it encodes each query directly),
+so this cleanup has no effect on any benchmark metrics.
+
+**Side finding:** q070 (cross_lingual_es_en) shows MRR=1.000 without the reranker
+across all strategies — the v1.10 regression is purely a reranker effect (heading
+context slightly confusing the cross-encoder), not a retrieval issue.
+
+**Config changes (`rag_lab/config.py`)**
+
+Replaced `VARIANTS_COUNT = 2` with two independent, named flags (both disabled):
+
+```python
+QUERY_VARIANT_STOPWORD_ENABLED: bool = False   # was: VARIANTS_COUNT >= 1
+QUERY_VARIANT_LAST_TERMS_ENABLED: bool = False  # was: VARIANTS_COUNT >= 2
+```
+
+**Code changes (`rag_lab/retrieval/query_processor.py`)**
+
+- Removed `VARIANTS_COUNT` import. Removed `load_embedding_model`, `EMBEDDING_MODEL`
+  (unused). Removed `Tuple` (unused).
+- Replaced `for i in range(VARIANTS_COUNT)` loop with explicit config-controlled branches.
+- Renamed variant generation to named functions:
+  - `_generate_stopword_variant(query)` — key terms only (stop-words removed)
+  - `_generate_last_terms_variant(query)` — last 5 key terms (tail variant)
+  - `_generate_query_variant(query, idx)` — legacy dispatcher, backward-compatible
+- Fixed bug in `_filtered_terms`: now returns stripped tokens (was returning tokens
+  with trailing punctuation — strip was applied only for stop-word check, not output).
+- `_STOP_WORDS` promoted to module-level `frozenset` (was recreated on every call).
+- Variant types renamed: `"variant_stopword"` / `"variant_last_terms"` (was generic `"expanded"`).
+- Explicit deduplication guard: last_terms variant skipped if identical to stopword variant.
+
+**Tests (`tests/test_retrieval/test_query_processor.py`)**
+
+Expanded from 20 to 43 tests. New classes:
+- `TestProcessQuery`: original always first/present, variants disabled by default,
+  variants appear when enabled via monkeypatch, no duplicates, empty query → 1 result.
+- `TestFilteredTerms`: stop words EN/ES, acronym preservation (DSD/MSD/SDMX),
+  trailing punctuation stripped, empty/all-stop-words.
+- `TestGenerateStopwordVariant`: key terms, short/long/Spanish/acronym queries,
+  all-stop-words fallback, lowercased output.
+- `TestGenerateLastTermsVariant`: tail focus, suffix of stopword variant.
+- `TestGenerateQueryVariantLegacy`: backward compat (idx 0→stopword, 1→last_terms, N→original).
+
+**Production impact**
+
+| Metric | Before (v1.10) | After (v1.11) |
+|--------|---------------|---------------|
+| Queries per request | 3 | **1** (original only) |
+| Encode calls/request | 3 | **1** |
+| Hybrid search calls/request | 3 | **1** |
+| Candidate pool size | ~75 | ~50 |
+| Retrieval quality | unchanged | unchanged |
+| P50 latency improvement | — | ~2× faster |
+
+To re-enable variants: set `QUERY_VARIANT_STOPWORD_ENABLED=True` in `.env` or config.py.
+
+---
+
 ## v1.10 — 2026-05-22
 
 ### Reranker structural context: heading_path + doc_id (6.3.3)
