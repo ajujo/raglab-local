@@ -148,11 +148,44 @@ SPARSE_COVERAGE_THRESHOLD = 0.95
 QUERY_VARIANT_STOPWORD_ENABLED: bool = False  # key-terms only (stop-words removed)
 QUERY_VARIANT_LAST_TERMS_ENABLED: bool = False  # last 5 key terms (tail variant)
 
-# Activar HyDE (Hypothetical Document Embeddings)
-HYDE_ENABLED = False
+# ---------------------------------------------------------------------------
+# HyDE (Hypothetical Document Embeddings)
+# ---------------------------------------------------------------------------
+# Disabled by default. Enable only when benchmark evidence justifies it.
+# See docs/BENCHMARKS.md for the decision rule and A/B methodology.
+HYDE_ENABLED: bool = False
 
-# Activar query rewriting
-QUERY_REWRITING_ENABLED = False
+# Token budget for the hypothetical answer. Not subject to thinking multiplier
+# when HYDE_FORCE_NO_THINKING=True — 300 tokens is the actual API limit.
+HYDE_MAX_TOKENS: int = 300
+
+# Low temperature keeps the hypothetical factually dense and vocabulary-close
+# to the target corpus, which is what embedding-based retrieval needs.
+HYDE_TEMPERATURE: float = 0.1
+
+# When True, suppress thinking mode (enable_thinking=False) and skip the 4×
+# token multiplier — the allocated budget is exactly HYDE_MAX_TOKENS.
+# Set to False only if your LLM server requires thinking for quality output.
+HYDE_FORCE_NO_THINKING: bool = True
+
+# Hard timeout for the HyDE LLM call. If the server doesn't respond in time,
+# fall back to the original query silently. 0 = no timeout.
+HYDE_TIMEOUT_SECONDS: int = 15
+
+# Signal routing: hypothetical text improves dense recall but contaminates
+# BM25 (generated vocabulary ≠ document vocabulary) and adds noise to sparse.
+HYDE_USE_FOR_DENSE: bool = True   # use hypothetical embedding for dense retrieval
+HYDE_USE_FOR_BM25: bool = False   # do NOT use hypothetical text for BM25 search
+HYDE_USE_FOR_SPARSE: bool = False  # do NOT use hypothetical for sparse scoring
+
+# ---------------------------------------------------------------------------
+# Query rewriting (LLM-based reformulation)
+# ---------------------------------------------------------------------------
+# Disabled by default. Rewrites the query before processing (replaces, not adds).
+QUERY_REWRITING_ENABLED: bool = False
+QUERY_REWRITING_MAX_TOKENS: int = 200   # rewritten query is just a question — short
+QUERY_REWRITING_TEMPERATURE: float = 0.0  # deterministic rewriting
+QUERY_REWRITING_TIMEOUT_SECONDS: int = 10
 
 # Multi-document support
 MULTI_DOC_ENABLED = True

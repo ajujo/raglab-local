@@ -4,6 +4,118 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.12 — 2026-05-22
+
+### HyDE / query rewriter: controlled implementation with benchmark evidence (6.3.3)
+
+No changes to chunking, RRF, MMR, sparse scoring, FTS5, ChromaDB, embeddings, or HNSW.
+
+**Background**
+
+HyDE (Hypothetical Document Embeddings) generates a short hypothetical answer via LLM,
+encodes it with BGE-M3, and uses that embedding as the dense retrieval query. The theory
+is that the hypothetical vocabulary is closer to the target documents than the bare question.
+
+**A/B measurement — 65 official queries, full pipeline + reranker**
+
+| Metric | full (v1.11 baseline) | full_hyde | Δ |
+|--------|----------------------|-----------|---|
+| R@5 | 0.8205 | 0.7821 | **−0.038** |
+| R@10 | 0.8962 | 0.8577 | −0.038 |
+| R@30 | 0.9782 | 0.9756 | −0.003 |
+| MRR | 0.9385 | 0.9385 | 0.0000 |
+| nDCG@10 | 0.8373 | 0.8187 | **−0.019** |
+| P50 (ms) | 237 | 2966 | **12.5× slower** |
+
+Per-query breakdown: 4 queries improved R@5, 10 queries degraded R@5. Net negative.
+
+**Interpretation:** The BGE-M3 query embedding is already strong on the SDMX corpus.
+The hypothetical text is semantically close to the original query but uses slightly different
+vocabulary, which shifts the dense search away from some correct documents. The latency cost
+(+LLM call per query) is also prohibitive.
+
+**Decision: HYDE_ENABLED = False — remains opt-in experiment.**
+
+Decision criteria from the spec were not met: R@5 dropped 3.8pp (above 2pp FAIL threshold),
+nDCG@10 dropped 1.9pp, latency increased 12.5×. MRR unchanged is the only positive signal.
+
+**What changed (`rag_lab/config.py`)**
+
+New HyDE configuration block (all disabled by default):
+```python
+HYDE_ENABLED: bool = False        # disabled by default
+HYDE_MAX_TOKENS: int = 300        # token budget for hypothetical answer
+HYDE_TEMPERATURE: float = 0.1     # low temperature for factual density
+HYDE_FORCE_NO_THINKING: bool = True  # bypass 4× token multiplier
+HYDE_TIMEOUT_SECONDS: int = 15    # hard timeout; 0 = no timeout
+HYDE_USE_FOR_DENSE: bool = True   # hypothetical → dense retrieval only
+HYDE_USE_FOR_BM25: bool = False   # original text → BM25 (not contaminated)
+HYDE_USE_FOR_SPARSE: bool = False  # original sparse weights preserved
+```
+
+Query rewriting config:
+```python
+QUERY_REWRITING_ENABLED: bool = False
+QUERY_REWRITING_MAX_TOKENS: int = 200
+QUERY_REWRITING_TEMPERATURE: float = 0.0
+QUERY_REWRITING_TIMEOUT_SECONDS: int = 10
+```
+
+**What changed (`rag_lab/generation/llm_client.py`)**
+
+`generate_response` now accepts:
+- `timeout: Optional[float]` — forwarded to the API call; None = no timeout
+- `force_no_thinking: bool` — when True, skips the `_THINKING_TOKEN_MULTIPLIER=4×`
+  allocation and uses the requested `max_tokens` directly. Used for HyDE and query
+  rewriting to keep token budgets exact and avoid wasted compute.
+
+**What changed (`rag_lab/retrieval/query_processor.py`)**
+
+- Imports HYDE_* and QUERY_REWRITING_* params from config instead of local constants
+- `_generate_hypothetical_answer` uses `force_no_thinking=True` and `timeout=15s`
+- HyDE query dict now includes `use_for_dense`, `use_for_bm25`, `use_for_sparse` flags
+- Hyde variant only added if LLM returns text different from the original query
+- Query rewriting now passes `max_tokens`, `temperature`, `timeout`, `force_no_thinking`
+- CLI respects `use_for_sparse=False` on hyde queries (no sparse contamination)
+
+**What changed (benchmark)**
+
+New `full_hyde` variant in `pipeline_variants.py`:
+- Calls LLM for hypothetical answer per query
+- Encodes hypothetical for dense signal only
+- Original query used for BM25 (never contaminated)
+- Original sparse weights preserved
+- Falls back to `query_dense` if LLM call fails (graceful degradation)
+- `stats["hyde_used"]` tracks whether LLM was actually invoked
+- Listed in `HYDE_VARIANT_NAMES` and `ALL_VARIANT_NAMES` but NOT in `VARIANT_NAMES`
+  (not included in default benchmark runs)
+
+Run HyDE benchmark:
+```bash
+python -m rag_lab.benchmark --suite official --variants full_hyde --output /tmp/hyde_run.json
+python -m rag_lab.benchmark.compare \
+    --baseline data/baselines/v1.11_official_full_eval.json \
+    --current  /tmp/hyde_run.json --variant full_hyde
+```
+
+**Tests (`tests/test_retrieval/test_query_processor.py`, `tests/test_benchmark/test_full_hyde_variant.py`)**
+
+698 total (24 new):
+- HyDE disabled by default (no LLM call when use_hyde=False)
+- hyde query dict carries use_for_dense=True, use_for_bm25=False, use_for_sparse=False
+- Original query always preserved as first result
+- LLM failure → only original query returned
+- LLM returns same text as query → no hyde entry added
+- max_tokens=300, temperature, timeout, force_no_thinking forwarded correctly
+- force_no_thinking=True bypasses 4× multiplier
+- full_hyde in ALL_VARIANT_NAMES, not in VARIANT_NAMES
+- full_hyde falls back gracefully when LLM unavailable
+- original query used for BM25 in full_hyde
+
+**Active CI baseline:** `data/baselines/v1.11_official_full_eval.json` (unchanged)
+
+---
+
 ## v1.11 — 2026-05-22
 
 ### Query variants cleanup: disable stop-word heuristics (6.3.3)

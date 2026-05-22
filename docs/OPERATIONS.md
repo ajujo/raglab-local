@@ -235,6 +235,73 @@ Before v1.11, this was controlled by `VARIANTS_COUNT = 2`. That parameter has be
 
 ---
 
+## HyDE (Hypothetical Document Embeddings) — v1.12+, opt-in
+
+HyDE generates a short hypothetical answer via LLM, encodes it with BGE-M3, and uses
+that embedding as the dense retrieval query. The theory: hypothetical vocabulary is closer
+to the target documents than the bare question.
+
+**Status:** Disabled by default. A/B benchmark (65 queries, 2026-05-22) shows net negative
+on this corpus: R@5 −3.8pp, nDCG@10 −1.9pp, latency ×12.5. See `docs/BENCHMARKS.md`.
+
+### Config flags
+
+```python
+HYDE_ENABLED: bool = False        # main on/off switch
+HYDE_MAX_TOKENS: int = 300        # token budget for the hypothetical answer
+HYDE_TEMPERATURE: float = 0.1     # low temperature → factual density
+HYDE_FORCE_NO_THINKING: bool = True  # skip 4× multiplier (thinking suppressed)
+HYDE_TIMEOUT_SECONDS: int = 15    # timeout for LLM call; 0 = no timeout
+HYDE_USE_FOR_DENSE: bool = True   # hypothetical → dense retrieval
+HYDE_USE_FOR_BM25: bool = False   # original text → BM25 (not generated)
+HYDE_USE_FOR_SPARSE: bool = False  # original sparse weights preserved
+```
+
+### Fallback behaviour
+
+If the LLM call fails (server down, timeout, empty response), HyDE silently falls back
+to the original query. Search quality is the same as without HyDE. No query fails.
+
+### Benchmark experiment
+
+```bash
+python -m rag_lab.benchmark --suite official --variants full_hyde \
+    --top-k 50 --rrf-k 20 --output /tmp/hyde_experiment.json
+python -m rag_lab.benchmark.compare \
+    --baseline data/baselines/v1.11_official_full_eval.json \
+    --current /tmp/hyde_experiment.json --variant full_hyde
+```
+
+### Dependency
+
+Requires a live LLM server. `full_hyde` is NOT included in default benchmark runs.
+
+---
+
+## Query rewriting (LLM-based) — opt-in
+
+Rewrites the user's question before processing to expand acronyms and add domain
+terminology. Unlike HyDE, rewriting replaces the original query (not additive).
+
+**Status:** Disabled by default. Not yet benchmarked on official suite.
+
+### Config flags
+
+```python
+QUERY_REWRITING_ENABLED: bool = False
+QUERY_REWRITING_MAX_TOKENS: int = 200
+QUERY_REWRITING_TEMPERATURE: float = 0.0   # deterministic
+QUERY_REWRITING_TIMEOUT_SECONDS: int = 10
+```
+
+### CLI
+
+```bash
+rag-lab query "What is DSD?" --rewrite
+```
+
+---
+
 ## Reranker heading context (v1.10+)
 
 The cross-encoder receives enriched text with structural context:

@@ -105,7 +105,11 @@ def query(
     for q in queries:
         dense_emb, sparse_dict = encode_chunks([{"text": q["text"]}], batch_size=1, device=emb_device)
         query_dense = dense_emb[0]
-        query_sparse = next(iter(sparse_dict.values()), {}) if sparse_dict else {}
+        # HyDE queries should not use generated text for sparse scoring
+        if q.get("use_for_sparse", True):
+            query_sparse = next(iter(sparse_dict.values()), {}) if sparse_dict else {}
+        else:
+            query_sparse = {}  # suppress sparse signal for this query variant
         all_query_data.append((query_dense, query_sparse))
     if profile:
         timer.stop()
@@ -124,7 +128,7 @@ def query(
         timer.start("hybrid_search")
     for query_dense, query_sparse in all_query_data:
         results = hybrid_search(
-            question,
+            question,      # always original question for BM25
             vector_store,
             doc_store,
             fts_store,

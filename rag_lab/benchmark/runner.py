@@ -117,6 +117,7 @@ class BenchmarkRunner:
                     self.vector_store, self.doc_store, self.fts_store,
                     top_k=3, rrf_k=self.rrf_k,
                     rerank_device=self.rerank_device,
+                    embedding_device=self.embedding_device,
                 )
             except Exception:
                 pass
@@ -187,6 +188,7 @@ class BenchmarkRunner:
                         rerank_device=self.rerank_device,
                         doc_cap=self.doc_cap,
                         mmr_lambda=self.mmr_lambda,
+                        embedding_device=self.embedding_device,
                     )
                 except Exception as exc:
                     logger.error(f"Variant {variant} failed on query {qid}: {exc}")
