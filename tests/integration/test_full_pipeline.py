@@ -28,7 +28,6 @@ from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.reranker import rerank
 from rag_lab.generation.prompt_builder import build_prompt
-from rag_lab.generation.verifier import verify_citations
 
 
 class TestFullPipeline:

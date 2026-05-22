@@ -75,6 +75,11 @@ Escribe como si fueras un experto respondiendo desde su conocimiento.
 Pregunta: {question}
 """
 
+# HyDE only needs a short hypothetical paragraph — bounded to prevent thinking
+# mode or verbose generation from consuming large token budgets.
+HYDE_MAX_TOKENS = 300
+HYDE_TEMPERATURE = 0.1
+
 
 def _generate_hypothetical_answer(query: str) -> str:
     """Generate a hypothetical answer for HyDE using the real LLM.
@@ -82,18 +87,26 @@ def _generate_hypothetical_answer(query: str) -> str:
     Calls the LLM to generate a plausible technical answer to the query,
     which is then used as a hypothetical document for embedding-based retrieval.
 
+    Uses HYDE_MAX_TOKENS=300 and HYDE_TEMPERATURE=0.1 to keep generation short
+    and focused. generate_response already passes enable_thinking=False via
+    chat_template_kwargs, so thinking mode is suppressed on supporting servers.
+
     Args:
         query: The user's question.
 
     Returns:
-        Hypothetical answer text, or empty string on failure.
+        Hypothetical answer text, or original query on LLM failure.
     """
     user_prompt = HYDE_USER_PROMPT_TEMPLATE.format(question=query)
 
     try:
-        hypothetical = generate_response(HYDE_SYSTEM_PROMPT, user_prompt)
+        hypothetical = generate_response(
+            HYDE_SYSTEM_PROMPT,
+            user_prompt,
+            max_tokens=HYDE_MAX_TOKENS,
+            temperature=HYDE_TEMPERATURE,
+        )
         if hypothetical:
-            # Count tokens (approximate: 1 token ≈ 4 chars for this model)
             n_tokens = len(hypothetical.encode()) // 4
             logger.info(
                 f"HyDE: hipótesis generada ({n_tokens} tokens) para query: \"{query[:60]}...\""
