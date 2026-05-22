@@ -233,11 +233,18 @@ class TestBenchmarkQueriesYaml:
         for q in official:
             assert q.get("validated") is True, f"{q['id']} is official but validated=False"
 
-    def test_candidates_all_validated_false(self):
+    def test_candidate_validated_true_have_empty_doc_relevance(self):
+        # Candidates may be validated:true when ground truth is confirmed (e.g. confirmed
+        # negatives). When validated:true they must have empty doc_relevance to stay as
+        # candidates (non-empty relevance grades belong in the official suite).
         queries = BenchmarkRunner.load_queries(self.YAML_PATH)
         candidates = BenchmarkRunner.filter_queries(queries, suite="candidate")
         for q in candidates:
-            assert q.get("validated") is False, f"{q['id']} is candidate but validated=True"
+            if q.get("validated") is True:
+                assert not q.get("doc_relevance"), (
+                    f"{q['id']} is candidate+validated:true but has non-empty doc_relevance; "
+                    "promote to official or remove grades"
+                )
 
     def test_all_10_categories_covered(self):
         queries = BenchmarkRunner.load_queries(self.YAML_PATH)

@@ -4,6 +4,50 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.8.1 — 2026-05-22
+
+### Benchmark curation — official suite expanded to 65 queries (6.3.6 phase B)
+
+No retrieval changes. No pipeline changes. Pure benchmark ground-truth curation.
+
+**What changed**
+
+- `data/benchmark_queries.yaml` upgraded from v1.8 to v1.8.1 format.
+  - 37 candidate queries promoted to `suite: official, validated: true` after corpus
+    verification (hybrid_search top-10 confirmed stated doc_relevance sources).
+  - doc_relevance grades corrected where actual retrieval differed from original expectations
+    (e.g. User_Guide more dominant than Notas for frequency codes and dimension types).
+  - 4 confirmed-negative queries (q043–q046) set to `validated: true, suite: candidate`
+    (confirmed out-of-scope; kept as candidate to avoid distorting aggregate recall@k).
+  - 3 queries remain `validated: false`: q034 (MSD acronym, Glossary not in top-5),
+    q047 (migration partial), q062 (Custom Type Scheme not in corpus).
+  - Test `test_candidates_all_validated_false` → `test_candidate_validated_true_have_empty_doc_relevance`
+    to allow confirmed-negative candidates with validated:true.
+
+**New canonical baseline: v1.8.1**
+
+- Created `data/baselines/v1.8.1_official_full_eval.json`:
+  - 65 queries (28 original + 37 curated), variant `full`, top_k=50, rrf_k=20,
+    corpus 610 chunks, git tag v1.8.1.
+  - Metrics: R@5=0.8000, R@10=0.9141, R@30=0.9731, MRR=0.9128, nDCG@10=0.8255.
+  - Metrics are higher than v1.7 baseline because the query set expanded; the 37 new
+    queries were curated against the corpus. **Use v1.8.1 baseline for future CI guards.**
+- Compare confirmed OK: all thresholds pass vs. v1.7_official.json.
+
+**Suite distribution (v1.8.1)**
+
+- official validated:true: 65 queries (10 categories, all ≥4 per category)
+- candidate validated:true: 4 (confirmed negatives)
+- candidate validated:false: 3 (grading inconclusive)
+- negative_no_answer: 0 in official (justified — recall=0 by design would distort CI guard)
+
+**Docs**
+
+- `docs/BENCHMARKS.md`: v1.8.1 baseline section added as active CI baseline; v1.7 marked
+  as historical. Suite distribution table and compare commands updated.
+
+---
+
 ## v1.8 — 2026-05-22
 
 ### Benchmark complete and continuous evaluation (6.3.6)

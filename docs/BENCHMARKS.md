@@ -8,7 +8,37 @@ set of SDMX queries with ground-truth relevance grades.
 
 ---
 
-## Baseline oficial: v1.7
+## Baseline oficial: v1.8.1 (activo para CI)
+
+**Archivo:** `data/baselines/v1.8.1_official_full_eval.json`  
+**Generado:** 2026-05-22  
+**Queries:** 65 (28 originales + 37 curadas en v1.8.1)  
+**Variante:** `full`  
+**Corpus:** 610 chunks (v1.8 @ tag `e87f7ea`)
+
+### Métricas de referencia
+
+| Métrica    | Valor  |
+|-----------|--------|
+| Recall@5  | 0.8000 |
+| Recall@10 | 0.9141 |
+| Recall@30 | 0.9731 |
+| MRR       | 0.9128 |
+| nDCG@10   | 0.8255 |
+| P50 (ms)  | 250.92 |
+| P95 (ms)  | 257.89 |
+| P99 (ms)  | 270.03 |
+
+Configuración: `top_k=50`, `rrf_k=20`, variante `full`.
+
+**Nota sobre métricas vs. v1.7:** Las métricas son más altas porque la suite pasó de 28 a 65
+queries. Las 37 nuevas queries fueron curadas verificando contra el corpus real, por lo que
+el conjunto oficial tiene mejor cobertura temática. **Usa este baseline (v1.8.1) para futuras
+comparaciones de regresión**, no el de v1.7.
+
+---
+
+## Baseline histórico: v1.7
 
 **Archivo:** `data/baselines/v1.7_official.json`  
 **Generado:** 2026-05-22  
@@ -86,17 +116,30 @@ como baseline de CI**.
 
 ---
 
-## Ejecutar el benchmark (v1.8+)
+## Suite distribution (v1.8.1)
+
+| Suite | validated | n | Uso |
+|-------|-----------|---|-----|
+| `official` | `true` | 65 | CI regression guard |
+| `candidate` | `true` | 4 | Negativos confirmados (no relevant docs) — excluidos del guard |
+| `candidate` | `false` | 3 | Grading inconcluso — excluidos del guard |
+
+Categorías en la suite oficial: todos los 10 tipos cubren ≥4 queries, excepto
+`negative_no_answer` (0 en official — mantenidos como candidate para no distorsionar recall@k).
+
+---
+
+## Ejecutar el benchmark (v1.8.1+)
 
 ```bash
-# Suite oficial (28 queries validadas) — equivalente a "rag-lab benchmark run --suite official"
+# Suite oficial (65 queries validadas) — equivalente a "rag-lab benchmark run --suite official"
 python -m rag_lab.benchmark \
   --suite official \
   --variants full \
   --top-k 50 --rrf-k 20 \
   --output data/baselines/run_$(date +%Y%m%d).json
 
-# Suite candidatas (44 queries no validadas)
+# Suite candidatas (7 queries)
 python -m rag_lab.benchmark \
   --suite candidates \
   --variants full \
@@ -118,15 +161,15 @@ python -m rag_lab.benchmark \
 ## Comparar contra el baseline oficial
 
 ```bash
-# Comparar con el baseline canónico v1.7 — equivalente a "rag-lab benchmark compare ..."
+# Comparar con el baseline canónico v1.8.1 — equivalente a "rag-lab benchmark compare ..."
 python -m rag_lab.benchmark.compare \
-  --baseline data/baselines/v1.7_official.json \
+  --baseline data/baselines/v1.8.1_official_full_eval.json \
   --current  data/baselines/run_YYYYMMDD.json \
   --variant  full
 
 # Guardar reporte JSON de regresión
 python -m rag_lab.benchmark.compare \
-  --baseline data/baselines/v1.7_official.json \
+  --baseline data/baselines/v1.8.1_official_full_eval.json \
   --current  data/baselines/run_YYYYMMDD.json \
   --variant  full \
   --output   data/baselines/regression_YYYYMMDD.json
@@ -186,7 +229,7 @@ Categorías disponibles: `glossary_definition`, `technical_standard`, `cross_lin
 `multi_chunk_same_doc`, `multi_doc_synthesis`, `acronym_or_exact_term`,
 `table_or_structured_reference`, `negative_no_answer`, `ambiguity_test`, `regression_known_hard`.
 
-**Estado actual (v1.8):** 28 queries official + 44 queries candidate = 72 total, 10 categorías.
+**Estado actual (v1.8.1):** 65 queries official + 7 queries candidate = 72 total, 10 categorías.
 
 ### Archivos JSON de baseline
 
