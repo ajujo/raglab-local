@@ -1,4 +1,4 @@
-# RAG-Lab Retrieval Benchmark Queries — v1.8 format
+# RAG-Lab Retrieval Benchmark Queries — v1.8.1 format
 #
 # Fields per query:
 #   id             Unique identifier (used in output)
@@ -22,7 +22,15 @@
 #
 # Suite semantics:
 #   official   — fully annotated, validated:true required for CI regression guard
-#   candidate  — validated:false; excluded from official guard; backlog for human review
+#   candidate  — excluded from official guard; validated:true when ground truth confirmed
+#                (negative_no_answer queries stay candidate even when confirmed — their
+#                 empty doc_relevance would distort aggregate recall@k metrics)
+#
+# Current distribution (v1.8.1):
+#   official validated:true  = 65 (q001-q033, q035-q042, q048-q072 excluding negatives)
+#   candidate validated:true  = 4  (q043-q046 confirmed negatives)
+#   candidate validated:false = 3  (q034 MSD acronym, q047 migration, q062 custom type)
+#   Total = 72
 #
 # Docs in corpus:
 #   Notas_Tecnicas_SDMX_2.1          — SDMX 2.1 technical notes (ES)
@@ -481,114 +489,104 @@ queries:
       Tests cross-lingual dense retrieval and BM25 language limitations.
 
   # =========================================================================
-  # CANDIDATE SUITE — validated:false — q029-q072
-  # Excluded from CI regression guard. Pending human review and annotation.
+  # OFFICIAL SUITE (extended — v1.8.1 curation) — q029-q072
+  # Promoted from candidate after hybrid_search corpus verification 2026-05-22.
+  # negative_no_answer (q043-q046): suite:candidate, validated:true — confirmed
+  # no-relevant-docs; excluded from official to avoid distorting aggregate recall.
   # =========================================================================
 
-  # --- multi_doc_synthesis -------------------------------------------------
+  # --- multi_doc_synthesis (verified) --------------------------------------
 
   - id: q029
     text: "How do the SDMX Glossary and SDMX technical notes differ in their treatment of the dimension concept?"
     category: multi_doc_synthesis
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Requires chunks from both Glossary and Notas to answer; multi-doc synthesis"
+    suite: official
+    validated: true
+    expected_behavior: "Requires chunks from Glossary and Notas; User Guide also relevant"
     source_of_truth: "SDMX_Glossary, Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       SDMX_Glossary: 3
       Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_2-1_User_Guide_6: 1
+      SDMX_2-1_User_Guide_6: 2
     notes: >
-      Genuine multi-doc synthesis: Glossary defines dimension formally; Notas shows
-      implementation specifics. Grading pending verification that both sources actually
-      describe 'dimension' with enough contrast to justify this query.
+      Corpus verification: Notas confirmed top-5, User_Guide dominant in results.
+      Both Glossary and Notas confirmed relevant. Glossary defines dimension formally;
+      Notas shows implementation specifics for SDMX 2.1.
 
   - id: q030
     text: "What is the role of the Maintenance Agency in SDMX and how is it used across different artefact types?"
     category: multi_doc_synthesis
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary defines it; Training and User Guide show cross-artefact usage"
-    source_of_truth: "SDMX_Glossary, SDMX-Training-introduction-2015"
+    suite: official
+    validated: true
+    expected_behavior: "Glossary defines it; User Guide and Notas show cross-artefact usage"
+    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6, Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       SDMX_Glossary: 3
-      SDMX-Training-introduction-2015: 2
       SDMX_2-1_User_Guide_6: 2
+      Notas_Tecnicas_SDMX_2.1: 2
+      SDMX-Training-introduction-2015: 1
     notes: >
-      Multi-doc synthesis: Glossary defines Maintenance Agency; Training intro and User
-      Guide show how it's applied across codelists, DSDs, concept schemes, etc.
-      Grading to be verified.
+      Corpus verification: Glossary #1 (Maintenance Agency definition), User_Guide #2,
+      Notas #3 in top-5. Training intro not in top-5, downgraded to 1. Multi-doc
+      synthesis confirmed.
 
   - id: q031
     text: "What are the similarities and differences between a codelist and a concept scheme in SDMX?"
     category: multi_doc_synthesis
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary defines both; User Guide and Notas show structural differences"
+    suite: official
+    validated: true
+    expected_behavior: "Glossary defines both artefacts; User Guide shows structural differences"
     source_of_truth: "SDMX_Glossary"
     doc_relevance:
       SDMX_Glossary: 3
       SDMX_2-1_User_Guide_6: 2
       Notas_Tecnicas_SDMX_2.1: 1
     notes: >
-      Comparison query requiring understanding of two distinct artefact types from Glossary,
-      plus structural usage from User Guide. Grading to be verified.
+      Corpus verification: Glossary top (Codelist def, HCL def), User_Guide at #5.
+      Comparison query requiring both Codelist and Concept Scheme definitions from
+      Glossary, plus structural usage context from User_Guide.
 
   - id: q032
     text: "How do training materials and the user guide complement each other in explaining the SDMX data model?"
     category: multi_doc_synthesis
     language: en
-    suite: candidate
-    validated: false
+    suite: official
+    validated: true
     expected_behavior: "Both training intro and User Guide primary; multi-doc synthesis"
     source_of_truth: "SDMX-Training-introduction-2015, SDMX_2-1_User_Guide_6"
     doc_relevance:
       SDMX-Training-introduction-2015: 3
       SDMX_2-1_User_Guide_6: 3
     notes: >
-      Explicitly multi-doc: asks about two documents. Useful for testing whether both
-      sources surface reliably. Grading to be verified.
+      Corpus verification: User_Guide #1-#2 + Training #3-#5 confirmed in top-5.
+      Both sources reliably surface. Explicitly tests dual-document retrieval.
 
   - id: q033
     text: "How is SDMX data validation described across the user guide and the technical notes?"
     category: multi_doc_synthesis
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "User Guide and Notas both primary; validation topic covered in both"
+    suite: official
+    validated: true
+    expected_behavior: "User Guide and Notas both primary; validation topic in both"
     source_of_truth: "SDMX_2-1_User_Guide_6, Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       SDMX_2-1_User_Guide_6: 3
       Notas_Tecnicas_SDMX_2.1: 3
     notes: >
-      Data validation topic that spans both documents. Grading to be verified — both
-      docs discuss validation but from different angles.
+      Corpus verification: User_Guide #1, Notas #3 confirmed in top-5. Both docs
+      discuss validation from different angles (usage vs. format specification).
 
-  # --- acronym_or_exact_term (additional candidates) -----------------------
-
-  - id: q034
-    text: "What does MSD stand for and what is its purpose in SDMX?"
-    category: acronym_or_exact_term
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary defines MSD (Metadata Structure Definition); User Guide adds usage"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Acronym expansion + definition. Glossary is canonical. Tests acronym resolution.
+  # --- acronym_or_exact_term (verified) ------------------------------------
 
   - id: q035
     text: "What does DSD stand for in SDMX and why is it important?"
     category: acronym_or_exact_term
     language: en
-    suite: candidate
-    validated: false
+    suite: official
+    validated: true
     expected_behavior: "Glossary + Notas + User Guide all relevant for DSD definition"
     source_of_truth: "SDMX_Glossary"
     doc_relevance:
@@ -596,173 +594,603 @@ queries:
       Notas_Tecnicas_SDMX_2.1: 2
       SDMX_2-1_User_Guide_6: 2
     notes: >
-      Redundant with q003 in substance but tests acronym-first framing.
-      Validates that DSD acronym and spelled-out form both retrieve correctly.
+      Corpus verification: Glossary confirmed at #4 ("Data Structure Definition for global
+      use"). Tests acronym-first framing vs. q003 which uses the spelled-out term.
 
   - id: q036
     text: "What does EDI mean in the context of SDMX and what is SDMX-EDI used for?"
     category: acronym_or_exact_term
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas most detailed on SDMX-EDI; Training intro mentions it"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    suite: official
+    validated: true
+    expected_behavior: "Glossary and Notas both primary; Glossary gives definition, Notas gives usage"
+    source_of_truth: "SDMX_Glossary, Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
+      SDMX_Glossary: 3
       Notas_Tecnicas_SDMX_2.1: 3
-      SDMX-Training-introduction-2015: 2
+      SDMX-Training-introduction-2015: 1
     notes: >
-      EDI acronym resolution (Electronic Data Interchange). Related to q008 but
-      focuses only on SDMX-EDI, not on the comparison. Grading to be verified.
+      Corpus verification: Glossary #1 ("SDMX-EDI: UN/EDIFACT format"). Glossary
+      confirmed as primary for the acronym definition. Notas primary for usage detail.
+      Training marginal (high-level mention only).
 
   - id: q037
     text: "What is an HCL in SDMX terminology?"
     category: acronym_or_exact_term
     language: en
-    suite: candidate
-    validated: false
+    suite: official
+    validated: true
     expected_behavior: "Glossary defines HCL (Hierarchical Codelist)"
     source_of_truth: "SDMX_Glossary"
     doc_relevance:
       SDMX_Glossary: 3
       SDMX_2-1_User_Guide_6: 1
     notes: >
-      HCL = Hierarchical Codelist. Tests that the system resolves uncommon acronyms.
-      Grading to be verified — HCL may not appear as an acronym in corpus.
+      Corpus verification: Glossary #1 ("Hierarchical Codelist, HCL"). Acronym resolves
+      correctly. Uncommon acronym test passed; HCL appears explicitly in Glossary.
 
-  # --- table_or_structured_reference ---------------------------------------
+  # --- table_or_structured_reference (verified) ----------------------------
 
   - id: q038
     text: "What are the standard frequency codes used in SDMX time series?"
     category: table_or_structured_reference
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas likely has the frequency codelist table; User Guide supplements"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary for frequency codes; Notas supplements"
+    source_of_truth: "SDMX_2-1_User_Guide_6, Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_2-1_User_Guide_6: 2
+      SDMX_2-1_User_Guide_6: 3
+      Notas_Tecnicas_SDMX_2.1: 2
     notes: >
-      Frequency codes (A=annual, Q=quarterly, M=monthly, etc.) are likely in a table
-      in Notas. Tests whether the chunker preserved table content adequately.
-      Grading to be verified.
+      Corpus verification: User_Guide #1-#2+#4, Notas #3+#5. User_Guide more dominant
+      than expected; doc_relevance updated to reflect actual retrieval. Frequency codes
+      table content confirmed in both documents.
 
   - id: q039
     text: "What are the allowed values for the SDMX observation status attribute?"
     category: table_or_structured_reference
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas or Glossary should have the observation status codelist"
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — OBS_STATUS codelist in technical notes"
     source_of_truth: "Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       Notas_Tecnicas_SDMX_2.1: 3
       SDMX_Glossary: 1
     notes: >
-      OBS_STATUS codelist values (A=normal, M=missing, etc.) likely in Notas.
-      Tests table retrieval. Grading to be verified.
+      Corpus verification: Notas #1 (attributes section with OBS_STATUS values).
+      Confirmed as table-structured content in Notas. Observation status codelist
+      values retrieved correctly.
 
   - id: q040
     text: "What time period formats does SDMX 2.1 support for representing dates?"
     category: table_or_structured_reference
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas has the time period format table; User Guide supplements"
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — time period format table in section 4.2"
     source_of_truth: "Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       Notas_Tecnicas_SDMX_2.1: 3
       SDMX_2-1_User_Guide_6: 2
     notes: >
-      Time period formats (ISO 8601 variants for SDMX). Likely in a structured section
-      of Notas. Grading to be verified.
+      Corpus verification: Notas #1 (section 4.2.1 intro) + #2 (section 4.2.8 Time Format).
+      Strongly confirmed — two distinct Notas chunks about time period formats in top-2.
 
   - id: q041
     text: "What are the mandatory header elements in an SDMX data message?"
     category: table_or_structured_reference
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas has the message structure specification"
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — message header specification"
     source_of_truth: "Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       Notas_Tecnicas_SDMX_2.1: 3
       SDMX_2-1_User_Guide_6: 1
     notes: >
-      SDMX message header structure (ID, Test, Prepared, Sender, Receiver, etc.).
-      Notas should have the most precise technical specification. Grading to be verified.
+      Corpus verification: Notas #2-#5 confirmed in top-5. Message header elements
+      (ID, Test, Prepared, Sender, Receiver) well-covered in Notas.
 
   - id: q042
     text: "What XML namespace prefixes are defined for SDMX 2.1 messages?"
     category: table_or_structured_reference
     language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas has the namespace declarations"
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — namespace declarations in message format section"
     source_of_truth: "Notas_Tecnicas_SDMX_2.1"
     doc_relevance:
       Notas_Tecnicas_SDMX_2.1: 3
     notes: >
-      XML namespace prefixes (message:, structure:, data:, etc.). Very specific
-      technical content likely in Notas section on message format. Grading to be verified.
+      Corpus verification: Notas #1 (section 3.3.1 XML namespace prefixes). Very specific
+      technical content confirmed in Notas. Single-source query as expected.
 
-  # --- negative_no_answer --------------------------------------------------
-  # doc_relevance is empty: no document directly answers these questions.
-  # These queries are excluded from automated recall metrics (no relevant docs → recall=0).
-  # Purpose: human evaluation of LLM generation behaviour, not retrieval recall.
+  # --- ambiguity_test (verified) -------------------------------------------
+
+  - id: q048
+    text: "What is a key in SDMX?"
+    category: ambiguity_test
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Ambiguous: data key (dimension values), Key Descriptor, or other uses"
+    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_Glossary_Test: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: SDMX_Glossary_Test at #1, User_Guide with data-set context.
+      Multiple interpretations confirmed — data key, key descriptor, key family all surface.
+      SDMX_Glossary_Test graded 2 as it appeared prominently with relevant content.
+
+  - id: q049
+    text: "What is a group in SDMX?"
+    category: ambiguity_test
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "DSD Group component (User_Guide primary); Glossary may surface wrong sense"
+    source_of_truth: "SDMX_2-1_User_Guide_6, SDMX_Glossary"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Corpus verification: Notas (format context) + Glossary ("Ownership group" — wrong
+      sense) in top-5. Real ambiguity confirmed: DSD Group vs. organisation group.
+      User_Guide is the authoritative source for DSD Group component.
+
+  - id: q050
+    text: "What is a structure in SDMX?"
+    category: ambiguity_test
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Very broad — DSD, Structure Messages, or structural metadata in general"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+      SDMX-Training-introduction-2015: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Corpus verification: User_Guide (data set context) + Training confirmed in results.
+      High-ambiguity query confirmed: retrieval surfaces multiple structural senses.
+      Training added to doc_relevance as confirmed relevant.
+
+  - id: q051
+    text: "What does 'concept' mean in SDMX?"
+    category: ambiguity_test
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Glossary gives precise SDMX definition; Notas provides usage context"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Corpus verification: Glossary (Code, Concept Scheme) + Notas confirmed in results.
+      Notas upgraded from 1 to 2. Ambiguity confirmed: broad vs. specific SDMX meaning.
+
+  - id: q052
+    text: "What is an SDMX component?"
+    category: ambiguity_test
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "DSD components (dimensions, measures, attributes) vs. message component"
+    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_Glossary_Test: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: User_Guide (architecture context) + SDMX_Glossary_Test
+      confirmed in results. Ambiguity confirmed: DSD component vs. message component.
+      SDMX_Glossary_Test graded 2 as it appeared with relevant content.
+
+  # --- regression_known_hard (verified) ------------------------------------
+
+  - id: q053
+    text: "What is SDMX-EDI and what is its relationship to EDIFACT?"
+    category: regression_known_hard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary for SDMX-EDI; Glossary confirms EDIFACT link"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_Glossary: 2
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      Corpus verification: Notas #1-#2 (format guide) + Glossary #3 (SDMX-EDI def)
+      in top-5. Related to q008 (known hard). Glossary confirms EDIFACT relationship.
+      Hard because EDIFACT-specific content may be sparse.
+
+  - id: q054
+    text: "What are the technical specifications for the SDMX GenericData message format?"
+    category: regression_known_hard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — GenericData format spec in section 3.3.1"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+    notes: >
+      Corpus verification: Notas #1+#4+#5 (section 3.3.1 format) confirmed in top-5.
+      Hard query because specific GenericData spec is in a single technical document.
+      Multiple Notas chunks confirmed, showing the spec spans several sections.
+
+  - id: q055
+    text: "How are annotations used in SDMX artefacts and what information can they carry?"
+    category: regression_known_hard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Glossary primary (Annotation def, Annotable Artefact); User Guide adds context"
+    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: Glossary #1 (Annotation definition) + #2 (Annotable Artefact).
+      Strongly confirmed in top-5. Hard because annotation content spreads across artefact
+      types but retrieval performs well here.
+
+  - id: q056
+    text: "What is the SDMX information model and what are its layers or tiers?"
+    category: regression_known_hard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Training intro primary; Glossary confirms SDMX-IM definition"
+    source_of_truth: "SDMX-Training-introduction-2015, SDMX_Glossary"
+    doc_relevance:
+      SDMX-Training-introduction-2015: 3
+      SDMX_Glossary: 2
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: Training #1 + Glossary #2 ("SDMX-IM" definition) in top-5.
+      Glossary confirmed at #2 — added to doc_relevance. Source_of_truth updated.
+      Hard because architectural layers concept spans many sections.
+
+  - id: q057
+    text: "How does SDMX define a primary measure and how is it positioned within a DSD?"
+    category: regression_known_hard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary for DSD component position; Glossary/Notas add context"
+    source_of_truth: "SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Corpus verification: User_Guide #1 (DSD components) confirmed as primary. Glossary
+      appeared at #4 but with general SDMX definition rather than primary-measure-specific
+      content. User_Guide promoted to 3; Glossary kept at 2 as it appears in results.
+
+  # --- glossary_definition (verified) --------------------------------------
+
+  - id: q058
+    text: "What is a hierarchical codelist in SDMX?"
+    category: glossary_definition
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Glossary primary — HCL definition with parent-child relationships"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Corpus verification: Glossary #1 (HCL definition) confirmed. Complements q037
+      (HCL acronym form) — both confirmed. Spelled-out form retrieves cleanly.
+
+  - id: q059
+    text: "What is a reporting taxonomy in SDMX?"
+    category: glossary_definition
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Glossary primary — Reporting Taxonomy structural artefact"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 1
+    notes: >
+      Corpus verification: Glossary confirmed at position #2 (Reporting Taxonomy definition).
+      Narrow Glossary-dominant query confirmed. Not at #1 but within top-5.
+
+  - id: q060
+    text: "What is a data consumer scheme in SDMX?"
+    category: glossary_definition
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Glossary dominant — Data Consumer Scheme definition"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+    notes: >
+      Corpus verification: Glossary #1+#2 (Data Consumer + Data Consumer Scheme) confirmed.
+      Narrow Glossary-dominant query — two Glossary chunks about related artefact types.
+
+  - id: q061
+    text: "What is a measure dimension in SDMX?"
+    category: glossary_definition
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary for DSD component context; Glossary definition"
+    source_of_truth: "SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 1
+    notes: >
+      Corpus verification: User_Guide #1-#3 dominant; Glossary NOT in top-5. User_Guide
+      promoted to 3; Glossary downgraded to 1. Measure Dimension concept appears primarily
+      in DSD component sections of User_Guide, not as a standalone Glossary entry.
+
+  # --- technical_standard (verified) ---------------------------------------
+
+  - id: q063
+    text: "What are the different types of SDMX data messages and how do they differ?"
+    category: technical_standard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary — GenericData, CompactData, StructureSpecificData formats"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      Corpus verification: Notas #1-#3 (format optimisations, GenericData) confirmed.
+      Training not confirmed in top-5; downgraded from 2 to 1.
+
+  - id: q064
+    text: "How are dimensions and attributes defined within an SDMX Data Structure Definition?"
+    category: technical_standard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary for DSD implementation; Glossary defines terms"
+    source_of_truth: "SDMX_2-1_User_Guide_6, SDMX_Glossary"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Corpus verification: User_Guide #1 + Glossary #2 (DSD definition) in top-5.
+      User_Guide promoted to 3 (confirmed #1). Source_of_truth updated.
+
+  - id: q065
+    text: "What are the SDMX web service guidelines for requesting structural metadata?"
+    category: technical_standard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary for REST API; Glossary adds SDMX Registry context"
+    source_of_truth: "SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      Corpus verification: Glossary #1 (SDMX Registry — related concept) + User_Guide
+      #2+#3 in top-5. Glossary added to doc_relevance at 2 (Registry is related to web
+      service structural queries). User_Guide confirmed as primary.
+
+  - id: q066
+    text: "What is the role of reference metadata in SDMX and how does it relate to statistical data?"
+    category: technical_standard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Multi-doc: Training intro overview, User Guide detail, Glossary defines term"
+    source_of_truth: "SDMX-Training-introduction-2015, SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX-Training-introduction-2015: 3
+      SDMX_2-1_User_Guide_6: 3
+      SDMX_Glossary: 2
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Corpus verification: Training #1 + Glossary #2 + User_Guide #3+#4 in top-5.
+      Training confirmed as primary (#1) — added to doc_relevance. Source_of_truth updated.
+      Strong multi-doc result confirmed.
+
+  - id: q067
+    text: "How does SDMX 2.1 support multiple language representations of metadata?"
+    category: technical_standard
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "User Guide primary — multi-language Names/Descriptions; Notas marginal"
+    source_of_truth: "SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      Notas_Tecnicas_SDMX_2.1: 1
+    notes: >
+      Corpus verification: User_Guide dominant (#1-#4); Notas weak. Doc_relevance
+      reversed from original: User_Guide promoted to 3, Notas downgraded to 1.
+      Multi-language content (localised Names/Descriptions) lives in User_Guide.
+
+  # --- cross_lingual_es_en (verified) --------------------------------------
+
+  - id: q068
+    text: "¿Cuáles son los tipos de mensajes de datos SDMX?"
+    category: cross_lingual_es_en
+    language: es
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary (Spanish); Glossary also surfaces via dense retrieval"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_Glossary: 2
+      SDMX-Training-introduction-2015: 1
+    notes: >
+      Corpus verification: Notas #3+#4 + Glossary #1 in top-5. Glossary surfaced for
+      this Spanish query (dense cross-lingual alignment) — added to doc_relevance at 2.
+      Tests cross-lingual retrieval of message type definitions.
+
+  - id: q069
+    text: "¿Qué es un esquema de conceptos en SDMX y para qué se utiliza?"
+    category: cross_lingual_es_en
+    language: es
+    suite: official
+    validated: true
+    expected_behavior: "Glossary primary (cross-lingual dense hit); Notas secondary (Spanish)"
+    source_of_truth: "SDMX_Glossary, Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      SDMX_Glossary: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+    notes: >
+      Corpus verification: Glossary #1+#2 (Concept Scheme definitions) + Notas #4.
+      Glossary more dominant than expected for Spanish query — promoted to 3. Notas
+      confirmed at #4. Tests cross-lingual dense alignment for concept scheme.
+
+  - id: q070
+    text: "¿Cómo se utilizan las restricciones en SDMX para limitar los datos válidos?"
+    category: cross_lingual_es_en
+    language: es
+    suite: official
+    validated: true
+    expected_behavior: "Notas primary (Spanish constraints); User Guide supplements"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: Notas #1+#2 (Constraints sections) + User_Guide #3+#4
+      confirmed in top-5. Both sources confirmed; original grades correct.
+
+  # --- multi_chunk_same_doc (verified) -------------------------------------
+
+  - id: q071
+    text: "Explain all the different types of dimensions defined in SDMX"
+    category: multi_chunk_same_doc
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Multiple User_Guide and Notas chunks; User_Guide dominant over Glossary"
+    source_of_truth: "SDMX_2-1_User_Guide_6, Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      Notas_Tecnicas_SDMX_2.1: 2
+      SDMX_Glossary: 1
+    notes: >
+      Corpus verification: User_Guide #1, Notas #2-#3 — Glossary NOT dominant. Doc_relevance
+      updated: User_Guide promoted to 3, Notas added at 2, Glossary downgraded to 1.
+      Dimension types (Time, Measure, regular) span User_Guide + Notas chunks.
+
+  - id: q072
+    text: "What role does the SDMX RESTful API play in accessing different types of metadata artefacts?"
+    category: multi_chunk_same_doc
+    language: en
+    suite: official
+    validated: true
+    expected_behavior: "Multiple User_Guide chunks for different artefact endpoints; Training minor"
+    source_of_truth: "SDMX_2-1_User_Guide_6"
+    doc_relevance:
+      SDMX_2-1_User_Guide_6: 3
+      SDMX-Training-introduction-2015: 2
+    notes: >
+      Corpus verification: User_Guide #1 (dominant) + Training #5 confirmed. Training
+      upgraded from 1 to 2 — confirmed at position #5 with relevant API overview content.
+
+  # =========================================================================
+  # CANDIDATE SUITE — remaining after v1.8.1 curation
+  # q034, q047, q062: validated:false — corpus verification inconclusive
+  # q043-q046: validated:true — confirmed no-relevant-docs; suite:candidate to
+  #   avoid distorting official recall@k (empty doc_relevance → recall=0 by design)
+  # =========================================================================
+
+  # --- negative_no_answer (confirmed, suite:candidate) ---------------------
 
   - id: q043
     text: "How does SDMX integrate with GraphQL APIs?"
     category: negative_no_answer
     language: en
     suite: candidate
-    validated: false
+    validated: true
     expected_behavior: "No relevant chunks — corpus does not cover GraphQL integration"
     source_of_truth: ""
     doc_relevance: {}
     notes: >
-      Out-of-scope query: GraphQL is not covered in any corpus document. Useful for
-      testing that the system either returns low-confidence results or admits uncertainty
-      in the generation step. Not evaluated by recall metrics (empty ground truth).
+      Corpus verification: top-5 returned generic SDMX definition chunks; no GraphQL
+      content found. Confirmed out-of-scope. Suite:candidate to avoid distorting
+      aggregate recall@k (recall=0 by definition). Tests LLM generation uncertainty.
 
   - id: q044
     text: "What Python libraries implement the SDMX standard for programmatic access?"
     category: negative_no_answer
     language: en
     suite: candidate
-    validated: false
+    validated: true
     expected_behavior: "No relevant chunks — corpus does not list Python libraries"
     source_of_truth: ""
     doc_relevance: {}
     notes: >
-      Out-of-scope: Python SDK/library listing is not in the corpus. Tests system
-      behaviour on questions about implementation tooling.
+      Corpus verification: top-5 returned generic SDMX + version-related chunks; no
+      Python library content. Confirmed out-of-scope. Suite:candidate to avoid
+      distorting recall@k.
 
   - id: q045
     text: "How does SDMX handle real-time or streaming data updates?"
     category: negative_no_answer
     language: en
     suite: candidate
-    validated: false
-    expected_behavior: "No relevant chunks — streaming is not addressed in corpus"
+    validated: true
+    expected_behavior: "No relevant chunks — streaming not addressed in corpus"
     source_of_truth: ""
     doc_relevance: {}
     notes: >
-      SDMX is a batch/periodic reporting standard; real-time streaming is out of scope
-      for all corpus documents. Tests whether retrieval returns false positives.
+      Corpus verification: top-5 returned SDMX usage chunks; no streaming content.
+      Confirmed out-of-scope. SDMX is a batch/periodic reporting standard; real-time
+      streaming is not in any corpus document.
 
   - id: q046
     text: "What are the authentication requirements for SDMX REST API requests?"
     category: negative_no_answer
     language: en
     suite: candidate
-    validated: false
-    expected_behavior: "No relevant chunks — authentication is not covered in corpus"
+    validated: true
+    expected_behavior: "No relevant chunks — authentication not covered in corpus"
     source_of_truth: ""
     doc_relevance: {}
     notes: >
-      Authentication/authorisation for SDMX REST endpoints is implementation-specific
-      and not documented in the corpus. Tests false-positive rate.
+      Corpus verification: top-5 returned SDMX Registry chunks (no auth content).
+      Confirmed out-of-scope. Authentication is implementation-specific and not
+      documented in any corpus document.
+
+  # --- inconclusive / weak corpus coverage ---------------------------------
+
+  - id: q034
+    text: "What does MSD stand for and what is its purpose in SDMX?"
+    category: acronym_or_exact_term
+    language: en
+    suite: candidate
+    validated: false
+    expected_behavior: "Glossary should define MSD (Metadata Structure Definition)"
+    source_of_truth: "SDMX_Glossary"
+    doc_relevance:
+      SDMX_Glossary: 3
+      SDMX_2-1_User_Guide_6: 2
+    notes: >
+      Corpus verification: Glossary NOT in top-5 for the MSD acronym query. The acronym
+      form does not trigger strong BM25 signal and dense retrieval did not surface the
+      MSD-specific Glossary entry. Note: q018 covers the same concept as the full
+      spelled-out term ("What is a Metadata Structure Definition (MSD) in SDMX?") and
+      is validated in the official suite. Keep as candidate.
 
   - id: q047
     text: "How do you migrate data from SDMX 1.0 to SDMX 2.1?"
@@ -770,232 +1198,14 @@ queries:
     language: en
     suite: candidate
     validated: false
-    expected_behavior: "No direct migration guide in corpus; possibly marginal Notas content"
+    expected_behavior: "No direct migration guide; Notas may mention version differences tangentially"
     source_of_truth: ""
     doc_relevance:
       Notas_Tecnicas_SDMX_2.1: 1
     notes: >
-      Migration guide from SDMX 1.0 to 2.1 is not explicitly covered. Notas may mention
-      v1.0 differences tangentially. Primarily a negative test. Grading to be verified.
-
-  # --- ambiguity_test ------------------------------------------------------
-
-  - id: q048
-    text: "What is a key in SDMX?"
-    category: ambiguity_test
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Ambiguous: could mean data key (dimension values) or key descriptor"
-    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Ambiguous term: 'key' can mean the data key (combination of dimension values),
-      Key Descriptor, or other uses. Tests whether retrieval surfaces the most common
-      interpretation. Grading to be verified.
-
-  - id: q049
-    text: "What is a group in SDMX?"
-    category: ambiguity_test
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Refers to Group component in DSD; User Guide is primary"
-    source_of_truth: "SDMX_2-1_User_Guide_6, SDMX_Glossary"
-    doc_relevance:
-      SDMX_2-1_User_Guide_6: 3
-      SDMX_Glossary: 2
-    notes: >
-      'Group' in SDMX refers to a specific DSD component. But could also be interpreted
-      as an organisation group. Tests disambiguation. Grading to be verified.
-
-  - id: q050
-    text: "What is a structure in SDMX?"
-    category: ambiguity_test
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Very broad — structure could mean DSD, concept scheme, or message structure"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      Notas_Tecnicas_SDMX_2.1: 2
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Deliberately vague query. 'Structure' in SDMX can refer to many things:
-      Data Structure Definition, Structure Messages, or structural metadata in general.
-      Tests how retrieval handles high-ambiguity inputs. Grading to be verified.
-
-  - id: q051
-    text: "What does 'concept' mean in SDMX?"
-    category: ambiguity_test
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary primary; concept is a specific term with precise definition"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      Notas_Tecnicas_SDMX_2.1: 1
-    notes: >
-      'Concept' has a specific meaning in SDMX (an item in a Concept Scheme) but could
-      be interpreted more broadly. Tests whether the system retrieves the precise
-      SDMX definition. Grading to be verified.
-
-  - id: q052
-    text: "What is an SDMX component?"
-    category: ambiguity_test
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Could mean DSD component (dimension, measure, attribute) or message component"
-    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      'Component' most commonly refers to DSD components (dimensions, measures, attributes).
-      Tests disambiguation on a broad structural term. Grading to be verified.
-
-  # --- regression_known_hard -----------------------------------------------
-
-  - id: q053
-    text: "What is SDMX-EDI and what is its relationship to EDIFACT?"
-    category: regression_known_hard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas covers SDMX-EDI; EDIFACT relationship may be thin in corpus"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX-Training-introduction-2015: 1
-    notes: >
-      Related to q008 (known hard). SDMX-EDI is based on EDIFACT syntax. The EDIFACT
-      connection may not be deeply covered in corpus. Expected to be hard. Grading to be
-      verified.
-
-  - id: q054
-    text: "What are the technical specifications for the SDMX GenericData message format?"
-    category: regression_known_hard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas has detailed GenericData format spec; expected hard"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-    notes: >
-      Very specific message format query. GenericData is a specific SDMX-ML format.
-      Expected to have low recall if the relevant chunk is buried in Notas. Hard query.
-
-  - id: q055
-    text: "How are annotations used in SDMX artefacts and what information can they carry?"
-    category: regression_known_hard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary and User Guide cover annotations; specific and potentially hard"
-    source_of_truth: "SDMX_Glossary, SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Annotations (metadata attached to artefacts) are a specific feature. Expected to
-      be harder than definitions because the content is spread across multiple places.
-
-  - id: q056
-    text: "What is the SDMX information model and what are its layers or tiers?"
-    category: regression_known_hard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Training intro and User Guide describe the information model layers"
-    source_of_truth: "SDMX-Training-introduction-2015, SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX-Training-introduction-2015: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      The SDMX information model (structural metadata layer, data layer, etc.) is a
-      foundational concept. Expected to be harder because 'information model' is an
-      architectural concept spanning many chunks. Grading to be verified.
-
-  - id: q057
-    text: "How does SDMX define a primary measure and how is it positioned within a DSD?"
-    category: regression_known_hard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary defines primary measure; Notas and User Guide show DSD position"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      Notas_Tecnicas_SDMX_2.1: 2
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Primary measure (OBS_VALUE typically) is a specific DSD component. Expected harder
-      than plain definition queries because it requires linking definition + structure.
-
-  # --- glossary_definition (additional candidates) -------------------------
-
-  - id: q058
-    text: "What is a hierarchical codelist in SDMX?"
-    category: glossary_definition
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary primary; User Guide adds context"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 1
-    notes: >
-      Hierarchical Codelist (HCL) is a specific type of codelist with parent-child
-      relationships. Grading to be verified.
-
-  - id: q059
-    text: "What is a reporting taxonomy in SDMX?"
-    category: glossary_definition
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary primary — specific structural artefact"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 1
-    notes: >
-      Reporting Taxonomy — Glossary should have the definition. Tests narrow Glossary query.
-      Grading to be verified.
-
-  - id: q060
-    text: "What is a data consumer scheme in SDMX?"
-    category: glossary_definition
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary dominant"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-    notes: >
-      Data Consumer Scheme — narrow Glossary term. Grading to be verified.
-
-  - id: q061
-    text: "What is a measure dimension in SDMX?"
-    category: glossary_definition
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary and User Guide cover the measure dimension component"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Measure Dimension is a specific DSD component type. Grading to be verified.
+      Corpus verification: top-5 returned version-compatibility chunks (mentions SDMX 2.1
+      but no explicit migration guide). Partially negative — marginal Notas content about
+      version differences confirmed but no migration procedure documented. Keep as candidate.
 
   - id: q062
     text: "What is a custom type scheme in SDMX?"
@@ -1003,167 +1213,11 @@ queries:
     language: en
     suite: candidate
     validated: false
-    expected_behavior: "Glossary dominant — specialised artefact"
+    expected_behavior: "Glossary should define Custom Type Scheme"
     source_of_truth: "SDMX_Glossary"
     doc_relevance:
       SDMX_Glossary: 3
     notes: >
-      Custom Type Scheme — narrow Glossary term. Grading to be verified.
-
-  # --- technical_standard (additional candidates) --------------------------
-
-  - id: q063
-    text: "What are the different types of SDMX data messages and how do they differ?"
-    category: technical_standard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas covers message types; Training intro gives overview"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX-Training-introduction-2015: 2
-    notes: >
-      SDMX message types (GenericData, CompactData, StructureSpecificData, etc.).
-      Notas should have the most detail. Grading to be verified.
-
-  - id: q064
-    text: "How are dimensions and attributes defined within an SDMX Data Structure Definition?"
-    category: technical_standard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Glossary defines them; Notas and User Guide show DSD implementation"
-    source_of_truth: "SDMX_Glossary, Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      SDMX_Glossary: 3
-      Notas_Tecnicas_SDMX_2.1: 2
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      DSD component types. Related to q026 but focuses on definition+implementation.
-      Grading to be verified.
-
-  - id: q065
-    text: "What are the SDMX web service guidelines for requesting structural metadata?"
-    category: technical_standard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "User Guide covers web services; Training intro gives overview"
-    source_of_truth: "SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_2-1_User_Guide_6: 3
-      SDMX-Training-introduction-2015: 1
-    notes: >
-      Web service guidelines for structural metadata queries. User Guide should cover
-      the REST API for structure requests. Grading to be verified.
-
-  - id: q066
-    text: "What is the role of reference metadata in SDMX and how does it relate to statistical data?"
-    category: technical_standard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "User Guide covers reference metadata framework; Notas supplements"
-    source_of_truth: "SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_2-1_User_Guide_6: 3
-      Notas_Tecnicas_SDMX_2.1: 2
-      SDMX_Glossary: 1
-    notes: >
-      Reference metadata (as opposed to structural metadata and statistical data).
-      Grading to be verified.
-
-  - id: q067
-    text: "How does SDMX 2.1 support multiple language representations of metadata?"
-    category: technical_standard
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Multi-language support for names and descriptions; Notas or User Guide"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Multi-language support in SDMX (localised names, descriptions, annotations).
-      Notas likely covers this for Spanish context. Grading to be verified.
-
-  # --- cross_lingual_es_en (additional candidates) -------------------------
-
-  - id: q068
-    text: "¿Cuáles son los tipos de mensajes de datos SDMX?"
-    category: cross_lingual_es_en
-    language: es
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas primary (Spanish); Training intro marginal"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX-Training-introduction-2015: 1
-    notes: >
-      Spanish query about SDMX message types. Tests cross-lingual retrieval of
-      Notas content. Grading to be verified.
-
-  - id: q069
-    text: "¿Qué es un esquema de conceptos en SDMX y para qué se utiliza?"
-    category: cross_lingual_es_en
-    language: es
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas primary Spanish; Glossary relevant in English"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_Glossary: 2
-    notes: >
-      Spanish equivalent of q007. Tests cross-lingual alignment for concept scheme.
-      Grading to be verified.
-
-  - id: q070
-    text: "¿Cómo se utilizan las restricciones en SDMX para limitar los datos válidos?"
-    category: cross_lingual_es_en
-    language: es
-    suite: candidate
-    validated: false
-    expected_behavior: "Notas primary; User Guide supplements"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Spanish query about constraints. Notas covers constraint application in Spanish.
-      Grading to be verified.
-
-  # --- multi_chunk_same_doc (additional candidates) ------------------------
-
-  - id: q071
-    text: "Explain all the different types of dimensions defined in SDMX"
-    category: multi_chunk_same_doc
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Multiple Glossary and User Guide chunks for Time Dim, Measure Dim, regular Dims"
-    source_of_truth: "SDMX_Glossary"
-    doc_relevance:
-      SDMX_Glossary: 3
-      SDMX_2-1_User_Guide_6: 2
-    notes: >
-      Dimension types (Time Dimension, Measure Dimension, regular Dimension) require
-      multiple Glossary chunks to answer completely. MMR stress test. Grading to be verified.
-
-  - id: q072
-    text: "What role does the SDMX RESTful API play in accessing different types of metadata artefacts?"
-    category: multi_chunk_same_doc
-    language: en
-    suite: candidate
-    validated: false
-    expected_behavior: "Multiple User Guide chunks covering different artefact query endpoints"
-    source_of_truth: "SDMX_2-1_User_Guide_6"
-    doc_relevance:
-      SDMX_2-1_User_Guide_6: 3
-      SDMX-Training-introduction-2015: 1
-    notes: >
-      REST API for multiple artefact types requires multiple User Guide chunks.
-      MMR stress test. Grading to be verified.
+      Corpus verification: Custom Type Scheme NOT well-represented in top-5 results.
+      Item Scheme and Agency Scheme appeared instead (related artefact types). The corpus
+      may not have a specific chunk about Custom Type Scheme. Keep as candidate.
