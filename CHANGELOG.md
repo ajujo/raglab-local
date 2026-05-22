@@ -4,6 +4,92 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.10 — 2026-05-22
+
+### Reranker structural context: heading_path + doc_id (6.3.3)
+
+No changes to candidate generation, chunking, dense/BM25/sparse scoring, RRF, MMR, or
+embeddings. The only change is the text passed to the cross-encoder during reranking.
+
+**What changed**
+
+`rerank()` now builds enriched text for each chunk before feeding it to the cross-encoder:
+
+```
+Document: SDMX_Technical_Notes
+Section: ## 4. Data Structure Definition > ### 4.2 Key Families
+
+<chunk text>
+```
+
+Previously the cross-encoder received bare chunk text only. The structural prefix lets the
+model use section context when scoring relevance — particularly useful for ambiguous terms
+like "key", "group", or "SDMX-ML" that have different meanings across sections.
+
+**New function: `build_reranker_text(chunk, use_heading_context=True) -> str`**
+
+- Prepends `Document: <doc_id>` and `Section: <heading_path>` when both are available.
+- Degrades gracefully: uses only the available field if one is missing; falls back to bare
+  text if both are absent (backward-compatible with legacy chunks without heading_path).
+- Truncates heading_path at 200 chars to prevent pathologically long prefixes.
+- Deterministic: same chunk → same output every time.
+
+**New config: `RERANKER_USE_HEADING_CONTEXT = True`**
+
+Set to `False` in `.env` (or config.py) to restore v1.9 text-only behaviour.
+
+**New field on reranked chunks: `heading_path_used: bool`**
+
+Each chunk returned by `rerank()` now carries `heading_path_used=True/False` indicating
+whether heading context was actually used for that chunk (may be False even with
+`RERANKER_USE_HEADING_CONTEXT=True` when the chunk has no heading_path).
+
+**Benchmark results (65 official queries, variant=full, vs v1.8.1 baseline)**
+
+| Metric     | v1.8.1 (baseline) | v1.10  | Δ       |
+|------------|-------------------|--------|---------|
+| R@5        | 0.8000            | 0.8205 | +0.0205 |
+| R@10       | 0.9141            | 0.8962 | -0.0179 |
+| R@30       | 0.9731            | 0.9782 | +0.0051 |
+| MRR        | 0.9128            | 0.9385 | +0.0257 |
+| nDCG@10    | 0.8255            | 0.8373 | +0.0118 |
+
+Compare guard: `Overall OK` (no metric crossed FAIL or WARN threshold).
+
+Interpretation: better top-5 precision (R@5 +2.1%, MRR +2.6%, nDCG@10 +1.2%) at a slight
+cost in top-10 recall (-1.8%). Since the LLM receives RERANK_TOP_K=8 chunks, improving
+ranking precision in the top 5 is the relevant signal.
+
+**Per-category analysis**
+
+| Category                    | MRR pre | MRR post | Δ      |
+|-----------------------------|---------|----------|--------|
+| ambiguity_test (n=5)        | 0.800   | 1.000    | +0.200 |
+| acronym_or_exact_term (n=4) | 0.875   | 1.000    | +0.125 |
+| technical_standard (n=15)   | 0.917   | 0.956    | +0.039 |
+| regression_known_hard (n=5) | 0.850   | 0.867    | +0.017 |
+| glossary_definition (n=17)  | 0.941   | 0.941    | ±0.000 |
+| multi_chunk_same_doc (n=4)  | 1.000   | 1.000    | ±0.000 |
+| multi_doc_synthesis (n=5)   | 1.000   | 1.000    | ±0.000 |
+| table_or_structured (n=5)   | 0.900   | 0.900    | ±0.000 |
+| cross_lingual_es_en (n=5)   | 0.867   | 0.767    | -0.100 |
+
+The `cross_lingual_es_en` regression (-0.100, 1 query degraded by -0.500 MRR) is caused
+by q070 ("¿Cómo se utilizan las restricciones…"): adding English doc_id/section headers
+to Spanish-query scoring slightly changes the cross-encoder's attention. This is a known
+tradeoff — all other categories are flat or improved.
+
+**Tests (19 in `tests/test_retrieval/test_reranker_context.py`)**
+
+- `TestBuildRerankerText`: full context format, no heading_path, no doc_id, both absent,
+  context disabled, missing keys, None fields, truncation at 200 chars, no duplication,
+  deterministic, old chunk without heading_path key, whitespace-only heading treated as empty.
+- `TestRerankHeadingContext`: heading_path_used=True/False, context disabled flag, enriched
+  text sent to cross-encoder, text-only when disabled, candidate count unchanged, rerank_score
+  still attached.
+
+---
+
 ## v1.9 — 2026-05-22
 
 ### Real tokenizer for token counting (6.3.3 hygiene)

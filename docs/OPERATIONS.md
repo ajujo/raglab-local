@@ -195,7 +195,39 @@ With `--explain`, each result shows:
        └─ mmr_score=0.7231 ← MMR reordered
 ```
 
+Reranked chunks also carry `heading_path_used: bool` indicating whether structural
+context was prepended to the text sent to the cross-encoder (v1.10+).
+
 This is the primary tool for diagnosing why a specific chunk appears or doesn't appear in results.
+
+---
+
+## Reranker heading context (v1.10+)
+
+The cross-encoder receives enriched text with structural context:
+
+```
+Document: SDMX_Technical_Notes
+Section: ## 4. Data Structure Definition > ### 4.2 Key Families
+
+<chunk text>
+```
+
+### Config flag
+
+`RERANKER_USE_HEADING_CONTEXT = True` (default: on)
+
+Set to `False` in `.env` or `rag_lab/config.py` to restore v1.9 text-only behaviour.
+
+### When to disable
+
+- If you observe regressions on multilingual (ES/EN) queries in your domain.
+- During A/B testing when you need a clean text-only reranker baseline.
+
+### Diagnose field
+
+Each chunk returned by `rerank()` carries `heading_path_used: bool`. Query with
+`--explain` to see this per-result.
 
 ---
 

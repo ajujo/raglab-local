@@ -4,9 +4,9 @@ Reranks candidate chunks using a cross-encoder model for higher precision.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
-from rag_lab.config import RERANK_TOP_K, RERANKER_DEVICE
+from rag_lab.config import RERANK_TOP_K, RERANKER_DEVICE, RERANKER_USE_HEADING_CONTEXT
 from rag_lab.exceptions import EmbeddingError
 
 logger = logging.getLogger("rag_lab")
@@ -25,6 +25,41 @@ def reset_reranker_cache() -> None:
     global _reranker_cache, _reranker_cache_device
     _reranker_cache = None
     _reranker_cache_device = None
+
+
+_HEADING_PATH_MAX_LEN = 200  # chars; truncate anomalously long paths
+
+
+def build_reranker_text(chunk: dict, use_heading_context: bool = True) -> str:
+    """Build the text passed to the cross-encoder for a single chunk.
+
+    When *use_heading_context* is True, prepends structural metadata so the
+    model can use section context when scoring relevance:
+
+        Document: <doc_id>
+        Section: <heading_path>
+
+        <text>
+
+    Falls back gracefully when fields are absent or empty.
+    """
+    if not use_heading_context:
+        return chunk.get("text", "")
+
+    doc_id = (chunk.get("doc_id") or "").strip()
+    heading_path = (chunk.get("heading_path") or "").strip()
+    text = chunk.get("text", "")
+
+    if heading_path and len(heading_path) > _HEADING_PATH_MAX_LEN:
+        heading_path = heading_path[:_HEADING_PATH_MAX_LEN]
+
+    if doc_id and heading_path:
+        return f"Document: {doc_id}\nSection: {heading_path}\n\n{text}"
+    if doc_id:
+        return f"Document: {doc_id}\n\n{text}"
+    if heading_path:
+        return f"Section: {heading_path}\n\n{text}"
+    return text
 
 
 def rerank(
@@ -50,27 +85,33 @@ def rerank(
     top_k = top_k or RERANK_TOP_K
     device = device or RERANKER_DEVICE
 
+    use_heading = RERANKER_USE_HEADING_CONTEXT
+
     try:
         reranker = load_reranker(device)
-        pairs = [[query, chunk["text"]] for chunk in chunks]
+        pairs = [[query, build_reranker_text(chunk, use_heading)] for chunk in chunks]
         scores = reranker.compute_score(pairs)
 
-        # Attach scores to chunks
         scored_chunks = []
         for i, chunk in enumerate(chunks):
             chunk_copy = dict(chunk)
             chunk_copy["rerank_score"] = float(scores[i])
+            chunk_copy["heading_path_used"] = use_heading and bool(
+                (chunk.get("heading_path") or "").strip()
+            )
             scored_chunks.append(chunk_copy)
 
-        # Sort by score descending
         scored_chunks.sort(key=lambda x: x["rerank_score"], reverse=True)
 
-        logger.info(f"Reranked {len(scored_chunks)} chunks")
+        n_with_heading = sum(1 for c in scored_chunks if c.get("heading_path_used"))
+        logger.info(
+            "Reranked %d chunks (heading_context=%s, %d/%d had heading_path)",
+            len(scored_chunks), use_heading, n_with_heading, len(scored_chunks),
+        )
         return scored_chunks[:top_k]
 
     except Exception as e:
         logger.error(f"Reranking failed: {e}")
-        # Fallback: return chunks sorted by position
         return chunks[:top_k]
 
 

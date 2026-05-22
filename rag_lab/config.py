@@ -64,6 +64,11 @@ EMBEDDING_MAX_LENGTH = 1024
 # Modelo de reranking (cross-encoder)
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
+# Prepend "Document: <doc_id>\nSection: <heading_path>\n\n" to chunk text sent to
+# the reranker. Enables the cross-encoder to use structural context (heading path)
+# when scoring relevance. Set to False to restore the v1.9 text-only behaviour.
+RERANKER_USE_HEADING_CONTEXT: bool = True
+
 # =============================================================================
 # 4. MODELO LLM (Qwen 3.6 35B)
 # =============================================================================
