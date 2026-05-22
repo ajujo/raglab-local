@@ -4,6 +4,83 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.7 — 2026-05-22
+
+### Technical debt cleanup (no new features, no retrieval changes)
+
+Closes three audit items from the v1.5 audit backlog.
+No changes to ranking, RRF, MMR, sparse scoring, FTS5, ChromaDB, or embeddings.
+
+**3.7 — Dead code removal: `generation/verifier.py`**
+
+`rag_lab/generation/verifier.py` (and its `verify_citations` function) was a
+superseded implementation that was never called by any production code path.
+The active citation verification pipeline lives in `rag_lab/verification/`
+(`verify_citations_layer`, `CitationResult`, `CitationStatus`). The old module
+had been re-exported from `generation/__init__.py` and had a test file that
+only exercised the dead code.
+
+- Deleted `rag_lab/generation/verifier.py`
+- Removed `verify_citations` from `rag_lab/generation/__init__.py` and `__all__`
+- Deleted `tests/test_generation/test_verifier.py`
+- Removed unused `from rag_lab.generation.verifier import verify_citations` import
+  from `tests/integration/test_full_pipeline.py`
+
+**3.9 — Bug fix: `reset_reranker_cache` / `load_reranker` device handling**
+
+`load_reranker(device)` returned the cached model regardless of the requested
+device — calling `load_reranker("cpu")` after a CUDA load would silently return
+the CUDA model. Similarly, `reset_reranker_cache()` cleared the model object
+but did not clear the device tracker.
+
+Fix: added `_reranker_cache_device` variable. `load_reranker` now compares the
+requested device to the cached device; a mismatch (or empty cache) triggers a
+fresh load. `reset_reranker_cache` clears both `_reranker_cache` and
+`_reranker_cache_device`.
+
+New regression tests in `tests/test_retrieval/test_reranker_device.py` verify
+cache hit on same device, reload on device switch, and device tracker state.
+
+**3.10 — Bug fix: HyDE token budget and thinking mode**
+
+`_generate_hypothetical_answer()` called `generate_response()` without
+`max_tokens`, causing it to use `LLM_MAX_TOKENS=2048` multiplied by
+`_THINKING_TOKEN_MULTIPLIER=4` = 8192 tokens for a 3-5 sentence hypothetical
+paragraph — wasteful and slow.
+
+Fix: HyDE now passes `max_tokens=HYDE_MAX_TOKENS` (300) and
+`temperature=HYDE_TEMPERATURE` (0.1) to `generate_response()`. The underlying
+`generate_response()` already passes `enable_thinking=False` via
+`chat_template_kwargs`, so thinking mode is suppressed on supporting servers
+(SGLang). On servers that ignore it (LM Studio), the token budget is now
+bounded to 300×4=1200 instead of 8192.
+
+New regression tests in `tests/test_retrieval/test_query_processor.py` verify
+that `generate_response` receives the correct parameters and that fallback
+behaviour (LLM failure, empty response) is preserved.
+
+---
+
+## v1.6 — 2026-05-22
+
+### Markdown quality gate before ingest
+
+New validation layer that runs before any IngestTransaction opens.
+
+- `rag_lab/ingest/validation.py`: `ValidationSeverity`, `ValidationIssue`,
+  `ValidationReport`, `count_tokens_approx`
+- `rag_lab/ingest/markdown_contract.py`: `MarkdownValidationConfig` +
+  `validate_markdown()` with 10 checks: UTF-8 encoding, empty file, minimum
+  content, YAML frontmatter validity, H1 title, heading hierarchy, section
+  length, table size, long lines, estimated chunk count
+- `rag_lab docs validate [--strict]` — exit 0/1
+- `rag_lab docs inspect` — structural summary
+- `rag_lab docs preview-chunks [--limit N]` — chunk preview without store writes
+- `rag_lab ingest --strict` — WARNs also block; default mode only ERRORs block
+- 30 new tests
+
+---
+
 ## v1.5.1 — 2026-05-21
 
 ### Operational cleanup (no new features)
