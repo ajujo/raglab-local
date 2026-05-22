@@ -7,6 +7,7 @@ import logging
 from typing import List, Tuple
 
 from rag_lab.config import EMBEDDING_MODEL, VARIANTS_COUNT, HYDE_ENABLED, QUERY_REWRITING_ENABLED
+from rag_lab.utils.tokenizer import count_tokens as _count_tokens
 from rag_lab.embedding.encoder import load_embedding_model
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.retrieval.query_rewriter import rewrite_query
@@ -107,7 +108,7 @@ def _generate_hypothetical_answer(query: str) -> str:
             temperature=HYDE_TEMPERATURE,
         )
         if hypothetical:
-            n_tokens = len(hypothetical.encode()) // 4
+            n_tokens = _count_tokens(hypothetical)
             logger.info(
                 f"HyDE: hipótesis generada ({n_tokens} tokens) para query: \"{query[:60]}...\""
             )

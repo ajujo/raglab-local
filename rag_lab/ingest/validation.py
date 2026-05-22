@@ -60,5 +60,6 @@ class ValidationReport:
 
 
 def count_tokens_approx(text: str) -> int:
-    """Approximate token count (~4 chars per token)."""
-    return max(1, len(text) // 4)
+    """Token count via real tokenizer, with char-based fallback (~4 chars/token)."""
+    from rag_lab.utils.tokenizer import count_tokens
+    return count_tokens(text)

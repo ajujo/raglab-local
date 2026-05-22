@@ -18,6 +18,7 @@ from typing import List
 from rag_lab.chunking.parser import Heading, parse_headings, build_heading_tree
 from rag_lab.config import CHUNK_MAX_TOKENS, CHUNK_OVERLAP, CHUNK_MIN_TOKENS
 from rag_lab.exceptions import ChunkingError
+from rag_lab.utils.tokenizer import count_tokens as _count_tokens
 
 logger = logging.getLogger("rag_lab")
 
@@ -49,20 +50,6 @@ class Chunk:
             "line_end": self.line_end,
         }
 
-
-def _count_tokens(text: str) -> int:
-    """Approximate token count for the full text.
-
-    Uses ~4 characters per token, applied to the entire text (not per-word).
-    This is a reasonable approximation for English/technical text.
-
-    Args:
-        text: Input text.
-
-    Returns:
-        Estimated token count.
-    """
-    return max(1, len(text) // 4)
 
 
 def _is_table_line(line: str) -> bool:

@@ -1,7 +1,7 @@
 """Tests for chunking/splitter.py
 
 Tests the semantic chunking logic:
-- _count_tokens
+- _count_tokens  (alias for rag_lab.utils.tokenizer.count_tokens)
 - _is_table_line
 - _merge_sibling_sections
 - _filter_tiny_chunks
@@ -24,29 +24,31 @@ from rag_lab.exceptions import ChunkingError
 
 
 # --- _count_tokens ---
+# _count_tokens is now an alias for rag_lab.utils.tokenizer.count_tokens.
+# Tests verify behavioral contracts (monotonicity, bounds) rather than exact
+# heuristic values, which differ between real and approx tokenizers.
 
 class TestCountTokens:
     def test_empty_string(self):
-        assert _count_tokens("") == 1  # max(1, 0)
+        assert _count_tokens("") == 1  # min-clamped to 1
 
-    def test_short_text(self):
-        # 4 chars = 1 token
-        assert _count_tokens("abcd") == 1
-        # 8 chars = 2 tokens
-        assert _count_tokens("abcdefgh") == 2
-        # 100 chars = 25 tokens
-        assert _count_tokens("a" * 100) == 25
-
-    def test_long_text(self):
-        text = "a" * 4000
-        assert _count_tokens(text) == 1000
-
-    def test_whitespace(self):
+    def test_whitespace_only(self):
         assert _count_tokens("   ") == 1
 
-    def test_mixed_content(self):
-        # 13 chars / 4 = 3 tokens
-        assert _count_tokens("Hello, world!") == 3
+    def test_result_always_positive(self):
+        for text in ["a", "abcd", "hello world", "a" * 100]:
+            assert _count_tokens(text) >= 1
+
+    def test_longer_text_has_more_tokens(self):
+        short  = _count_tokens("word")
+        medium = _count_tokens("A sentence about the SDMX standard.")
+        long   = _count_tokens("A sentence about the SDMX standard." * 20)
+        assert medium >= short
+        assert long > medium
+
+    def test_non_ascii_counted(self):
+        result = _count_tokens("¿Qué es un esquema de conceptos?")
+        assert result >= 1
 
 
 # --- _is_table_line ---
