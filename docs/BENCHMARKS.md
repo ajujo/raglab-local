@@ -8,12 +8,12 @@ set of SDMX queries with ground-truth relevance grades.
 
 ---
 
-## Baseline oficial: v1.10 (activo para CI)
+## Baseline oficial: v1.11 (activo para CI)
 
-**Archivo:** `data/baselines/v1.10_official_full_eval.json`  
+**Archivo:** `data/baselines/v1.11_official_full_eval.json`  
 **Generado:** 2026-05-22  
-**Queries:** 65 · **Variante:** `full` · **Corpus:** 610 chunks (tag `v1.10` @ `adb1a5a`)  
-**Configuración:** `top_k=50`, `rrf_k=20`, `RERANKER_USE_HEADING_CONTEXT=True`
+**Queries:** 65 · **Variante:** `full` · **Corpus:** 610 chunks (tag `v1.11` @ `b2e9594`)  
+**Configuración:** `top_k=50`, `rrf_k=20`, `RERANKER_USE_HEADING_CONTEXT=True`, `QUERY_VARIANT_STOPWORD_ENABLED=False`, `QUERY_VARIANT_LAST_TERMS_ENABLED=False`
 
 ### Métricas de referencia
 
@@ -24,30 +24,55 @@ set of SDMX queries with ground-truth relevance grades.
 | Recall@30 | 0.9782 |
 | MRR       | 0.9385 |
 | nDCG@10   | 0.8373 |
-| P50 (ms)  | 276    |
-| P95 (ms)  | 318    |
-| P99 (ms)  | 337    |
+| P50 (ms)  | 334    |
+| P95 (ms)  | 384    |
+| P99 (ms)  | 412    |
+
+> **Nota:** v1.11 no cambia ninguna métrica de calidad respecto a v1.10 (Δ+0.0000 en todas).
+> El incremento de latencia en benchmarking se debe a la GPU RTX 5090 en modo cold-start;
+> en producción la latencia de candidate generation mejora ~2× al eliminar las variantes.
 
 ### Comparar contra este baseline
 
 ```bash
 python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
 python -m rag_lab.benchmark.compare \
-    --baseline data/baselines/v1.10_official_full_eval.json \
+    --baseline data/baselines/v1.11_official_full_eval.json \
     --current  /tmp/current.json
 ```
 
-### Regresión conocida — q070 (`cross_lingual_es_en`)
+### Regresión conocida — q070 (`cross_lingual_es_en`) — heredada de v1.10
 
 > **Query:** "¿Cómo se utilizan las restricciones en SDMX para limitar los valores permitidos?"  
-> **MRR antes (v1.9):** 1.000 · **MRR después (v1.10):** 0.500 · **Δ:** −0.500
+> **MRR antes (v1.9):** 1.000 · **MRR después (v1.10+):** 0.500 · **Δ:** −0.500
 
 El prefijo inglés (doc_id + heading_path) afecta ligeramente la atención del cross-encoder
-en consultas en español. Para desactivarlo: `RERANKER_USE_HEADING_CONTEXT=False` en config.
+en consultas en español. Pre-reranker MRR=1.000 — la regresión es efecto puro del reranker.
+Para desactivarlo: `RERANKER_USE_HEADING_CONTEXT=False` en config.
 
 ---
 
-## Baseline anterior: v1.8.1 (histórico)
+## Baseline anterior: v1.10 (histórico)
+
+**Archivo:** `data/baselines/v1.10_official_full_eval.json`  
+**Generado:** 2026-05-22  
+**Queries:** 65 · **Variante:** `full` · **Corpus:** 610 chunks (tag `v1.10` @ `adb1a5a`)  
+**Configuración:** `top_k=50`, `rrf_k=20`, `RERANKER_USE_HEADING_CONTEXT=True`
+
+> **Nota:** v1.10 fue el baseline activo hasta v1.11. Conservado como referencia histórica.
+> **Usa `v1.11_official_full_eval.json` para los regression guards actuales.**
+
+| Métrica    | Valor  |
+|-----------|--------|
+| Recall@5  | 0.8205 |
+| Recall@10 | 0.8962 |
+| Recall@30 | 0.9782 |
+| MRR       | 0.9385 |
+| nDCG@10   | 0.8373 |
+
+---
+
+## Baseline histórico: v1.8.1
 
 **Archivo:** `data/baselines/v1.8.1_official_full_eval.json`  
 **Generado:** 2026-05-22  
@@ -56,7 +81,7 @@ en consultas en español. Para desactivarlo: `RERANKER_USE_HEADING_CONTEXT=False
 **Corpus:** 610 chunks (tag `v1.8.1` @ `614a836`)
 
 > **Nota:** v1.8.1 fue el baseline activo hasta v1.10. Conservado como referencia histórica.
-> **Usa `v1.10_official_full_eval.json` para los regression guards actuales.**
+> **Usa `v1.11_official_full_eval.json` para los regression guards actuales.**
 
 ### Métricas de referencia (v1.8.1)
 
@@ -108,7 +133,7 @@ operacional posible.
 
 La pipeline productiva real (CLI `rag-lab query`, sin flags opcionales) hace:
 
-1. `process_query()` → genera 3 consultas (original + 2 variantes keyword, `VARIANTS_COUNT=2`)
+1. `process_query()` → genera 1 consulta (original only, variantes desactivadas por defecto desde v1.11)
 2. `hybrid_search(diversity_mode=None)` → aplica MMR porque `MMR_ENABLED=True` en config
 3. `rerank()` sobre el pool combinado deduplicado
 
@@ -118,13 +143,13 @@ La variante `full` en el benchmark hace:
 2. `hybrid_search(diversity_mode="off")` → **sin MMR pre-reranker**
 3. `rerank()` sobre todos los candidatos
 
-**Diferencias documentadas respecto a producción:**
+**Diferencias documentadas respecto a producción (desde v1.11):**
 
 | Aspecto              | Producción              | Baseline `full`      |
 |----------------------|------------------------|----------------------|
-| Expansión de query   | 3 consultas (VARIANTS_COUNT=2) | **1 consulta** |
+| Expansión de query   | 1 consulta (variantes off) | **1 consulta**   |
 | MMR antes de rerank  | Sí (MMR_ENABLED=True)  | **No (off)**         |
-| top_k de búsqueda    | CLI default: 40 (20×2) | **50 (RETRIEVAL_TOP_K)** |
+| top_k de búsqueda    | CLI default: 50        | **50 (RETRIEVAL_TOP_K)** |
 | Reranker             | Sí                     | Sí                   |
 
 **Por qué `full` es el proxy correcto para el regression guard:**
@@ -196,15 +221,15 @@ python -m rag_lab.benchmark \
 ## Comparar contra el baseline oficial
 
 ```bash
-# Comparar con el baseline canónico v1.8.1 — equivalente a "rag-lab benchmark compare ..."
+# Comparar con el baseline canónico v1.11 — equivalente a "rag-lab benchmark compare ..."
 python -m rag_lab.benchmark.compare \
-  --baseline data/baselines/v1.8.1_official_full_eval.json \
+  --baseline data/baselines/v1.11_official_full_eval.json \
   --current  data/baselines/run_YYYYMMDD.json \
   --variant  full
 
 # Guardar reporte JSON de regresión
 python -m rag_lab.benchmark.compare \
-  --baseline data/baselines/v1.8.1_official_full_eval.json \
+  --baseline data/baselines/v1.11_official_full_eval.json \
   --current  data/baselines/run_YYYYMMDD.json \
   --variant  full \
   --output   data/baselines/regression_YYYYMMDD.json

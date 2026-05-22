@@ -83,6 +83,11 @@ Expanded from 20 to 43 tests. New classes:
 
 To re-enable variants: set `QUERY_VARIANT_STOPWORD_ENABLED=True` in `.env` or config.py.
 
+**Active CI baseline promoted to v1.11**
+
+`data/baselines/v1.11_official_full_eval.json` replaces v1.10 as the active regression guard.
+Metrics unchanged (Δ+0.0000 vs v1.10). Known regression q070 inherited from v1.10.
+
 ---
 
 ## v1.10 — 2026-05-22

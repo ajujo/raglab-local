@@ -295,12 +295,13 @@ python -m rag_lab.benchmark.compare \
 | `1` | At least one WARN |
 | `2` | At least one FAIL |
 
-### Canonical baseline (activo: v1.10)
+### Canonical baseline (activo: v1.11)
 
-**`data/baselines/v1.10_official_full_eval.json`** — baseline activo desde v1.10.
+**`data/baselines/v1.11_official_full_eval.json`** — baseline activo desde v1.11.
 
 65 queries (suite `official`), variante `full`, `top_k=50`, `rrf_k=20`,
-`RERANKER_USE_HEADING_CONTEXT=True`.
+`RERANKER_USE_HEADING_CONTEXT=True`, `QUERY_VARIANT_STOPWORD_ENABLED=False`,
+`QUERY_VARIANT_LAST_TERMS_ENABLED=False`.
 
 | Metric  | Value  |
 |---------|--------|
@@ -309,19 +310,24 @@ python -m rag_lab.benchmark.compare \
 | MRR     | 0.9385 |
 | nDCG@10 | 0.8373 |
 
+Métricas idénticas a v1.10 (Δ+0.0000). v1.11 reduce la latencia de candidate generation
+~2× al eliminar variantes de query con beneficio nulo (A/B evidencia sobre 65 queries).
+
 Comando estándar de regression guard:
 
 ```bash
 python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
 python -m rag_lab.benchmark.compare \
-    --baseline data/baselines/v1.10_official_full_eval.json \
+    --baseline data/baselines/v1.11_official_full_eval.json \
     --current  /tmp/current.json
 ```
 
-**Regresión conocida:** q070 (`cross_lingual_es_en`) perdió MRR 1.000→0.500 al activar
-heading context. Documentada en `v1.10_official_full_eval.json` meta → `known_regressions`.
+**Regresión conocida (heredada de v1.10):** q070 (`cross_lingual_es_en`) MRR 1.000→0.500.
+Pre-reranker MRR=1.000 — es efecto puro del cross-encoder con heading context en español.
+Documentada en `v1.11_official_full_eval.json` meta → `known_regressions`.
 
-**Baseline anterior:** `data/baselines/v1.8.1_official_full_eval.json` (histórico, v1.9 y anterior).
+**Baseline anterior:** `data/baselines/v1.10_official_full_eval.json` (histórico, activo v1.10).
+**Baseline histórico:** `data/baselines/v1.8.1_official_full_eval.json` (v1.9 y anterior).
 
 ---
 
