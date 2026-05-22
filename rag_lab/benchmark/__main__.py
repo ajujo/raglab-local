@@ -98,6 +98,27 @@ def main(argv=None) -> int:
         help=f"MMR lambda for hybrid_mmr variant (default: {MMR_LAMBDA} from config)",
     )
     parser.add_argument(
+        "--suite",
+        default=None,
+        choices=["official", "candidates", "all"],
+        help=(
+            "Filter queries by suite: 'official' (suite=official, validated=true), "
+            "'candidates' (suite=candidate), 'all' (no filter). Default: all."
+        ),
+    )
+    parser.add_argument(
+        "--validated-only",
+        action="store_true",
+        help="Keep only queries where validated=true (implied by --suite official)",
+    )
+    parser.add_argument(
+        "--report",
+        default=None,
+        metavar="PATH",
+        help="Generate and save a Markdown report to this path (requires --output to have run first, "
+             "or specify with --output)",
+    )
+    parser.add_argument(
         "--log-level",
         default="WARNING",
         help="Logging level (default: WARNING)",
@@ -112,8 +133,30 @@ def main(argv=None) -> int:
         return 1
 
     print(f"Loading queries from {queries_path}")
-    queries = BenchmarkRunner.load_queries(queries_path)
-    print(f"  {len(queries)} queries loaded")
+    all_queries = BenchmarkRunner.load_queries(queries_path)
+    print(f"  {len(all_queries)} queries loaded")
+
+    # Apply suite filter
+    suite_arg = args.suite
+    validated_only = args.validated_only
+    if suite_arg == "official":
+        queries = BenchmarkRunner.filter_queries(all_queries, suite="official", validated_only=True)
+        print(f"  Suite filter: official+validated → {len(queries)} queries")
+    elif suite_arg == "candidates":
+        queries = BenchmarkRunner.filter_queries(all_queries, suite="candidate")
+        print(f"  Suite filter: candidates → {len(queries)} queries")
+    elif suite_arg == "all" or suite_arg is None:
+        queries = BenchmarkRunner.filter_queries(all_queries, validated_only=validated_only)
+        if validated_only:
+            print(f"  Suite filter: validated_only → {len(queries)} queries")
+        else:
+            print(f"  Suite filter: all → {len(queries)} queries")
+    else:
+        queries = all_queries
+
+    if not queries:
+        print("Error: no queries after filtering", file=sys.stderr)
+        return 1
 
     variants = args.variants or VARIANT_NAMES
     print(f"  Running variants: {variants}")
@@ -137,6 +180,16 @@ def main(argv=None) -> int:
     if not args.no_markdown:
         print()
         print(BenchmarkRunner.to_markdown(result))
+
+    if args.report:
+        from rag_lab.benchmark.report import generate_report, format_markdown
+        primary_variant = (args.variants or VARIANT_NAMES)[0] if args.variants else "full"
+        try:
+            report = generate_report(result, variant=primary_variant)
+            Path(args.report).write_text(format_markdown(report), encoding="utf-8")
+            print(f"\nMarkdown report saved to {args.report}")
+        except KeyError as e:
+            print(f"Warning: could not generate report — {e}", file=sys.stderr)
 
     return 0
 

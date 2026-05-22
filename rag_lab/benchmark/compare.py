@@ -32,9 +32,12 @@ from typing import Dict, List, Optional, Tuple
 
 DEFAULT_THRESHOLDS = {
     "recall@5":  {"max_drop": 0.02, "severity": "FAIL"},
+    "recall@10": {"max_drop": 0.03, "severity": "WARN"},
+    "recall@30": {"max_drop": 0.03, "severity": "WARN"},
     "ndcg@10":   {"max_drop": 0.02, "severity": "FAIL"},
     "mrr":       {"max_drop": 0.03, "severity": "FAIL"},
     "p95":       {"max_relative_increase": 0.25, "severity": "WARN"},
+    "p99":       {"max_relative_increase": 0.30, "severity": "WARN"},
 }
 
 
@@ -188,7 +191,7 @@ def format_report(
 def compare(
     baseline_path,
     current_path,
-    variant: str = "hybrid_mmr",
+    variant: str = "full",
     thresholds: Optional[dict] = None,
     output_path=None,
     quiet: bool = False,
@@ -255,8 +258,8 @@ if __name__ == "__main__":
                         help="Baseline benchmark JSON (e.g. data/benchmark_v1_1_mmr_20260521.json)")
     parser.add_argument("--current", required=True, metavar="PATH",
                         help="Current benchmark JSON to evaluate")
-    parser.add_argument("--variant", default="hybrid_mmr",
-                        help="Variant name to compare (default: hybrid_mmr)")
+    parser.add_argument("--variant", default="full",
+                        help="Variant name to compare (default: full)")
     parser.add_argument("--output", metavar="PATH", default=None,
                         help="Save JSON regression report to this path")
     args = parser.parse_args()

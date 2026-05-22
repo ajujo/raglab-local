@@ -196,10 +196,13 @@ class BenchmarkRunner:
                 lat = stats.get("latency_ms", 0.0)
                 latencies.append(lat)
 
-                # Per-query metrics
+                # Per-query metrics (include v1.8 fields when present)
                 pq = {
                     "query_id": qid,
                     "query": qtext,
+                    "category": qitem.get("category", "uncategorized"),
+                    "language": qitem.get("language", "en"),
+                    "suite": qitem.get("suite", "official"),
                     "n_results": len(chunks),
                     "latency_ms": round(lat, 2),
                     "candidate_pool_size": stats.get("candidate_pool_size", 0),
@@ -217,12 +220,28 @@ class BenchmarkRunner:
                 }
                 per_query.append(pq)
 
-            # Aggregate
+            # Aggregate overall
             agg = aggregate_metrics(per_query)
             agg.update(latency_percentiles(latencies))
 
+            # Per-category aggregate (v1.8+)
+            by_category: dict = {}
+            for pq in per_query:
+                cat = pq.get("category", "uncategorized")
+                by_category.setdefault(cat, []).append(pq)
+            per_category = {}
+            for cat, cat_queries in sorted(by_category.items()):
+                cat_lats = [q["latency_ms"] for q in cat_queries]
+                cat_agg = aggregate_metrics(cat_queries)
+                cat_agg.update(latency_percentiles(cat_lats))
+                per_category[cat] = {
+                    "n_queries": len(cat_queries),
+                    "aggregate": cat_agg,
+                }
+
             result["results"][variant] = {
                 "aggregate": agg,
+                "per_category": per_category,
                 "per_query": per_query,
             }
 
@@ -235,7 +254,12 @@ class BenchmarkRunner:
 
     @staticmethod
     def load_queries(path: Union[str, Path]) -> List[dict]:
-        """Load queries from a YAML or JSON file."""
+        """Load queries from a YAML or JSON file.
+
+        Supports both v1.7 format (id, text, doc_relevance, notes) and v1.8+
+        format (adds category, language, suite, validated, expected_behavior,
+        source_of_truth). Missing new fields default gracefully.
+        """
         path = Path(path)
         if path.suffix in (".yaml", ".yml"):
             import yaml
@@ -251,6 +275,38 @@ class BenchmarkRunner:
         if not queries:
             raise ValueError("No queries found in file")
         return queries
+
+    @staticmethod
+    def filter_queries(
+        queries: List[dict],
+        suite: Optional[str] = None,
+        validated_only: bool = False,
+    ) -> List[dict]:
+        """Filter queries by suite and/or validation status.
+
+        Args:
+            queries: Full list of query dicts.
+            suite: Keep only queries where suite == this value (e.g. "official").
+                   None means no filter on suite.
+            validated_only: If True, keep only queries where validated == True.
+                            Queries without the 'validated' field are treated as
+                            validated=True for backward compatibility.
+
+        Returns:
+            Filtered list (original dicts, not copies).
+        """
+        result = queries
+        if suite is not None:
+            result = [
+                q for q in result
+                if q.get("suite", "official") == suite
+            ]
+        if validated_only:
+            result = [
+                q for q in result
+                if q.get("validated", True) is True
+            ]
+        return result
 
     @staticmethod
     def to_markdown(result: dict) -> str:

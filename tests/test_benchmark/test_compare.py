@@ -255,3 +255,73 @@ class TestCompareEndToEnd:
         assert "overall" in data
         assert "findings" in data
         assert data["variant"] == "hybrid_mmr"
+
+
+# ---------------------------------------------------------------------------
+# v1.8 threshold additions (recall@10, recall@30, p99)
+# ---------------------------------------------------------------------------
+
+class TestV18Thresholds:
+    def test_recall_at_30_in_default_thresholds(self):
+        from rag_lab.benchmark.compare import DEFAULT_THRESHOLDS
+        assert "recall@30" in DEFAULT_THRESHOLDS
+
+    def test_recall_at_10_in_default_thresholds(self):
+        from rag_lab.benchmark.compare import DEFAULT_THRESHOLDS
+        assert "recall@10" in DEFAULT_THRESHOLDS
+
+    def test_p99_in_default_thresholds(self):
+        from rag_lab.benchmark.compare import DEFAULT_THRESHOLDS
+        assert "p99" in DEFAULT_THRESHOLDS
+
+    def test_recall30_drop_triggers_warn(self):
+        baseline = {"recall@30": 0.96, "recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0}
+        current  = {"recall@30": 0.92, "recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0}
+        findings = compare_metrics(baseline, current)
+        r30_finding = next(f for f in findings if f["metric"] == "recall@30")
+        assert r30_finding["status"] in ("WARN", "FAIL")
+
+    def test_recall30_small_drop_ok(self):
+        """Drop within threshold stays OK."""
+        baseline = {"recall@30": 0.96, "recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0}
+        current  = {"recall@30": 0.955, "recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0}
+        findings = compare_metrics(baseline, current)
+        r30_finding = next((f for f in findings if f["metric"] == "recall@30"), None)
+        if r30_finding:
+            assert r30_finding["status"] == "OK"
+
+    def test_p99_large_increase_warns(self):
+        """P99 increasing by >30% relative triggers WARN."""
+        baseline = {"recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0, "p99": 100.0}
+        current  = {"recall@5": 1.0, "ndcg@10": 0.8, "mrr": 0.9, "p95": 100.0, "p99": 135.0}
+        findings = compare_metrics(baseline, current)
+        p99_finding = next((f for f in findings if f["metric"] == "p99"), None)
+        if p99_finding:
+            assert p99_finding["status"] in ("WARN", "FAIL")
+
+    def test_default_variant_is_full(self):
+        """compare() default variant is 'full' in v1.8."""
+        from rag_lab.benchmark.compare import compare
+        import inspect
+        sig = inspect.signature(compare)
+        assert sig.parameters["variant"].default == "full"
+
+    def test_strong_regression_fails(self, tmp_path):
+        """Regression strong enough to fail on recall@5."""
+        from rag_lab.benchmark.compare import compare
+        baseline = tmp_path / "b.json"
+        current  = tmp_path / "c.json"
+        _save_result(baseline, "full", {"recall@5": 0.80, "ndcg@10": 0.80, "mrr": 0.90, "p95": 100.0})
+        _save_result(current,  "full", {"recall@5": 0.70, "ndcg@10": 0.78, "mrr": 0.87, "p95": 110.0})
+        _, overall = compare(baseline, current, variant="full", quiet=True)
+        assert overall == "FAIL"
+
+    def test_within_tolerance_passes(self, tmp_path):
+        """Changes within all thresholds produce OK."""
+        from rag_lab.benchmark.compare import compare
+        baseline = tmp_path / "b.json"
+        current  = tmp_path / "c.json"
+        _save_result(baseline, "full", {"recall@5": 0.80, "ndcg@10": 0.80, "mrr": 0.90, "p95": 100.0})
+        _save_result(current,  "full", {"recall@5": 0.80, "ndcg@10": 0.80, "mrr": 0.90, "p95": 100.0})
+        _, overall = compare(baseline, current, variant="full", quiet=True)
+        assert overall == "OK"
