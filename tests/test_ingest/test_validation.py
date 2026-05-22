@@ -57,7 +57,12 @@ class TestValidationReport:
         assert "1 info" in summary
 
     def test_count_tokens_approx(self):
-        assert count_tokens_approx("a" * 400) == 100
+        # Real tokenizer or ~4 chars/token fallback: result must be positive
+        # and proportional to length (longer text → more tokens).
+        short = count_tokens_approx("hello world")
+        long  = count_tokens_approx("hello world " * 50)
+        assert short >= 1
+        assert long > short
         assert count_tokens_approx("") == 1  # min 1
 
 

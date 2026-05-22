@@ -280,6 +280,19 @@ CONFIDENCE_HIGH = 0.75
 CONFIDENCE_MEDIUM = 0.50
 
 # =============================================================================
+# 13. TOKENIZER
+# =============================================================================
+
+# Model used for real token counting — should match EMBEDDING_MODEL so that
+# token counts reflect actual BGE-M3 (XLM-RoBERTa) subword tokenisation.
+TOKENIZER_MODEL_NAME: str = EMBEDDING_MODEL  # "BAAI/bge-m3"
+
+# "real"   — use AutoTokenizer (lazy-loaded, cached, no full model weights)
+# "approx" — always use len(text) // 4 heuristic (useful for offline envs
+#             or when a faster but less accurate estimate is acceptable)
+TOKEN_COUNTING_MODE: str = "real"
+
+# =============================================================================
 # CONFIGURACIÓN DE TESTS
 # =============================================================================
 

@@ -4,6 +4,60 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.9 — 2026-05-22
+
+### Real tokenizer for token counting (6.3.3 hygiene)
+
+No retrieval changes. No ranking/MMR/RRF/sparse/FTS5/reranker changes.
+No new document loaders. Pure token-counting improvement.
+
+**New module: `rag_lab/utils/tokenizer.py`**
+
+- `count_tokens(text) -> int`: lazy-loads `AutoTokenizer.from_pretrained(TOKENIZER_MODEL_NAME)`
+  (BGE-M3 / XLM-RoBERTa subword tokeniser). Caches result globally — tokeniser loaded once
+  per process, tokeniser files only, full model weights not loaded.
+- Fallback to `max(1, len(text) // 4)` if tokeniser unavailable (offline env, ImportError,
+  OSError). Logs a one-time warning.
+- `reset_tokenizer_cache()` for test isolation.
+- Configurable via `TOKEN_COUNTING_MODE` ("real" / "approx") and `TOKENIZER_MODEL_NAME`.
+
+**Config additions (`rag_lab/config.py`)**
+
+- `TOKENIZER_MODEL_NAME = EMBEDDING_MODEL` (→ "BAAI/bge-m3")
+- `TOKEN_COUNTING_MODE = "real"` (set "approx" to bypass tokeniser)
+
+**Integration points updated**
+
+- `rag_lab/chunking/splitter.py`: `_count_tokens` replaced by import alias of `count_tokens`.
+  All split points, overlap, sibling merging, and tiny-chunk filtering now use BGE-M3 counts.
+- `rag_lab/ingest/validation.py`: `count_tokens_approx()` delegates to `count_tokens`.
+  Public API preserved.
+- `rag_lab/retrieval/query_processor.py`: HyDE token-count log line uses `count_tokens`.
+
+**Tests (16 new in `tests/test_utils/test_tokenizer.py`)**
+
+- Fallback: transformers unavailable, from_pretrained raises, approx mode, empty text,
+  proportionality.
+- Caching: tokeniser loaded once, reset_tokenizer_cache works.
+- Real tokeniser: positive count, empty/whitespace→1, length monotone, Spanish text,
+  Markdown table, plausible vs heuristic, no FlagModel loaded.
+- Splitter integration: `n_tokens > 0`, proportional to text length.
+
+**Updated tests**
+
+- `tests/test_chunking/test_splitter.py::TestCountTokens`: removed exact-value assertions
+  (heuristic-specific), replaced with behavioral contracts (monotone, positive, non-ASCII).
+- `tests/test_ingest/test_validation.py::test_count_tokens_approx`: same — removed
+  `== 100` assertion, replaced with proportionality check.
+
+**Benchmark**
+
+- Official suite (65 queries) vs v1.8.1 baseline: Δ+0.0000 on all retrieval metrics.
+  Corpus unchanged (re-ingest not required). p99 +14% relative (first-call tokeniser load
+  in benchmark warm-up) — well below 30% WARN threshold.
+
+---
+
 ## v1.8.1 — 2026-05-22
 
 ### Benchmark curation — official suite expanded to 65 queries (6.3.6 phase B)
