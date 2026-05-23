@@ -444,16 +444,26 @@ QUERY_CACHE_TTL_SECONDS: int = 604800     # 7 días; 0 = sin TTL
 
 La clave incluye: query normalizada, filtros, top_k, rrf_k, pesos dense/bm25/sparse,
 MMR, HyDE, reranker_heading_context, versión del modelo de embedding, sparse format
-version, y **corpus fingerprint** (`n_chunks:max_ingest_run_id`).
+version, y **corpus fingerprint** (`n_chunks:max_ingest_run_id:revision`).
 
-El corpus fingerprint cambia automáticamente en cada ingest y delete — las entradas
-de caché para el corpus anterior se vuelven inaccesibles sin borrarlas explícitamente.
+El corpus fingerprint cambia automáticamente cuando el corpus o sus metadatos cambian.
 
 ### Invalidación automática
 
-Cuando se ingesta o elimina un documento, `max_ingest_run_id` aumenta y el
-fingerprint cambia. Las entradas antiguas no se devuelven aunque existan físicamente.
-`rag-lab cache vacuum` limpia entradas expiradas por TTL o con TTL 0.
+El fingerprint tiene tres componentes:
+
+| Componente | Cambia cuando |
+|------------|---------------|
+| `n_chunks` | Se ingesta o elimina un documento |
+| `max_ingest_run_id` | Cualquier operación de ingest/delete |
+| `revision` | Se asigna, desasigna, renombra o elimina un tag; se elimina un documento |
+
+El contador `revision` vive en `MetadataStore.cache_revision` y se incrementa en
+cada operación de mutación de tags o documentos. Esto garantiza que las queries
+filtradas por tag no devuelvan resultados obsoletos tras cambios en el tagging.
+
+Las entradas antiguas no se devuelven aunque existan físicamente (el fingerprint
+no coincide). `rag-lab cache vacuum` limpia entradas expiradas por TTL o con TTL 0.
 
 ### Comandos CLI
 

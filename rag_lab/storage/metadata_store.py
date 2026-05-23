@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS document_tags (
 )
 """
 
+_CREATE_CACHE_REVISION = """
+CREATE TABLE IF NOT EXISTS cache_revision (
+    key  TEXT PRIMARY KEY DEFAULT 'retrieval',
+    value INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
+
 
 class MetadataStore:
     def __init__(
@@ -75,8 +83,14 @@ class MetadataStore:
             _CREATE_DOCUMENTS,
             _CREATE_TAGS,
             _CREATE_DOCUMENT_TAGS,
+            _CREATE_CACHE_REVISION,
         ):
             self._conn.execute(ddl)
+
+        # Seed the single revision row (idempotent)
+        self._conn.execute(
+            "INSERT OR IGNORE INTO cache_revision (key, value) VALUES ('retrieval', 0)"
+        )
 
         if self._own_conn:
             self._conn.commit()
@@ -239,7 +253,9 @@ class MetadataStore:
         cursor = self._conn.execute(
             "DELETE FROM documents WHERE doc_id = ?", (doc_id,)
         )
-        if self._own_conn:
+        if cursor.rowcount > 0:
+            self.bump_revision()
+        elif self._own_conn:
             self._conn.commit()
         return cursor.rowcount > 0
 
@@ -249,6 +265,40 @@ class MetadataStore:
                 "SELECT COUNT(*) FROM documents WHERE status = ?", (status,)
             ).fetchone()[0]
         return self._conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+
+    # ------------------------------------------------------------------
+    # Cache-revision tracking
+    # ------------------------------------------------------------------
+
+    def bump_revision(self) -> int:
+        """Increment the retrieval cache revision counter.
+
+        Call this after any operation that can change filtered retrieval results:
+        tag/untag, rename tag, delete tag, delete document.
+        The revision is included in get_corpus_fingerprint() so that any cached
+        retrieval result built on the old revision becomes a miss automatically.
+        """
+        self._conn.execute(
+            "UPDATE cache_revision "
+            "SET value = value + 1, updated_at = datetime('now') "
+            "WHERE key = 'retrieval'"
+        )
+        if self._own_conn:
+            self._conn.commit()
+        row = self._conn.execute(
+            "SELECT value FROM cache_revision WHERE key = 'retrieval'"
+        ).fetchone()
+        return row[0] if row else 0
+
+    def get_revision(self) -> int:
+        """Return the current retrieval cache revision (0 if table absent)."""
+        try:
+            row = self._conn.execute(
+                "SELECT value FROM cache_revision WHERE key = 'retrieval'"
+            ).fetchone()
+            return row[0] if row else 0
+        except Exception:
+            return 0
 
     # ------------------------------------------------------------------
     # Tag operations
@@ -273,8 +323,7 @@ class MetadataStore:
             "INSERT OR IGNORE INTO document_tags (doc_id, tag_id) VALUES (?, ?)",
             (doc_id, tag_id),
         )
-        if self._own_conn:
-            self._conn.commit()
+        self.bump_revision()
 
     def unassign_tag(self, doc_id: str, tag_name: str) -> None:
         row = self._conn.execute(
@@ -286,8 +335,7 @@ class MetadataStore:
             "DELETE FROM document_tags WHERE doc_id = ? AND tag_id = ?",
             (doc_id, row[0]),
         )
-        if self._own_conn:
-            self._conn.commit()
+        self.bump_revision()
 
     def get_tags_for_doc(self, doc_id: str) -> List[str]:
         rows = self._conn.execute(
@@ -317,7 +365,9 @@ class MetadataStore:
         cursor = self._conn.execute(
             "UPDATE tags SET name = ? WHERE name = ?", (new_name, old_name)
         )
-        if self._own_conn:
+        if cursor.rowcount > 0:
+            self.bump_revision()
+        elif self._own_conn:
             self._conn.commit()
         return cursor.rowcount > 0
 
@@ -325,7 +375,9 @@ class MetadataStore:
         cursor = self._conn.execute(
             "DELETE FROM tags WHERE name = ?", (name,)
         )
-        if self._own_conn:
+        if cursor.rowcount > 0:
+            self.bump_revision()
+        elif self._own_conn:
             self._conn.commit()
         return cursor.rowcount > 0
 

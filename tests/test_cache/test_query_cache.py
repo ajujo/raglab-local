@@ -258,9 +258,10 @@ class TestCorpusFingerprint:
         conn = self._make_docstore(tmp_path)
         fp = get_corpus_fingerprint(conn)
         parts = fp.split(":")
-        assert len(parts) == 2
+        assert len(parts) == 3
         assert parts[0].isdigit()
         assert parts[1].isdigit()
+        assert parts[2].isdigit()
 
     def test_fingerprint_changes_after_ingest(self, tmp_path):
         conn = self._make_docstore(tmp_path)
