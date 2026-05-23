@@ -132,6 +132,7 @@ class BenchmarkRunner:
         queries: List[dict],
         variants: Optional[List[str]] = None,
         warmup: bool = True,
+        use_cache: bool = False,
     ) -> dict:
         """Run all variants on all queries.
 
@@ -139,6 +140,8 @@ class BenchmarkRunner:
             queries: List of query dicts (from YAML).
             variants: Subset of VARIANT_NAMES to run (default: all).
             warmup: Whether to run a warmup pass before timing.
+            use_cache: If True, use the query cache (hits reduce latency but preserve quality).
+                       Default False for accurate latency measurement.
 
         Returns:
             Full result dict with per-query and aggregate metrics.
@@ -153,6 +156,18 @@ class BenchmarkRunner:
         if warmup:
             self.warmup(variants)
 
+        # Cache setup
+        _query_cache = None
+        _corpus_fp = None
+        if use_cache:
+            from rag_lab.cache.query_cache import (
+                QueryCache, make_cache_key, get_corpus_fingerprint,
+            )
+            from rag_lab.config import QUERY_CACHE_PATH
+            _query_cache = QueryCache(db_path=QUERY_CACHE_PATH)
+            _query_cache.initialize()
+            _corpus_fp = get_corpus_fingerprint(self.doc_store._conn)
+
         result = {
             "config": {
                 "top_k": self.top_k,
@@ -163,6 +178,7 @@ class BenchmarkRunner:
                 "rerank_device": self.rerank_device,
                 "n_queries": len(queries),
                 "variants": variants,
+                "use_cache": use_cache,
             },
             "results": {},
         }
@@ -176,24 +192,54 @@ class BenchmarkRunner:
                 qid = qitem.get("id", "?")
                 qtext = qitem.get("text", qitem.get("query", ""))
 
-                # Encode (excluded from retrieval latency)
+                # Encode (excluded from retrieval latency; always needed for cache key)
                 q_dense, q_sparse = self._encode(qtext)
 
-                # Run variant
-                try:
-                    chunks, stats = run_variant(
-                        variant, qtext, q_dense, q_sparse,
-                        self.vector_store, self.doc_store, self.fts_store,
-                        top_k=self.top_k, rrf_k=self.rrf_k,
-                        rerank_device=self.rerank_device,
-                        doc_cap=self.doc_cap,
-                        mmr_lambda=self.mmr_lambda,
-                        embedding_device=self.embedding_device,
+                # Cache probe
+                cache_hit = False
+                chunks, stats = [], {}
+                if _query_cache is not None and _corpus_fp is not None:
+                    from rag_lab.cache.query_cache import make_cache_key
+                    ck = make_cache_key(
+                        qtext,
+                        top_k=self.top_k,
+                        rrf_k=self.rrf_k,
+                        corpus_fingerprint=_corpus_fp,
                     )
-                except Exception as exc:
-                    logger.error(f"Variant {variant} failed on query {qid}: {exc}")
-                    chunks, stats = [], {"latency_ms": 0, "candidate_pool_size": 0,
-                                        "n_dense": 0, "n_bm25": 0, "n_sparse": 0}
+                    cached = _query_cache.get(ck, _corpus_fp)
+                    if cached is not None:
+                        chunks = cached
+                        stats = {"latency_ms": 0.0, "cache_hit": True,
+                                 "candidate_pool_size": 0, "n_dense": 0,
+                                 "n_bm25": 0, "n_sparse": 0}
+                        cache_hit = True
+
+                if not cache_hit:
+                    # Run variant
+                    try:
+                        chunks, stats = run_variant(
+                            variant, qtext, q_dense, q_sparse,
+                            self.vector_store, self.doc_store, self.fts_store,
+                            top_k=self.top_k, rrf_k=self.rrf_k,
+                            rerank_device=self.rerank_device,
+                            doc_cap=self.doc_cap,
+                            mmr_lambda=self.mmr_lambda,
+                            embedding_device=self.embedding_device,
+                        )
+                    except Exception as exc:
+                        logger.error(f"Variant {variant} failed on query {qid}: {exc}")
+                        chunks, stats = [], {"latency_ms": 0, "candidate_pool_size": 0,
+                                            "n_dense": 0, "n_bm25": 0, "n_sparse": 0}
+                    # Store in cache
+                    if _query_cache is not None and _corpus_fp is not None and chunks:
+                        from rag_lab.cache.query_cache import make_cache_key
+                        ck = make_cache_key(
+                            qtext,
+                            top_k=self.top_k,
+                            rrf_k=self.rrf_k,
+                            corpus_fingerprint=_corpus_fp,
+                        )
+                        _query_cache.set(ck, _corpus_fp, chunks, query_norm=qtext.lower())
 
                 lat = stats.get("latency_ms", 0.0)
                 latencies.append(lat)
@@ -207,6 +253,7 @@ class BenchmarkRunner:
                     "suite": qitem.get("suite", "official"),
                     "n_results": len(chunks),
                     "latency_ms": round(lat, 2),
+                    "cache_hit": stats.get("cache_hit", False),
                     "candidate_pool_size": stats.get("candidate_pool_size", 0),
                     "n_dense": stats.get("n_dense", 0),
                     "n_bm25": stats.get("n_bm25", 0),

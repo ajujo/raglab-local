@@ -108,6 +108,18 @@ SPARSE_INDEX_PATH = STORAGE_DIR / "sparse_index.json"
 DOCDSTORE_SQLITE_PATH = STORAGE_DIR / "docstore.sqlite"
 
 # =============================================================================
+# 6.6 CACHÉ DE QUERIES (RETRIEVAL CACHE)
+# =============================================================================
+# Cachea los resultados de hybrid_search + reranker para queries repetidas.
+# NO cachea respuestas finales del LLM.
+# La caché se invalida automáticamente cuando cambia el corpus (ingest/delete).
+# Para invalidar manualmente: rag-lab cache clear
+
+QUERY_CACHE_ENABLED: bool = True
+QUERY_CACHE_PATH = DATA_DIR / "query_cache.sqlite"
+QUERY_CACHE_TTL_SECONDS: int = 604800  # 7 días; 0 = sin expiración por tiempo
+
+# =============================================================================
 # 6.5 PARÁMETROS HNSW DEL VECTOR STORE
 # =============================================================================
 # IMPORTANTE: Todos estos parámetros son BUILD-TIME en ChromaDB 1.x.

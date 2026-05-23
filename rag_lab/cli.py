@@ -53,6 +53,9 @@ app.add_typer(ingest_app, name="ingest")
 app.add_typer(docs_app, name="docs")
 app.add_typer(tags_app, name="tags")
 
+cache_app = typer.Typer(name="cache", help="Query cache management.")
+app.add_typer(cache_app, name="cache")
+
 console = Console()
 
 
@@ -65,6 +68,7 @@ def query(
     top_k: int = typer.Option(5, "--top-k", help="Number of chunks to retrieve."),
     no_feedback: bool = typer.Option(False, "--no-feedback", help="Disable feedback prompt."),
     profile: bool = typer.Option(False, "--profile", help="Show performance metrics."),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass query cache for this run."),
     cpu_embedding: bool = typer.Option(
         False,
         "--cpu-embedding",
@@ -77,6 +81,9 @@ def query(
     ),
 ) -> None:
     """Query the RAG system with a natural language question."""
+    from rag_lab.config import QUERY_CACHE_ENABLED
+    from rag_lab.cache.query_cache import make_cache_key, get_corpus_fingerprint, get_cache
+
     setup_logging("INFO")
     logger = logging.getLogger("rag_lab")
     console = Console()
@@ -87,34 +94,7 @@ def query(
     emb_device = "cpu" if cpu_embedding else EMBEDDING_DEVICE
     rerank_device = "cpu" if cpu_reranker else os.getenv("RERANKER_DEVICE", "cuda")
 
-    # Initialize timer for profiling
-    timer = PhaseTimer()
-
-    # Process query
-    if profile:
-        timer.start("query_processing")
-    queries = process_query(question, use_hyde=hyde, use_rewriting=rewrite)
-    if profile:
-        timer.stop()
-
-    # Get embeddings for all query variants
-    # encode_chunks returns (dense_embeddings: np.ndarray, sparse_embeddings: Dict)
-    all_query_data = []
-    if profile:
-        timer.start("embedding")
-    for q in queries:
-        dense_emb, sparse_dict = encode_chunks([{"text": q["text"]}], batch_size=1, device=emb_device)
-        query_dense = dense_emb[0]
-        # HyDE queries should not use generated text for sparse scoring
-        if q.get("use_for_sparse", True):
-            query_sparse = next(iter(sparse_dict.values()), {}) if sparse_dict else {}
-        else:
-            query_sparse = {}  # suppress sparse signal for this query variant
-        all_query_data.append((query_dense, query_sparse))
-    if profile:
-        timer.stop()
-
-    # Perform hybrid search
+    # Initialize stores early — needed for corpus fingerprint
     vector_store = VectorStore()
     fts_store = FTSStore()
     doc_store = DocStore()
@@ -122,44 +102,102 @@ def query(
     fts_store.initialize()
     doc_store.initialize()
 
-    # Search with each query variant
-    all_results = []
-    if profile:
-        timer.start("hybrid_search")
-    for query_dense, query_sparse in all_query_data:
-        results = hybrid_search(
-            question,      # always original question for BM25
-            vector_store,
-            doc_store,
-            fts_store,
-            query_dense=query_dense,
-            query_sparse=query_sparse,
-            top_k=top_k * 2,
-        )
-        all_results.extend(results)
-    if profile:
-        timer.stop()
+    # Initialize timer for profiling
+    timer = PhaseTimer()
 
-    # Deduplicate by chunk_id
-    seen = set()
+    # ------------------------------------------------------------------
+    # Cache lookup — skip embedding + retrieval on hit
+    # ------------------------------------------------------------------
+    use_cache = QUERY_CACHE_ENABLED and not no_cache
+    cache_hit = False
+    cache_key = None
+    corpus_fp = None
     unique_results = []
-    for r in all_results:
-        if r.get("chunk_id") not in seen:
-            seen.add(r.get("chunk_id"))
-            unique_results.append(r)
 
-    # Rerank if not in fast mode
-    if not fast and unique_results:
-        if profile:
-            timer.start("reranking")
-        unique_results = rerank(
+    if use_cache:
+        corpus_fp = get_corpus_fingerprint(doc_store._conn)
+        cache_key = make_cache_key(
             question,
-            unique_results[:20],
-            top_k=min(top_k * 2, len(unique_results)),
-            device=rerank_device,
+            top_k=top_k * 2,
+            corpus_fingerprint=corpus_fp,
         )
+        _cache = get_cache()
+        cached = _cache.get(cache_key, corpus_fp)
+        if cached is not None:
+            unique_results = cached
+            cache_hit = True
+            console.print(
+                f"[dim]cache hit · key={cache_key[:12]}… · "
+                f"corpus={corpus_fp}[/dim]"
+            )
+
+    if not cache_hit:
+        # Process query
+        if profile:
+            timer.start("query_processing")
+        queries = process_query(question, use_hyde=hyde, use_rewriting=rewrite)
         if profile:
             timer.stop()
+
+        # Get embeddings for all query variants
+        all_query_data = []
+        if profile:
+            timer.start("embedding")
+        for q in queries:
+            dense_emb, sparse_dict = encode_chunks(
+                [{"text": q["text"]}], batch_size=1, device=emb_device
+            )
+            query_dense = dense_emb[0]
+            if q.get("use_for_sparse", True):
+                query_sparse = next(iter(sparse_dict.values()), {}) if sparse_dict else {}
+            else:
+                query_sparse = {}
+            all_query_data.append((query_dense, query_sparse))
+        if profile:
+            timer.stop()
+
+        # Search with each query variant
+        all_results = []
+        if profile:
+            timer.start("hybrid_search")
+        for query_dense, query_sparse in all_query_data:
+            results = hybrid_search(
+                question,
+                vector_store,
+                doc_store,
+                fts_store,
+                query_dense=query_dense,
+                query_sparse=query_sparse,
+                top_k=top_k * 2,
+            )
+            all_results.extend(results)
+        if profile:
+            timer.stop()
+
+        # Deduplicate by chunk_id
+        seen: set = set()
+        for r in all_results:
+            if r.get("chunk_id") not in seen:
+                seen.add(r.get("chunk_id"))
+                unique_results.append(r)
+
+        # Rerank if not in fast mode
+        if not fast and unique_results:
+            if profile:
+                timer.start("reranking")
+            unique_results = rerank(
+                question,
+                unique_results[:20],
+                top_k=min(top_k * 2, len(unique_results)),
+                device=rerank_device,
+            )
+            if profile:
+                timer.stop()
+
+        # Store result in cache
+        if use_cache and unique_results:
+            norm_q = " ".join(question.strip().lower().split())
+            get_cache().set(cache_key, corpus_fp, unique_results, query_norm=norm_q)
 
     # Generate response
     if unique_results:
@@ -253,6 +291,69 @@ def chat(
     """Start an interactive chat session with document filtering."""
     setup_logging("INFO")
     run_chat(cpu_embedding=cpu_embedding, cpu_reranker=cpu_reranker, profile=profile)
+
+
+# =============================================================================
+# Cache management sub-commands
+# =============================================================================
+
+@cache_app.command("stats")
+def cache_stats() -> None:
+    """Show query cache statistics."""
+    from rag_lab.cache.query_cache import get_cache
+    setup_logging("WARNING")
+    s = get_cache().stats()
+    console.print("[bold]Query Cache Statistics[/bold]")
+    console.print(f"  enabled:        {s['enabled']}")
+    console.print(f"  total entries:  {s['total_entries']}")
+    console.print(f"  total hits:     {s['total_hits']}")
+    console.print(f"  db size:        {s['db_size_bytes'] / 1024:.1f} KB")
+    if s["oldest_entry_age_s"]:
+        console.print(f"  oldest entry:   {s['oldest_entry_age_s'] // 3600}h ago")
+    if s["latest_access_age_s"] and s["total_entries"]:
+        console.print(f"  last accessed:  {s['latest_access_age_s'] // 60}m ago")
+    ttl = s["ttl_seconds"]
+    console.print(f"  TTL:            {'none' if ttl == 0 else f'{ttl // 86400}d'}")
+
+
+@cache_app.command("clear")
+def cache_clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Remove all query cache entries."""
+    from rag_lab.cache.query_cache import get_cache
+    setup_logging("WARNING")
+    if not yes:
+        typer.confirm("Clear all cache entries?", abort=True)
+    n = get_cache().clear()
+    console.print(f"[bold green]Cache cleared — {n} entries removed.[/bold green]")
+
+
+@cache_app.command("vacuum")
+def cache_vacuum() -> None:
+    """Remove expired entries and compact the cache database."""
+    from rag_lab.cache.query_cache import get_cache
+    setup_logging("WARNING")
+    get_cache().vacuum()
+    console.print("[bold green]Cache vacuumed.[/bold green]")
+
+
+@cache_app.command("inspect")
+def cache_inspect(
+    cache_key: str = typer.Argument(..., help="Full or partial cache key to inspect."),
+) -> None:
+    """Show metadata for a specific cache entry."""
+    from rag_lab.cache.query_cache import get_cache
+    setup_logging("WARNING")
+    info = get_cache().inspect(cache_key)
+    if info is None:
+        console.print(f"[bold yellow]No entry found for key: {cache_key}[/bold yellow]")
+        raise typer.Exit(1)
+    console.print(f"  cache_key:   {info['cache_key'][:32]}…")
+    console.print(f"  corpus_fp:   {info['corpus_fp']}")
+    console.print(f"  query:       {info['query_norm']}")
+    console.print(f"  age:         {info['age_s'] // 60}m")
+    console.print(f"  hits:        {info['hit_count']}")
 
 
 if __name__ == "__main__":
