@@ -97,16 +97,102 @@ class TestBenchmarkFlags:
         assert "--no-cache" in result.output
 
     def test_benchmark_run_subcommand_not_documented(self, runner):
-        """'benchmark run' must not appear as a documented sub-command."""
+        """'benchmark run' must not appear as a top-level documented sub-command."""
         result = runner.invoke(app, ["--help"])
         assert "benchmark run" not in result.output
-        # Also verify benchmark is listed but as a direct command, not with 'run'
         assert "benchmark" in result.output
+
+    def test_benchmark_run_accepted_as_alias(self, runner):
+        """rag-lab benchmark run should forward to argparse (not error on 'run')."""
+        result = runner.invoke(app, ["benchmark", "run", "--help"])
+        assert result.exit_code == 0
+        # benchmark's argparse help should appear
+        assert "--variants" in result.output
+        assert "--suite" in result.output
 
 
 # ---------------------------------------------------------------------------
 # python -m entry points — main(argv=[...]) callable
 # ---------------------------------------------------------------------------
+
+class TestReconcileRepairMetadata:
+    def test_reconcile_help_has_repair_metadata(self, runner):
+        result = runner.invoke(app, ["reconcile", "--help"])
+        assert "--repair-metadata" in result.output
+
+    def test_reconcile_detects_missing_metadata(self, tmp_path):
+        """reconcile() reports chunks with empty model name as missing_model_metadata_count."""
+        from rag_lab.storage.docstore import DocStore
+        from rag_lab.maintenance.reconcile import reconcile
+        from unittest.mock import MagicMock, patch
+
+        db_path = tmp_path / "ds.sqlite"
+        ds = DocStore(db_path=db_path)
+        ds.initialize()
+        # Insert a chunk without model metadata (simulates pre-v2 ingest)
+        ds._conn.execute(
+            "INSERT INTO chunks (chunk_id, doc_id, text, embedding_model_name, "
+            "embedding_model_version, embedding_dim, sparse_tokens) "
+            "VALUES (?, ?, ?, '', '', 1024, X'00')",
+            ("c1", "doc_a", "hello world"),
+        )
+        ds._conn.commit()
+
+        mock_vs = MagicMock()
+        mock_vs._collection.get.return_value = {"ids": ["c1"]}
+        mock_vs_cls = MagicMock(return_value=mock_vs)
+
+        mock_ds_inst = MagicMock()
+        mock_ds_inst._conn = ds._conn
+        mock_ds_inst.close = lambda: None
+        mock_ds_cls = MagicMock(return_value=mock_ds_inst)
+
+        with patch("rag_lab.maintenance.reconcile.DocStore", mock_ds_cls), \
+             patch("rag_lab.maintenance.reconcile.VectorStore", mock_vs_cls):
+            result = reconcile(quiet=True)
+
+        assert result["missing_model_metadata_count"] == 1
+        ds.close()
+
+    def test_reconcile_repair_metadata_backfills(self, tmp_path):
+        """--repair-metadata updates empty model metadata from config."""
+        from rag_lab.storage.docstore import DocStore
+        from rag_lab.maintenance.reconcile import reconcile
+        from unittest.mock import MagicMock, patch
+
+        db_path = tmp_path / "ds.sqlite"
+        ds = DocStore(db_path=db_path)
+        ds.initialize()
+        ds._conn.execute(
+            "INSERT INTO chunks (chunk_id, doc_id, text, embedding_model_name, "
+            "embedding_model_version, embedding_dim, sparse_tokens) "
+            "VALUES (?, ?, ?, '', '', 1024, X'00')",
+            ("c1", "doc_a", "hello world"),
+        )
+        ds._conn.commit()
+
+        mock_vs = MagicMock()
+        mock_vs._collection.get.return_value = {"ids": ["c1"]}
+        mock_vs_cls = MagicMock(return_value=mock_vs)
+
+        mock_ds_inst = MagicMock()
+        mock_ds_inst._conn = ds._conn
+        mock_ds_inst.close = lambda: None
+        mock_ds_cls = MagicMock(return_value=mock_ds_inst)
+
+        with patch("rag_lab.maintenance.reconcile.DocStore", mock_ds_cls), \
+             patch("rag_lab.maintenance.reconcile.VectorStore", mock_vs_cls):
+            result = reconcile(repair_metadata=True, quiet=True)
+
+        assert result["metadata_repaired"] is True
+        assert result["missing_model_metadata_count"] == 0
+        row = ds._conn.execute(
+            "SELECT embedding_model_name, embedding_model_version FROM chunks WHERE chunk_id = 'c1'"
+        ).fetchone()
+        assert row[0] != ""
+        assert row[1] != ""
+        ds.close()
+
 
 class TestPythonMEntryPoints:
     def test_doctor_main_callable_with_argv(self):

@@ -87,11 +87,16 @@ def diagnose(
         ")"
     ).fetchone()[0]
 
-    # Model version consistency
+    # Model version consistency — include chunks with missing metadata
     model_rows = conn.execute(
-        "SELECT embedding_model_name, embedding_model_version, COUNT(*) "
-        "FROM chunks WHERE embedding_model_name != '' "
-        "GROUP BY embedding_model_name, embedding_model_version"
+        "SELECT "
+        "  CASE WHEN embedding_model_name IS NULL OR embedding_model_name = '' "
+        "    THEN '(no metadata — pre-v2 ingest)' ELSE embedding_model_name END, "
+        "  CASE WHEN embedding_model_version IS NULL OR embedding_model_version = '' "
+        "    THEN '' ELSE embedding_model_version END, "
+        "  COUNT(*) "
+        "FROM chunks "
+        "GROUP BY 1, 2"
     ).fetchall()
 
     # --- ChromaDB ---
@@ -137,7 +142,11 @@ def diagnose(
     if model_rows:
         print(f"\n  Embedding model versions in docstore:")
         for row in model_rows:
-            print(f"    {row[0]}  v{row[1]}  ({row[2]} chunks)")
+            ver_str = f" v{row[1]}" if row[1] else ""
+            note = ""
+            if row[0].startswith("(no metadata"):
+                note = "  ← run: rag-lab reconcile --repair-metadata"
+            print(f"    {row[0]}{ver_str}  ({row[2]} chunks){note}")
 
     # --- Feedback store ---
     feedback_ok = True

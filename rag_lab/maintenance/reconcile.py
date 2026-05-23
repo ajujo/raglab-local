@@ -9,7 +9,8 @@ Modes:
     python -m rag_lab.maintenance.reconcile --check        # explicit CI mode (same behaviour)
     python -m rag_lab.maintenance.reconcile --repair       # remove orphaned IDs from ChromaDB
     python -m rag_lab.maintenance.reconcile --fix          # alias for --repair (backward compat)
-    python -m rag_lab.maintenance.reconcile --repair-fts   # remove FTS5 duplicate rows
+    python -m rag_lab.maintenance.reconcile --repair-fts       # remove FTS5 duplicate rows
+    python -m rag_lab.maintenance.reconcile --repair-metadata  # back-fill NULL model metadata
     python -m rag_lab.maintenance.reconcile --report-json out.json
 
 Exit codes:
@@ -35,16 +36,21 @@ def reconcile(
     fix: bool = False,
     repair: bool = False,
     repair_fts: bool = False,
+    repair_metadata: bool = False,
     quiet: bool = False,
 ) -> dict:
     """Check consistency between DocStore, ChromaDB, FTS5, and sparse BLOBs.
 
     Args:
-        fix:        Backward-compat alias for repair.
-        repair:     If True, remove orphaned entries from ChromaDB.
-        repair_fts: If True, remove duplicate rows from chunks_fts (keeps one
-                    row per chunk_id, rebuilt from the chunks table).
-        quiet:      If True, suppress all stdout output (programmatic callers).
+        fix:              Backward-compat alias for repair.
+        repair:           If True, remove orphaned entries from ChromaDB.
+        repair_fts:       If True, remove duplicate rows from chunks_fts.
+        repair_metadata:  If True, back-fill NULL embedding_model_name /
+                          embedding_model_version for chunks that have a
+                          matching embedding_dim and sparse_tokens (safe to
+                          do without re-embedding; only affects pre-v2
+                          ingested chunks).
+        quiet:            If True, suppress all stdout output.
 
     Returns:
         Extended dict with counts, orphan lists, mismatch lists, and
@@ -92,6 +98,16 @@ def reconcile(
         fts_duplicate_chunk_ids = [r[0] for r in fts_dup_rows]
     except Exception:
         fts_duplicate_chunk_ids = []
+
+    # --- Chunks with missing embedding model metadata (pre-v2 ingest) ---
+    try:
+        missing_meta_count = conn.execute(
+            "SELECT COUNT(*) FROM chunks "
+            "WHERE (embedding_model_name IS NULL OR embedding_model_name = '') "
+            "AND sparse_tokens IS NOT NULL"
+        ).fetchone()[0]
+    except Exception:
+        missing_meta_count = 0
 
     # --- Sparse BLOB coverage ---
     try:
@@ -233,8 +249,10 @@ def reconcile(
         "orphaned_document_tags": orphaned_document_tags,
         "stale_ingest_runs": stale_ingest_runs,
         "failed_ingest_runs": failed_ingest_runs,
+        "missing_model_metadata_count": missing_meta_count,
         "repaired": False,
         "fts_repaired": False,
+        "metadata_repaired": False,
     }
 
     if not quiet:
@@ -277,6 +295,28 @@ def reconcile(
             print(f"  ✓ Removed {len(affected)} FTS5 duplicate chunk_id(s)")
             print(f"{sep}\n")
 
+    if repair_metadata and missing_meta_count > 0:
+        from rag_lab.config import EMBEDDING_MODEL as _EMBEDDING_MODEL
+        # Back-fill embedding_model_name / embedding_model_version for chunks that
+        # have a valid embedding_dim and sparse_tokens but no model metadata.
+        # Safe without re-embedding: pre-v2 chunks were fully processed with the
+        # current model; only the metadata columns were never recorded.
+        conn.execute(
+            "UPDATE chunks "
+            "SET embedding_model_name = ?, embedding_model_version = ? "
+            "WHERE (embedding_model_name IS NULL OR embedding_model_name = '') "
+            "AND embedding_dim = ? "
+            "AND sparse_tokens IS NOT NULL",
+            (_EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION, EMBEDDING_DIM),
+        )
+        conn.commit()
+        result["metadata_repaired"] = True
+        result["missing_model_metadata_count"] = 0
+        if not quiet:
+            sep = "─" * 50
+            print(f"  ✓ Back-filled model metadata for {missing_meta_count} chunk(s)")
+            print(f"{sep}\n")
+
     ds.close()
     return result
 
@@ -311,6 +351,10 @@ def _print_report(result: dict, docstore_count: int) -> None:
     if result.get("fts_duplicate_chunk_ids"):
         n = len(result["fts_duplicate_chunk_ids"])
         print(f"  ⚠ {n} FTS5 duplicate chunk_id(s) — run: python -m rag_lab.maintenance.reconcile --repair-fts")
+
+    if result.get("missing_model_metadata_count", 0) > 0:
+        n = result["missing_model_metadata_count"]
+        print(f"  ℹ {n} chunks with no model metadata (pre-v2 ingest) — run: rag-lab reconcile --repair-metadata")
 
     if result["model_version_mismatches"]:
         print(f"  ⚠ {len(result['model_version_mismatches'])} chunks with stale embedding_model_version")
@@ -396,13 +440,21 @@ def main(argv=None) -> int:
                         help="Remove orphaned entries from ChromaDB")
     parser.add_argument("--repair-fts", action="store_true",
                         help="Remove FTS5 duplicate rows (chunk_ids with >1 row in chunks_fts)")
+    parser.add_argument("--repair-metadata", action="store_true",
+                        help="Back-fill NULL embedding_model_name/version for pre-v2 chunks "
+                             "(safe: does not re-embed; only annotates existing embeddings)")
     parser.add_argument("--check", action="store_true",
                         help="CI mode: exit 0 if consistent, 1 if issues (default behaviour)")
     parser.add_argument("--report-json", metavar="PATH", default=None,
                         help="Save JSON report to this path")
     args = parser.parse_args(argv)
 
-    result = reconcile(fix=args.fix, repair=args.repair, repair_fts=args.repair_fts)
+    result = reconcile(
+        fix=args.fix,
+        repair=args.repair,
+        repair_fts=args.repair_fts,
+        repair_metadata=args.repair_metadata,
+    )
 
     if args.report_json:
         save_report(result, args.report_json)
