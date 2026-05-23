@@ -500,10 +500,16 @@ def cmd_doctor(ctx: typer.Context) -> None:
 def cmd_benchmark(ctx: typer.Context) -> None:
     """Retrieval benchmark — compare pipeline variants.
 
-    Example: rag-lab benchmark --suite official --variants full --no-cache
+    Examples:
+      rag-lab benchmark --suite official --variants full --no-cache
+      rag-lab benchmark run --suite official --variants full --no-cache
     """
+    args = list(ctx.args)
+    # Accept 'run' as a compatibility sub-command alias — strip before forwarding.
+    if args and args[0] == "run":
+        args = args[1:]
     from rag_lab.benchmark.__main__ import main as _main
-    raise typer.Exit(_main(ctx.args))
+    raise typer.Exit(_main(args))
 
 
 @app.command("reconcile", context_settings=_OPS_CTX, add_help_option=False)
