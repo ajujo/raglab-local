@@ -14,10 +14,13 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Inspect document structure | `rag-lab docs inspect path/to/doc.md` |
 | Preview chunks without ingesting | `rag-lab docs preview-chunks path/to/doc.md` |
 | Ingest a document (transactional) | `rag-lab ingest --doc path/to/doc.md` |
+| Ingest a directory of .md files | `rag-lab ingest --doc path/to/dir/` |
 | Ingest with strict validation | `rag-lab ingest --strict --doc path/to/doc.md` |
+| Ingest with parallel workers | `rag-lab ingest --workers 4` |
 | Ingest all sources | `rag-lab ingest` |
-| Resume crashed ingest runs | `rag-lab ingest --resume` |
-| Retry all failed ingest runs | `rag-lab ingest --retry-failed` |
+| Resume the last incomplete batch | `rag-lab ingest --resume` |
+| Retry all failed documents | `rag-lab ingest --retry-failed` |
+| List batch history | `rag-lab ingest batches` |
 | List ingest run history | `rag-lab ingest runs` |
 | Show a specific ingest run | `rag-lab ingest show <run_id>` |
 | Roll back a failed run manually | `rag-lab ingest rollback <run_id>` |
@@ -655,38 +658,67 @@ rag-lab ingest --strict  # validate all SOURCES
 
 ---
 
-## Ingest transactions (v1.4+)
+## Ingest pipeline (v1.16+)
 
-Every document ingest is now wrapped in a logical transaction that tracks
-progress and performs rollback compensation on failure.
+The ingest command runs a 4-phase pipeline with a **single-writer guarantee**:
+worker threads only compute (no DB access); all writes happen on the main thread.
 
-### Status transitions
+### Phases
 
+1. **Parallel preparation** (`--workers N`) — validate + clean + chunk each doc.
+   Thread-safe: no SQLite or ChromaDB access. Default: `INGEST_MAX_WORKERS = 2`.
+2. **SKIPPED detection** (main thread) — check `ingest_documents` for a previous
+   COMMITTED row with the same content hash. Fallback: scan `data/ingested.jsonl`
+   for pre-v1.16 ingests.
+3. **Sequential embedding** — GPU/CPU model is not thread-safe; always on main thread.
+4. **Sequential write** (`IngestTransaction` per document) — ChromaDB → SQLite chunks
+   → FTS5 → metadata. Failure in any phase triggers compensation rollback for that doc
+   only; previously committed docs are unaffected.
+
+### Batch tracking (v1.16+)
+
+Each CLI invocation creates one **batch** row (`ingest_batches`) and one
+**document** row (`ingest_documents`) per file.
+
+Document status lifecycle:
 ```
-IN_PROGRESS → COMMITTED     (success)
-IN_PROGRESS → FAILED        (exception raised mid-ingest)
-FAILED      → ROLLED_BACK   (after compensation: delete from ChromaDB + DocStore + FTS5 + documents)
+PENDING → VALIDATED → EMBEDDING → WRITING → COMMITTED
+                ↓                       ↓
+             FAILED               ROLLED_BACK
+                                       ↑
+                              SKIPPED (hash unchanged)
 ```
 
 ### Checking ingest history
 
 ```bash
-rag-lab ingest runs                      # last 20 runs
+rag-lab ingest batches                   # last 20 batches (high-level)
+rag-lab ingest runs                      # last 20 runs (low-level, per-document)
 rag-lab ingest runs --status FAILED      # only failed
 rag-lab ingest runs --doc SDMX_Glossary  # runs for one doc
-rag-lab ingest show abc123def456         # full details
+rag-lab ingest show abc123def456         # full details for a run
+```
+
+### Ingesting directories
+
+```bash
+rag-lab ingest --doc path/to/dir/       # all *.md files, sorted
+rag-lab ingest --doc path/to/dir/ --workers 4
 ```
 
 ### Recovering from failures
 
-After a crash or partial ingest:
-
 ```bash
-# Automatic: roll back stale IN_PROGRESS + FAILED, then re-ingest
-rag-lab ingest --resume          # stale IN_PROGRESS only
-rag-lab ingest --retry-failed    # FAILED only
+# Resume the most recent incomplete batch (PENDING/FAILED docs only)
+rag-lab ingest --resume
 
-# Manual: roll back a specific run, then re-ingest separately
+# Retry all FAILED/ROLLED_BACK documents (creates a new batch)
+rag-lab ingest --retry-failed
+
+# Force re-ingest even if content hash is unchanged
+rag-lab ingest --doc path/to/doc.md --force
+
+# Manual: roll back a specific run, then re-ingest
 rag-lab ingest rollback abc123def456
 rag-lab ingest --doc path/to/doc.md --force
 ```

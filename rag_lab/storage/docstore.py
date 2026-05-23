@@ -52,6 +52,7 @@ class DocStore:
         self._migrate_v2()
         self._migrate_v3()
         self._migrate_v4()
+        self._migrate_v5()
         self._conn.commit()
         logger.info(f"Initialized docstore at {self.db_path}")
 
@@ -129,6 +130,58 @@ class DocStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_ingest_runs_status "
             "ON ingest_runs(status)"
+        )
+
+    def _migrate_v5(self) -> None:
+        """Create ingest_batches and ingest_documents tables (v1.16)."""
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingest_batches (
+                batch_id         TEXT PRIMARY KEY,
+                started_at       TEXT NOT NULL,
+                finished_at      TEXT,
+                status           TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+                source_path      TEXT,
+                total_docs       INTEGER DEFAULT 0,
+                committed_docs   INTEGER DEFAULT 0,
+                skipped_docs     INTEGER DEFAULT 0,
+                failed_docs      INTEGER DEFAULT 0,
+                rolled_back_docs INTEGER DEFAULT 0,
+                total_chunks     INTEGER DEFAULT 0
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingest_documents (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id           TEXT NOT NULL,
+                run_id             TEXT,
+                doc_id             TEXT NOT NULL,
+                path               TEXT NOT NULL,
+                content_hash       TEXT,
+                status             TEXT NOT NULL DEFAULT 'PENDING',
+                error_message      TEXT,
+                started_at         TEXT,
+                finished_at        TEXT,
+                chunks_count       INTEGER DEFAULT 0,
+                retry_count        INTEGER DEFAULT 0,
+                validation_summary TEXT
+            )
+            """
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ibatches_status ON ingest_batches(status)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_idocs_batch ON ingest_documents(batch_id)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_idocs_doc_hash "
+            "ON ingest_documents(doc_id, content_hash, status)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_idocs_status ON ingest_documents(status)"
         )
 
     # ------------------------------------------------------------------

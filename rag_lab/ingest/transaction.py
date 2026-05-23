@@ -48,6 +48,24 @@ _INGEST_RUNS_COLS = [
     "metadata_written",
 ]
 
+_INGEST_BATCHES_COLS = [
+    "batch_id", "started_at", "finished_at", "status", "source_path",
+    "total_docs", "committed_docs", "skipped_docs", "failed_docs",
+    "rolled_back_docs", "total_chunks",
+]
+
+_INGEST_DOCS_COLS = [
+    "id", "batch_id", "run_id", "doc_id", "path", "content_hash",
+    "status", "error_message", "started_at", "finished_at",
+    "chunks_count", "retry_count", "validation_summary",
+]
+
+# Valid status values for ingest_documents
+INGEST_DOC_STATUSES = frozenset([
+    "PENDING", "VALIDATING", "VALIDATED", "CHUNKING", "EMBEDDING",
+    "WRITING", "COMMITTED", "FAILED", "ROLLED_BACK", "SKIPPED",
+])
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
@@ -123,6 +141,176 @@ class IngestRunStore:
             (f"-{minutes} minutes",),
         ).fetchall()
         return [_row_to_dict(r) for r in rows]
+
+
+class IngestBatchStore:
+    """CRUD for the ingest_batches table (one row per batch/CLI invocation)."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def create(self, source_path=None) -> str:
+        batch_id = uuid.uuid4().hex[:12]
+        self._conn.execute(
+            "INSERT INTO ingest_batches (batch_id, started_at, source_path) "
+            "VALUES (?, ?, ?)",
+            (batch_id, _now(), str(source_path) if source_path else None),
+        )
+        self._conn.commit()
+        return batch_id
+
+    def update(self, batch_id: str, **fields) -> None:
+        if not fields:
+            return
+        set_parts = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [batch_id]
+        self._conn.execute(
+            f"UPDATE ingest_batches SET {set_parts} WHERE batch_id = ?", values
+        )
+        self._conn.commit()
+
+    def finalize(self, batch_id: str) -> None:
+        """Compute final doc counts from ingest_documents and set terminal status."""
+        row = self._conn.execute(
+            """
+            SELECT
+              SUM(CASE WHEN status='COMMITTED' THEN 1 ELSE 0 END),
+              SUM(CASE WHEN status='SKIPPED' THEN 1 ELSE 0 END),
+              SUM(CASE WHEN status IN ('FAILED') THEN 1 ELSE 0 END),
+              SUM(CASE WHEN status='ROLLED_BACK' THEN 1 ELSE 0 END),
+              SUM(chunks_count)
+            FROM ingest_documents WHERE batch_id = ?
+            """,
+            (batch_id,),
+        ).fetchone()
+        committed = row[0] or 0
+        skipped = row[1] or 0
+        failed = row[2] or 0
+        rolled_back = row[3] or 0
+        total_chunks = row[4] or 0
+
+        if failed + rolled_back == 0:
+            status = "COMPLETED"
+        elif committed + skipped > 0:
+            status = "PARTIAL"
+        else:
+            status = "FAILED"
+
+        self._conn.execute(
+            """
+            UPDATE ingest_batches
+            SET status=?, finished_at=?, committed_docs=?, skipped_docs=?,
+                failed_docs=?, rolled_back_docs=?, total_chunks=?
+            WHERE batch_id=?
+            """,
+            (status, _now(), committed, skipped, failed, rolled_back, total_chunks, batch_id),
+        )
+        self._conn.commit()
+
+    def get(self, batch_id: str) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM ingest_batches WHERE batch_id = ?", (batch_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(zip(_INGEST_BATCHES_COLS, row))
+
+    def get_latest_incomplete(self) -> Optional[str]:
+        """Return batch_id of most recent IN_PROGRESS batch, or None."""
+        row = self._conn.execute(
+            "SELECT batch_id FROM ingest_batches WHERE status='IN_PROGRESS' "
+            "ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return row[0] if row else None
+
+    def list_batches(self, limit: int = 20) -> List[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM ingest_batches ORDER BY started_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(zip(_INGEST_BATCHES_COLS, r)) for r in rows]
+
+
+class IngestDocumentStore:
+    """CRUD for the ingest_documents table (one row per doc per batch)."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def create(self, batch_id: str, doc_id: str, path: str,
+               content_hash: Optional[str] = None) -> int:
+        cur = self._conn.execute(
+            """
+            INSERT INTO ingest_documents
+                (batch_id, doc_id, path, content_hash, status, started_at)
+            VALUES (?, ?, ?, ?, 'PENDING', ?)
+            """,
+            (batch_id, doc_id, path, content_hash, _now()),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def update(self, id: int, **fields) -> None:
+        if not fields:
+            return
+        set_parts = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [id]
+        self._conn.execute(
+            f"UPDATE ingest_documents SET {set_parts} WHERE id = ?", values
+        )
+        self._conn.commit()
+
+    def set_status(self, id: int, status: str, **kwargs) -> None:
+        """Convenience: update status plus any extra fields in one call."""
+        self.update(id, status=status, **kwargs)
+
+    def find_committed(self, doc_id: str, content_hash: str) -> bool:
+        """Return True if a COMMITTED row exists for this (doc_id, content_hash)."""
+        if not content_hash:
+            return False
+        row = self._conn.execute(
+            "SELECT 1 FROM ingest_documents "
+            "WHERE doc_id=? AND content_hash=? AND status='COMMITTED' LIMIT 1",
+            (doc_id, content_hash),
+        ).fetchone()
+        return row is not None
+
+    def list_by_batch(self, batch_id: str) -> List[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM ingest_documents WHERE batch_id=? ORDER BY id",
+            (batch_id,),
+        ).fetchall()
+        return [dict(zip(_INGEST_DOCS_COLS, r)) for r in rows]
+
+    def list_resumable(self, batch_id: str) -> List[dict]:
+        """Return PENDING, FAILED, ROLLED_BACK docs in a batch."""
+        rows = self._conn.execute(
+            "SELECT * FROM ingest_documents "
+            "WHERE batch_id=? AND status IN ('PENDING','FAILED','ROLLED_BACK') ORDER BY id",
+            (batch_id,),
+        ).fetchall()
+        return [dict(zip(_INGEST_DOCS_COLS, r)) for r in rows]
+
+    def list_failed(self, batch_id: Optional[str] = None) -> List[dict]:
+        """Return FAILED/ROLLED_BACK docs, optionally filtered by batch."""
+        if batch_id:
+            rows = self._conn.execute(
+                "SELECT * FROM ingest_documents "
+                "WHERE batch_id=? AND status IN ('FAILED','ROLLED_BACK') ORDER BY id",
+                (batch_id,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT * FROM ingest_documents "
+                "WHERE status IN ('FAILED','ROLLED_BACK') ORDER BY id",
+            ).fetchall()
+        return [dict(zip(_INGEST_DOCS_COLS, r)) for r in rows]
+
+    def get_by_id(self, id: int) -> Optional[dict]:
+        row = self._conn.execute(
+            "SELECT * FROM ingest_documents WHERE id=?", (id,)
+        ).fetchone()
+        return dict(zip(_INGEST_DOCS_COLS, row)) if row else None
 
 
 class IngestTransaction:

@@ -54,6 +54,11 @@ SPARSE_FORMAT_VERSION = 1
 # Propuesto: 8 (antes 4) — ~2x throughput en GPU
 EMBEDDING_BATCH_SIZE = 8
 
+# Worker threads for the parallel preparation phase of ingest (validate + clean + chunk).
+# Embedding and writing are always sequential (GPU model + single-writer SQLite).
+# Set to 1 to disable parallelism (useful for debugging or low-RAM environments).
+INGEST_MAX_WORKERS: int = 2
+
 # Longitud máxima de entrada para el modelo de embedding
 EMBEDDING_MAX_LENGTH = 1024
 
