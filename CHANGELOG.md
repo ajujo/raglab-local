@@ -4,6 +4,60 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.16 — 2026-05-23
+
+### Parallel and resumable ingest (6.3.5)
+
+No changes to retrieval ranking, scoring, reranker, MMR, RRF, ChromaDB embeddings,
+HyDE, or query cache. Only the ingestion pipeline and CLI are affected.
+
+**Pipeline de 4 fases (single-writer guarantee):**
+1. **Parallel preparation** (`--workers N`): validate + clean + chunk each document
+   in worker threads. No DB access — pure CPU computation.
+2. **SKIPPED detection** (main thread): check `ingest_documents.find_committed(doc_id, hash)`;
+   fallback to `data/ingested.jsonl` for pre-v1.16 backward compat.
+3. **Sequential embedding**: GPU/CPU model is not thread-safe — always on main thread.
+4. **Sequential write** (`IngestTransaction` per doc): ChromaDB → SQLite chunks → FTS5 → metadata.
+
+**Audit tables (schema v5, idempotent migration):**
+- `ingest_batches` — one row per CLI invocation; terminal status COMPLETED/PARTIAL/FAILED.
+- `ingest_documents` — one row per (batch, document); statuses:
+  PENDING → VALIDATING → VALIDATED → EMBEDDING → WRITING → COMMITTED | FAILED | ROLLED_BACK | SKIPPED.
+
+**Nuevas clases (`rag_lab/ingest/transaction.py`):**
+- `IngestBatchStore` — CRUD for `ingest_batches`.
+- `IngestDocumentStore` — CRUD for `ingest_documents`; `find_committed()` powers SKIPPED detection.
+
+**Config nuevo:**
+```python
+INGEST_MAX_WORKERS: int = 2  # threads for preparation phase
+```
+
+**CLI actualizado:**
+```bash
+rag-lab ingest [--doc PATH|DIR] [--force] [--resume] [--retry-failed] [--workers N]
+rag-lab ingest batches [--limit N]  # new: show batch-level history
+```
+- `--doc DIR` — ingest all `*.md` files in a directory (sorted).
+- `--workers N` — override `INGEST_MAX_WORKERS` for this run.
+- `--resume` — continue the most recent incomplete batch (PENDING/FAILED docs).
+- `--retry-failed` — create a new batch for all FAILED/ROLLED_BACK docs.
+- Output summary: committed / skipped / failed / chunks / elapsed.
+
+**Backward compat:**
+- `ingest retry RUN_ID` and `ingest rollback RUN_ID` preserved unchanged.
+- `--resume` with no v1.16 batch falls back to stale `ingest_runs` detection (pre-v1.16).
+
+**Tests nuevos:** `tests/test_ingest/test_batch_ingest.py` — 57 tests.
+
+**Garantías explícitas:**
+- SQLite and ChromaDB receive writes only from the main thread (single-writer).
+- Failure in doc N does not corrupt docs 1..N-1 (per-document rollback).
+- SKIPPED docs produce no new chunks and do not change the corpus fingerprint.
+- `reconcile` is clean after any combination of commit/rollback.
+
+---
+
 ## v1.15 — 2026-05-23
 
 ### Feedback capture — structured chunk-level feedback store (6.3.8, phase 1)

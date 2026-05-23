@@ -385,6 +385,7 @@ class TestIngestValidationGate:
         doc.write_text("  ", encoding="utf-8")
 
         result = self.runner.invoke(app, ["ingest", "--doc", str(doc)])
-        assert "empty_file" in result.output or "ERROR" in result.output
-        # Total should be 0 chunks
-        assert "0 chunks" in result.output or result.exit_code == 0  # exits gracefully
+        # v1.16+: batch pipeline reports FAILED + validation error message
+        output_lower = result.output.lower()
+        assert "failed" in output_lower or "error" in output_lower
+        assert result.exit_code == 0  # exits gracefully
