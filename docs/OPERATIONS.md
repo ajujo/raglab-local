@@ -81,7 +81,7 @@ After this, `rag-lab ingest`, `rag-lab docs`, `rag-lab tags`, etc. all work from
 
 ## Doctor command
 
-`python -m rag_lab.doctor` runs 8 sequential health checks and exits with a clear status.
+`rag-lab doctor` (or `python -m rag_lab.doctor`) runs 8 sequential health checks and exits with a clear status.
 
 ### Checks
 
@@ -134,7 +134,7 @@ RAG-Lab Doctor
 
 ## Reconcile command
 
-`python -m rag_lab.maintenance.reconcile` checks consistency between DocStore and ChromaDB.
+`rag-lab reconcile` (or `python -m rag_lab.maintenance.reconcile`) checks consistency between DocStore and ChromaDB.
 
 ### Modes
 
@@ -144,6 +144,8 @@ RAG-Lab Doctor
 | `--check` | CI mode — same as default (explicit) |
 | `--repair` | Remove orphaned entries from ChromaDB (destructive) |
 | `--fix` | Alias for `--repair` (backward compatibility) |
+| `--repair-fts` | Remove FTS5 duplicate rows (v1.16.1+) |
+| `--repair-metadata` | Back-fill NULL embedding_model_name/version for pre-v2 chunks (v1.16.3+) |
 | `--report-json PATH` | Save full JSON report to PATH |
 
 ### Extended checks (v1.2+)
@@ -179,8 +181,10 @@ Any of these conditions causes exit code 1 and is flagged in the report.
 
 | Issue | Command |
 |-------|---------|
-| ChromaDB orphans | `python -m rag_lab.maintenance.reconcile --repair` |
-| Missing from ChromaDB | `python -m rag_lab.cli ingest --force` |
+| ChromaDB orphans | `rag-lab reconcile --repair` |
+| FTS5 duplicates | `rag-lab reconcile --repair-fts` |
+| NULL model metadata | `rag-lab reconcile --repair-metadata` |
+| Missing from ChromaDB | `rag-lab ingest --force` |
 | FTS5 incomplete | `python -m rag_lab.maintenance.migrate_to_v2` |
 | Sparse BLOBs missing | `python -m rag_lab.maintenance.backfill_sparse` |
 | Model version mismatch | Re-ingest affected documents |
@@ -189,7 +193,7 @@ Any of these conditions causes exit code 1 and is flagged in the report.
 
 ## Diagnose command
 
-`python -m rag_lab.maintenance.diagnose` gives a detailed view of store counts and coverage.
+`rag-lab diagnose` (or `python -m rag_lab.maintenance.diagnose`) gives a detailed view of store counts and coverage.
 
 ### Options
 
@@ -322,7 +326,7 @@ print(col.metadata)                    # anotaciones (pueden ser stale)
 
 O con el doctor:
 ```bash
-python -m rag_lab.doctor
+rag-lab doctor
 ```
 
 ### Cómo hacer rebuild
@@ -745,8 +749,8 @@ detect and report them.
 
 Run after any bulk ingest or schema change:
 
-1. `python -m rag_lab.doctor` — quick health gate
-2. `python -m rag_lab.maintenance.reconcile` — cross-store consistency
+1. `rag-lab doctor` — quick health gate
+2. `rag-lab reconcile --check` — cross-store consistency
 3. `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current <new_run>` — regression guard
 4. `pytest tests/ -v` — full test suite
 
@@ -775,7 +779,7 @@ python -m rag_lab.maintenance.migrate_to_v2
 Some integration tests insert temporary chunks that may not be cleaned up. Run:
 
 ```bash
-python -m rag_lab.maintenance.reconcile --repair
+rag-lab reconcile --repair
 ```
 
 ### Stale model version / embedding dim mismatches
@@ -828,8 +832,8 @@ Tags are resolved to doc_ids before any retrieval call. The ranking pipeline
 
 Via diagnose (for debugging):
 ```bash
-python -m rag_lab.maintenance.diagnose --query "code list" --tag glossary
-python -m rag_lab.maintenance.diagnose --query "REST API" --exclude-tag test --explain
+rag-lab diagnose --query "code list" --tag glossary
+rag-lab diagnose --query "REST API" --exclude-tag test --explain
 ```
 
 Via Python (`hybrid_search`):
@@ -864,7 +868,7 @@ After v3 migration, reconcile also checks:
 - document_tags pointing to deleted documents (should be zero due to CASCADE)
 
 ```bash
-python -m rag_lab.maintenance.reconcile
+rag-lab reconcile --check
 ```
 
 ---
@@ -905,10 +909,10 @@ Before starting a new version branch, verify:
 pytest tests/ -q
 
 # 2. Store consistency
-python -m rag_lab.maintenance.reconcile --check
+rag-lab reconcile --check
 
 # 3. System health
-python -m rag_lab.doctor
+rag-lab doctor
 
 # 4. Benchmark regression
 python -m rag_lab.benchmark.compare \

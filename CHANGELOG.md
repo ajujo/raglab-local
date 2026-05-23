@@ -4,6 +4,61 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.17 — 2026-05-23 — Release Candidate Audit
+
+### Audit findings and fixes
+
+No retrieval changes. No new loaders. No feedback-as-reranking. This tag represents
+the system as a stable release candidate after full operational audit.
+
+**Audit result: PASS.** All 7 acceptance criteria met. The corpus is consistent at
+610/610/610/610 (DocStore/ChromaDB/FTS5/Sparse) and benchmark metrics match the
+v1.11 official baseline exactly.
+
+**Fixes applied during audit:**
+
+1. **`--repair-metadata` for 197 pre-v2 chunks** (already shipped in v1.16.3):
+   `SDMX_2-1_User_Guide_6` was ingested before v2 schema added `embedding_model_name`
+   and `embedding_model_version` columns. After `rag-lab reconcile --repair-metadata`,
+   all 610 chunks show `BAAI/bge-m3 v2024-09`. No re-embedding needed.
+
+2. **`docs delete` uses `--force`, not `--yes`**: discovered during smoke test.
+   Not a bug — it's intentional (mirrors the `--force` flag in git-style CLIs).
+   Documented in audit findings.
+
+3. **Stale empty tags (`smoke`, `audit-smoke`) cleaned**: deleted via `rag-lab tags delete --force`.
+
+**Documentation updated:**
+
+- `CLAUDE.md`: commands section updated to `rag-lab` wrapper forms.
+- `docs/OPERATIONS.md`: doctor/reconcile/diagnose/benchmark sections updated to
+  prefer `rag-lab <cmd>` with `python -m` as fallback alternative.
+  Reconcile modes table updated to include `--repair-fts` and `--repair-metadata`.
+  Routine maintenance checklist updated.
+- `docs/BENCHMARKS.md`: compare-against-baseline snippet updated to use
+  `rag-lab benchmark --suite official --variants full --no-cache`.
+
+**Guard tests added:**
+
+`tests/test_cli/test_store_isolation_guard.py` — 7 tests verifying:
+- Production DocStore path is distinct from tmp_path stores.
+- `_isolate_stores` fixture correctly redirects `DOCDSTORE_SQLITE_PATH`.
+- `guard_read_only_integration` raises on attempted production writes.
+- `conftest.py` forces `CUDA_VISIBLE_DEVICES=""`, `EMBEDDING_DEVICE=cpu`,
+  `RERANKER_DEVICE=cpu` for all tests.
+
+**Benchmark (official, full, no-cache, 65 queries):**
+
+| Variant | R@5 | R@10 | R@30 | MRR | nDCG@10 | P50ms |
+|---------|-----|------|------|-----|---------|-------|
+| full | 0.821 | 0.896 | 0.978 | 0.939 | 0.837 | 248 |
+
+Δ = 0.000 vs v1.11 baseline. Zero regression.
+
+**Tests:** 922 passed (7 new guard tests).
+
+---
+
 ## v1.16.2 — 2026-05-23
 
 ### CLI ops commands — expose doctor, benchmark, reconcile, diagnose in rag-lab

@@ -41,9 +41,15 @@ python -m rag_lab.doc_manager interactive
 # Analyze collected feedback
 python -m rag_lab.feedback.analyze_feedback
 
-# Reconcile: cross-store consistency check (DocStore vs ChromaDB)
-python -m rag_lab.maintenance.reconcile          # report only
-python -m rag_lab.maintenance.reconcile --fix    # also removes orphaned IDs from ChromaDB
+# Health check, reconcile, diagnose, benchmark (all available via rag-lab wrapper)
+rag-lab doctor
+rag-lab reconcile --check
+rag-lab reconcile --repair          # remove ChromaDB orphans
+rag-lab reconcile --repair-fts      # fix FTS5 duplicates (v1.16.1+)
+rag-lab reconcile --repair-metadata # back-fill NULL model metadata (v1.16.3+)
+rag-lab diagnose --query "What is SDMX?" --explain
+rag-lab benchmark --suite official --variants full --no-cache
+rag-lab benchmark run --suite official --variants full --no-cache  # 'run' alias also accepted
 
 # Migrate existing docstore to schema v2 (sparse BLOBs + FTS5 virtual table)
 python -m rag_lab.maintenance.migrate_to_v2
