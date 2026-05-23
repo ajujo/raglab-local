@@ -4,6 +4,27 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.14.1 — 2026-05-23
+
+### Cache metadata invalidation — cache_revision counter in MetadataStore
+
+Patch sobre v1.14. Sin cambios de retrieval.
+
+**Problema:** `get_corpus_fingerprint()` usaba `"{n_chunks}:{max_ingest_run_id}"`, que no
+cambia cuando se asignan/desasignan tags o se renombran/eliminan tags. Las queries
+filtradas por tag podían devolver resultados de caché obsoletos tras operaciones de tagging.
+
+**Fix:**
+- `MetadataStore` gana tabla `cache_revision` (single-row SQLite counter, seeded at 0).
+- `bump_revision()` incrementa el contador. Se llama en: `assign_tag`, `unassign_tag`,
+  `rename_tag` (si cambia algo), `delete_tag` (si existe), `delete_document` (si existe).
+- `get_revision()` devuelve el valor actual (0 si la tabla no existe — safe for old DBs).
+- `get_corpus_fingerprint()` → `"{n_chunks}:{max_ingest_run_id}:{revision}"` (3 segmentos).
+
+**Tests:** 15 nuevos en `tests/test_cache/test_metadata_invalidation.py` (779 total).
+
+---
+
 ## v1.14 — 2026-05-23
 
 ### Caché de queries — retrieval/reranking persistente, invalidación automática (6.3.7)
@@ -14,7 +35,7 @@ No changes to retrieval logic, reranker, chunking, HyDE, MMR, RRF, sparse, FTS5,
 
 - `QueryCache` — SQLite backend (`data/query_cache.sqlite`), WAL mode.
 - `make_cache_key(query, *, filters, top_k, rrf_k, weights, mmr, hyde, emb_version, corpus_fp)` — SHA-256 estable.
-- `get_corpus_fingerprint(conn)` — `"{n_chunks}:{max_ingest_run_id}"` — cambia automáticamente en ingest/delete.
+- `get_corpus_fingerprint(conn)` — `"{n_chunks}:{max_ingest_run_id}:{revision}"` — cambia en ingest/delete/tag ops (v1.14.1+).
 - API: `get()`, `set()`, `invalidate()`, `clear()`, `vacuum()`, `stats()`, `inspect()`.
 
 **Qué se cachea:**
@@ -39,7 +60,7 @@ QUERY_CACHE_PATH = DATA_DIR / "query_cache.sqlite"
 QUERY_CACHE_TTL_SECONDS: int = 604800  # 7 días
 ```
 
-**Tests:** 41 nuevos en `tests/test_cache/test_query_cache.py` (764 total).
+**Tests:** 41 nuevos en `tests/test_cache/test_query_cache.py` (764 total; 779 con v1.14.1).
 
 **Benchmark (65 queries, variant=full, suite=official):**
 

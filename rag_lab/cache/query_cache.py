@@ -277,11 +277,13 @@ def make_cache_key(
 def get_corpus_fingerprint(conn: sqlite3.Connection) -> str:
     """Return a lightweight fingerprint of the current corpus state.
 
-    Changes whenever a document is ingested or deleted. Based on:
-      - number of chunks (sensitive to add/delete)
-      - max ingest_run id (monotonically increasing on every ingest/delete operation)
+    Changes whenever:
+      - a document is ingested or deleted (n_chunks + max ingest_run id)
+      - a tag is assigned, unassigned, renamed, or deleted (cache_revision)
 
-    Does NOT change for tag updates, which don't affect retrieval results.
+    The cache_revision counter is bumped by MetadataStore on every mutating
+    tag/document operation, ensuring stale tag-filtered cache entries are
+    automatically invalidated.
     """
     try:
         n_chunks = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
@@ -293,7 +295,14 @@ def get_corpus_fingerprint(conn: sqlite3.Connection) -> str:
         ).fetchone()[0]
     except Exception:
         max_run = 0
-    return f"{n_chunks}:{max_run}"
+    try:
+        rev_row = conn.execute(
+            "SELECT value FROM cache_revision WHERE key = 'retrieval'"
+        ).fetchone()
+        revision = rev_row[0] if rev_row else 0
+    except Exception:
+        revision = 0
+    return f"{n_chunks}:{max_run}:{revision}"
 
 
 # ------------------------------------------------------------------
