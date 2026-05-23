@@ -139,6 +139,19 @@ def diagnose(
         for row in model_rows:
             print(f"    {row[0]}  v{row[1]}  ({row[2]} chunks)")
 
+    # --- Feedback store ---
+    feedback_ok = True
+    try:
+        fb_count = conn.execute(
+            "SELECT COUNT(*) FROM feedback_events"
+        ).fetchone()[0]
+        print(f"\n  Feedback store:")
+        print(f"    Events         : {fb_count}  ✓")
+    except Exception:
+        # Table may not exist yet on fresh installs (created on first feedback add)
+        print(f"\n  Feedback store:")
+        print(f"    Events         : (no events yet — table will be created on first add)")
+
     # --- Optional query test ---
     result = {
         "total_chunks": total_chunks,

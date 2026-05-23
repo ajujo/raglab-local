@@ -107,6 +107,10 @@ VECTOR_STORE_PATH = STORAGE_DIR / "chroma_db"
 SPARSE_INDEX_PATH = STORAGE_DIR / "sparse_index.json"
 DOCDSTORE_SQLITE_PATH = STORAGE_DIR / "docstore.sqlite"
 
+# Structured chunk-level feedback (v1.15+). Stored in docstore.sqlite alongside
+# corpus metadata so a single DB backup captures both operational data and user feedback.
+FEEDBACK_DB_PATH = DOCDSTORE_SQLITE_PATH
+
 # =============================================================================
 # 6.6 CACHÉ DE QUERIES (RETRIEVAL CACHE)
 # =============================================================================

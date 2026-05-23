@@ -4,6 +4,65 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.15 — 2026-05-23
+
+### Feedback capture — structured chunk-level feedback store (6.3.8, phase 1)
+
+No changes to retrieval ranking, scoring, reranker, MMR, RRF, ChromaDB, FTS5, HNSW,
+HyDE, or query cache. Feedback is a purely append-only log — it does NOT affect results.
+
+**Módulo nuevo: `rag_lab/feedback/store.py`**
+
+- `FeedbackStore` — SQLite backend (defaults to `docstore.sqlite`), WAL mode.
+- Schema: `feedback_events` table — one row per (query, chunk) judgment.
+- `VALID_FEEDBACK`: `relevant`, `irrelevant`, `useful`, `not_useful`, `wrong_doc`,
+  `outdated`, `duplicate`, `bad_citation`.
+- API: `add()`, `list()`, `stats()`, `export_jsonl()`, `clear()`, `close()`.
+- `make_query_hash(query)` — SHA-256 of normalized query (deterministic, case-insensitive).
+- `make_retrieval_config_hash()` — SHA-256 of pipeline config params (deterministic).
+- `get_feedback_store()` / `reset_feedback_store_instance()` — module singleton.
+
+**Config nuevo:**
+```python
+FEEDBACK_DB_PATH = DOCDSTORE_SQLITE_PATH  # stored in docstore.sqlite
+```
+
+**CLI nuevo (sub-app `feedback`):**
+```bash
+rag-lab feedback add --query "..." --chunk-id "..." --feedback relevant
+rag-lab feedback add --query "..." --chunk-id "..." --feedback irrelevant --reason wrong_doc
+rag-lab feedback list [--limit N] [--chunk-id ID] [--feedback TYPE]
+rag-lab feedback stats
+rag-lab feedback export [--output path.jsonl]
+rag-lab feedback clear --yes
+```
+
+**Integración con `query`:**
+Tras mostrar la respuesta verificada, el comando `query` imprime un bloque compacto con
+rank/chunk_id/doc_id/score para cada chunk recuperado, más un comando de feedback
+de ejemplo para el chunk #1. El feedback NO es recogido automáticamente.
+
+**Diagnose:**
+`rag-lab doctor` muestra el número de feedback events almacenados.
+No bloquea ni falla si la tabla aún no existe.
+
+**Exportación JSONL:**
+Cada línea incluye todos los campos: query, query_hash, chunk_id, doc_id, rank,
+feedback, rating, reason, source, pipeline_variant, cache_hit, cache_key,
+corpus_fingerprint, retrieval_config_hash, created_at, user_note.
+
+**Garantías explícitas:**
+- Ningún resultado de retrieval cambia al añadir feedback.
+- El `corpus_fingerprint` no cambia al añadir feedback (cache no invalidada).
+- Feedback sobre chunk_id inexistente se permite (no hay FK a la tabla chunks).
+
+**Nota v1.16:** El feedback como señal de re-ranking se implementará en v1.16.
+Ver `docs/OPERATIONS.md` para el plan de evolución.
+
+**Tests:** 38 nuevos en `tests/test_feedback/test_feedback_events.py` (817 total).
+
+---
+
 ## v1.14.1 — 2026-05-23
 
 ### Cache metadata invalidation — cache_revision counter in MetadataStore
