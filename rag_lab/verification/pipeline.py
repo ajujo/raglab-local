@@ -66,9 +66,30 @@ class VerificationResult:
         self.retrieved_chunks = retrieved_chunks
         self.retrieval_scores = retrieval_scores
 
+    @property
+    def evidence_map(self) -> dict:
+        """Map citation index (1-based) → {chunk_id, doc_id, lines, status}."""
+        out = {}
+        for i, cr in enumerate(self.citation_results, 1):
+            out[i] = {
+                "chunk_id": cr.chunk_id,
+                "doc_id": cr.matched_chunk.get("doc_id") if cr.matched_chunk else None,
+                "lines": (
+                    cr.matched_chunk.get("line_start"),
+                    cr.matched_chunk.get("line_end"),
+                ) if cr.matched_chunk else None,
+                "status": cr.status.value,
+            }
+        return out
+
     def get_warnings(self) -> List[str]:
         """Obtener advertencias de citas inválidas y scores bajos."""
         warnings = []
+
+        # Warn when the LLM produced no citations at all
+        if not self.citation_results:
+            warnings.append("⚠ Respuesta sin citas — no se puede trazar al documento fuente.")
+
         for result in self.citation_results:
             if result.status == CitationStatus.INVALID:
                 warnings.append(f"Cita inválida: {result.citation_text}")
@@ -103,8 +124,13 @@ class VerificationResult:
 
         return warnings
 
-    def format_verification_block(self) -> str:
-        """Formatear el bloque de metadatos de verificación con scores por chunk."""
+    def format_verification_block(self, verbose: bool = False) -> str:
+        """Formatear el bloque de metadatos de verificación con scores por chunk.
+
+        Args:
+            verbose: If True, append a traceability section with chunk_id and text snippet
+                     for each citation that matched a chunk.
+        """
         valid_citations = sum(1 for r in self.citation_results if r.status == CitationStatus.VALID)
         total_citations = len(self.citation_results)
 
@@ -117,7 +143,7 @@ class VerificationResult:
             else:
                 consistency_status = "OK ✓"
         else:
-            consistency_status = "N/A"
+            consistency_status = "DEGRADED ⚠"
 
         score = self.score_result
         confidence_emoji = {"HIGH": "✓", "MEDIUM": "⚠", "LOW": "✗"}
@@ -145,9 +171,31 @@ class VerificationResult:
         block += "\nVerificación de respuesta\n"
         block += "  Fragmentos recuperados:\n"
         block += chunks_section + "\n"
-        block += f"  Citas verificadas : {valid_citations}/{total_citations} {('✓' if total_citations == valid_citations else '⚠')}\n"
+        if total_citations == 0:
+            citation_icon = "✗"
+        elif valid_citations == total_citations:
+            citation_icon = "✓"
+        else:
+            citation_icon = "⚠"
+        block += f"  Citas verificadas : {valid_citations}/{total_citations} {citation_icon}\n"
         block += f"  Consistencia      : {consistency_status}\n"
         block += f"  Score de confianza: {score.final_score:.2f} — {score.confidence_level.value} {confidence_emoji.get(score.confidence_level.value, '')}\n"
+
+        if verbose and self.citation_results:
+            block += "  Trazabilidad:\n"
+            for i, cr in enumerate(self.citation_results, 1):
+                cid = cr.chunk_id or "(sin chunk_id)"
+                doc = cr.matched_chunk.get("doc_id", "?") if cr.matched_chunk else "?"
+                ls = cr.matched_chunk.get("line_start", "?") if cr.matched_chunk else "?"
+                le = cr.matched_chunk.get("line_end", "?") if cr.matched_chunk else "?"
+                snippet_raw = cr.matched_chunk.get("text", "") if cr.matched_chunk else ""
+                snippet = snippet_raw[:100].replace("\n", " ")
+                if len(snippet_raw) > 100:
+                    snippet += "…"
+                block += f"    [{i}] {doc} | Líneas {ls}-{le}  →  chunk_id: {cid}\n"
+                if snippet:
+                    block += f"        \"{snippet}\"\n"
+
         block += "─" * 45
 
         return block
@@ -184,13 +232,13 @@ def verify_and_score(
         )
         logger.info(f"Consistency check: parse_success={consistency_result.parse_success}, score={consistency_result.score}")
     else:
-        # Si está desactivado, usar score neutro
+        # Score neutral-leaning (not a boost) when check is explicitly disabled
         consistency_result = ConsistencyResult(
             has_unsupported_claims=False,
             has_contradictions=False,
             has_hallucinations=False,
             details="",
-            score=1.0,
+            score=0.75,
             parse_success=True,
         )
         logger.info("Consistency check desactivado")
