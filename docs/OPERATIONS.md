@@ -235,6 +235,85 @@ Before v1.11, this was controlled by `VARIANTS_COUNT = 2`. That parameter has be
 
 ---
 
+## HNSW del vector store — v1.13+
+
+ChromaDB usa HNSW (Hierarchical Navigable Small World) para búsqueda densa.
+
+### Parámetros configurables (`rag_lab/config.py`, sección 6.5)
+
+```python
+VECTOR_HNSW_SPACE = "cosine"       # distancia: "cosine", "l2", "ip"
+VECTOR_HNSW_M = 16                 # conexiones por nodo (calidad vs memoria)
+VECTOR_HNSW_CONSTRUCTION_EF = 100  # calidad del grafo en indexación
+VECTOR_HNSW_SEARCH_EF = 100        # pool de candidatos en búsqueda
+```
+
+### Restricciones importantes de ChromaDB 1.x
+
+**Todos los parámetros son build-time.** No existe mecanismo de query-time mutable.
+Cambiar `hnsw:space` en una colección existente lanza un error explícito.
+`hnsw:search_ef` actualiza el metadata pero no modifica el índice hnswlib cargado.
+
+### Cuándo se aplican los parámetros
+
+| Momento | Efecto |
+|---------|--------|
+| Primera ingest (colección nueva) | Sí — se aplican al crear la colección |
+| Ingest adicional (colección existente) | No — se usa la colección existente |
+| Cambiar config sin rebuild | No — se emite WARNING de mismatch |
+| Rebuild (eliminar chroma_db + reingestar) | Sí — nueva colección con nuevos params |
+
+### Cómo detectar la configuración activa
+
+```python
+import chromadb
+c = chromadb.PersistentClient("storage/chroma_db")
+col = c.get_collection("sdmx_rag")
+print(col.metadata)         # hnsw:M, hnsw:construction_ef, etc.
+print(col.configuration)    # hnsw dict interno
+```
+
+O con el doctor:
+```bash
+python -m rag_lab.doctor   # muestra config activa
+```
+
+### Cómo hacer rebuild
+
+```bash
+rm -rf storage/chroma_db/
+python -m rag_lab.cli ingest
+```
+
+### Mismatch warning
+
+Si los valores en `config.py` difieren de los stored en la colección existente,
+`VectorStore.initialize()` emite un WARNING con las diferencias y el comando de rebuild.
+La colección **no se destruye ni modifica** en ningún caso.
+
+### Benchmark de perfiles (2026-05-23, 610 chunks)
+
+| Perfil   |  M | ef_c | ef_s | p50(ms) | recall vs prod |
+|----------|----|----- |------|---------|----------------|
+| current  | 16 |  100 |  100 |    1.87 | 0.9547         |
+| fast     |  8 |   64 |   50 |    1.87 | **0.8313** ❌  |
+| balanced | 16 |  128 |  100 |    1.91 | 0.9553         |
+| recall   | 32 |  200 |  200 |    2.09 | 0.9533         |
+
+**Recomendación:** mantener `current` (M=16). La latencia HNSW (~2ms) es irrelevante
+frente al reranker (~250ms). `fast` degrada recall. `balanced`/`recall` aportan < 0.001
+de mejora a 610 chunks. Beneficio real de `recall` solo a partir de ~10k chunks.
+
+### Herramienta de perfiles
+
+```bash
+python -m rag_lab.maintenance.hnsw_profiles
+```
+
+Crea colecciones temporales (sin tocar producción), copia embeddings, mide latencia y recall.
+
+---
+
 ## HyDE (Hypothetical Document Embeddings) — v1.12+, opt-in
 
 HyDE generates a short hypothetical answer via LLM, encodes it with BGE-M3, and uses

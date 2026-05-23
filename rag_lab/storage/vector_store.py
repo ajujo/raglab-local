@@ -10,9 +10,23 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from rag_lab.config import EMBEDDING_MODEL, STORAGE_DIR, VECTOR_STORE_PATH
+from rag_lab.config import (
+    EMBEDDING_MODEL,
+    STORAGE_DIR,
+    VECTOR_STORE_PATH,
+    VECTOR_HNSW_SPACE,
+    VECTOR_HNSW_M,
+    VECTOR_HNSW_CONSTRUCTION_EF,
+    VECTOR_HNSW_SEARCH_EF,
+)
 
 logger = logging.getLogger("rag_lab")
+
+# Keys used in ChromaDB collection metadata for HNSW configuration
+_HNSW_META_SPACE = "hnsw:space"
+_HNSW_META_M = "hnsw:M"
+_HNSW_META_CONSTRUCTION_EF = "hnsw:construction_ef"
+_HNSW_META_SEARCH_EF = "hnsw:search_ef"
 
 
 class VectorStore:
@@ -33,22 +47,100 @@ class VectorStore:
         self.storage_path = storage_path or VECTOR_STORE_PATH
         self._collection = None
 
+    def _hnsw_creation_metadata(self) -> dict:
+        """Return the HNSW metadata dict for collection creation."""
+        return {
+            _HNSW_META_SPACE: VECTOR_HNSW_SPACE,
+            _HNSW_META_M: VECTOR_HNSW_M,
+            _HNSW_META_CONSTRUCTION_EF: VECTOR_HNSW_CONSTRUCTION_EF,
+            _HNSW_META_SEARCH_EF: VECTOR_HNSW_SEARCH_EF,
+        }
+
+    def _check_hnsw_mismatch(self, existing_meta: dict) -> None:
+        """Warn if the existing collection's HNSW params differ from config.
+
+        All HNSW parameters are build-time in ChromaDB 1.x — changing them in
+        config.py without rebuilding the collection has no effect on the running
+        index. This method logs a clear warning but never modifies or destroys
+        the existing collection.
+        """
+        mismatches = []
+
+        space = existing_meta.get(_HNSW_META_SPACE)
+        if space and space != VECTOR_HNSW_SPACE:
+            mismatches.append(
+                f"hnsw:space existing={space!r} config={VECTOR_HNSW_SPACE!r}"
+            )
+
+        m = existing_meta.get(_HNSW_META_M)
+        if m is not None and m != VECTOR_HNSW_M:
+            mismatches.append(
+                f"hnsw:M existing={m} config={VECTOR_HNSW_M}"
+            )
+
+        ef_c = existing_meta.get(_HNSW_META_CONSTRUCTION_EF)
+        if ef_c is not None and ef_c != VECTOR_HNSW_CONSTRUCTION_EF:
+            mismatches.append(
+                f"hnsw:construction_ef existing={ef_c} config={VECTOR_HNSW_CONSTRUCTION_EF}"
+            )
+
+        ef_s = existing_meta.get(_HNSW_META_SEARCH_EF)
+        if ef_s is not None and ef_s != VECTOR_HNSW_SEARCH_EF:
+            mismatches.append(
+                f"hnsw:search_ef existing={ef_s} config={VECTOR_HNSW_SEARCH_EF}"
+                " (note: search_ef is only effective in new collections)"
+            )
+
+        if mismatches:
+            logger.warning(
+                "HNSW config mismatch — existing collection %r was created with "
+                "different parameters. New values are ignored until rebuild.\n"
+                "  Mismatches: %s\n"
+                "  To apply: run `python -m rag_lab.cli ingest` (fresh ingest after "
+                "deleting storage/chroma_db) or use --rebuild if supported.",
+                self.collection_name,
+                "; ".join(mismatches),
+            )
+
     def initialize(self) -> None:
-        """Initialize the ChromaDB connection and collection."""
+        """Initialize the ChromaDB connection and collection.
+
+        If the collection already exists, verifies that its stored HNSW
+        metadata matches the configured values and logs a warning if they
+        differ. Does not modify or destroy the existing collection.
+
+        If the collection does not exist, creates it with the HNSW parameters
+        from config.py (VECTOR_HNSW_SPACE, VECTOR_HNSW_M,
+        VECTOR_HNSW_CONSTRUCTION_EF, VECTOR_HNSW_SEARCH_EF).
+        """
         try:
             import chromadb
             self._client = chromadb.PersistentClient(
                 path=str(self.storage_path)
             )
-            self._collection = self._client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={
-                    "hnsw:space": "cosine",
-                    "hnsw:M": 16,
-                    "hnsw:construction_ef": 100,
-                },
+
+            existing_names = [c.name for c in self._client.list_collections()]
+
+            if self.collection_name in existing_names:
+                self._collection = self._client.get_collection(
+                    name=self.collection_name
+                )
+                self._check_hnsw_mismatch(self._collection.metadata or {})
+            else:
+                self._collection = self._client.create_collection(
+                    name=self.collection_name,
+                    metadata=self._hnsw_creation_metadata(),
+                )
+
+            logger.info(
+                "Initialized ChromaDB collection: %s (%d vectors, M=%d, ef_c=%d, ef_s=%d, space=%s)",
+                self.collection_name,
+                self._collection.count(),
+                VECTOR_HNSW_M,
+                VECTOR_HNSW_CONSTRUCTION_EF,
+                VECTOR_HNSW_SEARCH_EF,
+                VECTOR_HNSW_SPACE,
             )
-            logger.info(f"Initialized ChromaDB collection: {self.collection_name}")
         except ImportError:
             raise ImportError(
                 "chromadb is not installed. Install with: pip install chromadb"
