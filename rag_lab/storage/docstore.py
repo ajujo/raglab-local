@@ -228,10 +228,14 @@ class DocStore:
                     chunk.get("sparse_format_version", 1),
                 ),
             )
-            # Sync FTS5
+            # Sync FTS5 — delete first so re-ingest (--force) doesn't duplicate rows.
+            # FTS5 virtual tables have no UNIQUE constraint, so INSERT OR REPLACE
+            # would silently add a second row instead of replacing the first.
+            chunk_id = chunk.get("chunk_id", "")
+            self._conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (chunk_id,))
             self._conn.execute(
-                "INSERT OR REPLACE INTO chunks_fts(chunk_id, doc_id, text) VALUES (?, ?, ?)",
-                (chunk.get("chunk_id", ""), chunk.get("doc_id", ""), chunk.get("text", "")),
+                "INSERT INTO chunks_fts(chunk_id, doc_id, text) VALUES (?, ?, ?)",
+                (chunk_id, chunk.get("doc_id", ""), chunk.get("text", "")),
             )
 
         self._conn.commit()

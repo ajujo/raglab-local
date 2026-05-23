@@ -4,6 +4,46 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.16.1 — 2026-05-23
+
+### Bug fix: FTS5 duplicate rows on --force re-ingest
+
+No changes to retrieval ranking, scoring, reranker, MMR, RRF, ChromaDB embeddings,
+HyDE, query cache, or sparse index.
+
+**Root cause:** SQLite FTS5 virtual tables have no `UNIQUE` constraint on content
+columns. `INSERT OR REPLACE INTO chunks_fts` therefore behaves identically to
+`INSERT` — it never replaces an existing row; it appends a new one. This meant that
+every `--force` re-ingest of an already-ingested document silently inflated the FTS5
+row count by one duplicate row per chunk.
+
+**Fix (`rag_lab/storage/docstore.py`):**  
+Replaced `INSERT OR REPLACE` with an explicit `DELETE` then `INSERT` for the FTS5
+sync in `DocStore.add()`:
+```python
+self._conn.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (chunk_id,))
+self._conn.execute(
+    "INSERT INTO chunks_fts(chunk_id, doc_id, text) VALUES (?, ?, ?)",
+    (chunk_id, doc_id, text),
+)
+```
+
+**Detection (`rag_lab/maintenance/reconcile.py`):**  
+`reconcile()` now queries `chunks_fts GROUP BY chunk_id HAVING COUNT(*) > 1` and
+exposes duplicates in the result dict as `fts_duplicate_chunk_ids`. `_has_issues()`
+returns `True` when duplicates are present. New `--repair-fts` flag rebuilds FTS5
+for affected chunk_ids (DELETE + re-INSERT from canonical `chunks` table).
+
+**Tests nuevos:** `tests/test_storage/test_fts5_idempotency.py` — 20 tests covering:
+- Single-add and multi-force idempotency.
+- BM25 scores not inflated by duplicate rows.
+- `delete_by_doc_id` cleans FTS5 correctly after force re-ingest.
+- Batch ingest of 3 docs + `--force` leaves zero FTS5 duplicates.
+- Rollback does not leave partial FTS5 rows.
+- `reconcile` detects duplicates and `--repair-fts` removes them.
+
+---
+
 ## v1.16 — 2026-05-23
 
 ### Parallel and resumable ingest (6.3.5)
