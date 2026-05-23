@@ -379,7 +379,7 @@ def _has_issues(result: dict) -> bool:
     )
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     setup_logging("INFO")
     parser = argparse.ArgumentParser(
         description="Reconcile RAG-Lab stores",
@@ -400,7 +400,7 @@ if __name__ == "__main__":
                         help="CI mode: exit 0 if consistent, 1 if issues (default behaviour)")
     parser.add_argument("--report-json", metavar="PATH", default=None,
                         help="Save JSON report to this path")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     result = reconcile(fix=args.fix, repair=args.repair, repair_fts=args.repair_fts)
 
@@ -408,4 +408,8 @@ if __name__ == "__main__":
         save_report(result, args.report_json)
         print(f"Report saved to {args.report_json}")
 
-    sys.exit(1 if _has_issues(result) else 0)
+    return 1 if _has_issues(result) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

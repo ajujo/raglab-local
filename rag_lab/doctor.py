@@ -395,7 +395,7 @@ def doctor(
     return {"results": results, "overall": overall}
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     setup_logging("WARNING")
     parser = argparse.ArgumentParser(
         description="RAG-Lab system health check",
@@ -418,7 +418,7 @@ if __name__ == "__main__":
         default="What is SDMX?",
         help="Query used for the test_query check (default: 'What is SDMX?')",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     check_list = [c.strip() for c in args.checks.split(",")] if args.checks else None
 
@@ -426,8 +426,12 @@ if __name__ == "__main__":
 
     overall = result["overall"]
     if overall == "FAIL":
-        sys.exit(2)
+        return 2
     elif overall == "WARN":
-        sys.exit(1)
+        return 1
     else:
-        sys.exit(0)
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

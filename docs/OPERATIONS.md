@@ -27,16 +27,18 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Retry a specific failed run | `rag-lab ingest retry <run_id>` |
 | Health check with test query | `python -m rag_lab.doctor --query "What is SDMX?"` |
 | Run specific checks only | `python -m rag_lab.doctor --checks config,docstore,chromadb` |
-| Store consistency report | `python -m rag_lab.maintenance.reconcile` |
-| Store consistency (CI mode) | `python -m rag_lab.maintenance.reconcile --check` |
-| Remove ChromaDB orphans | `python -m rag_lab.maintenance.reconcile --repair` |
-| Save reconcile report | `python -m rag_lab.maintenance.reconcile --report-json out.json` |
-| Full system diagnostic | `python -m rag_lab.maintenance.diagnose` |
-| Diagnostic with test query | `python -m rag_lab.maintenance.diagnose --query "What is SDMX?"` |
-| Diagnostic with signal breakdown | `python -m rag_lab.maintenance.diagnose --query "..." --explain` |
-| Diagnostic with filter | `python -m rag_lab.maintenance.diagnose --query "..." --tag glossary --explain` |
+| System health checks | `rag-lab doctor` |
+| Health check subset | `rag-lab doctor --checks config,docstore` |
+| Store consistency report | `rag-lab reconcile` |
+| Store consistency (CI mode) | `rag-lab reconcile --check` |
+| Remove ChromaDB orphans | `rag-lab reconcile --repair` |
+| Repair FTS5 duplicates | `rag-lab reconcile --repair-fts` |
+| Save reconcile report | `rag-lab reconcile --report-json out.json` |
+| Full system diagnostic | `rag-lab diagnose` |
+| Diagnostic with test query | `rag-lab diagnose --query "What is SDMX?"` |
+| Diagnostic with signal breakdown | `rag-lab diagnose --query "..." --explain` |
+| Run benchmark | `rag-lab benchmark --suite official --variants full --no-cache` |
 | Benchmark regression check | `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current data/benchmark_latest.json` |
-| Run benchmark | `python -m rag_lab.benchmark --variants hybrid hybrid_mmr --output data/benchmark_latest.json` |
 | Ingest all documents | `python -m rag_lab.cli ingest` |
 | Backfill sparse BLOBs | `python -m rag_lab.maintenance.backfill_sparse` |
 | Migrate to schema v2 | `python -m rag_lab.maintenance.migrate_to_v2` |
