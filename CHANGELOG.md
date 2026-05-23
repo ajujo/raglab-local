@@ -4,6 +4,56 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.16.2 — 2026-05-23
+
+### CLI ops commands — expose doctor, benchmark, reconcile, diagnose in rag-lab
+
+No changes to retrieval ranking, scoring, reranker, MMR, RRF, ChromaDB embeddings,
+HyDE, query cache, sparse index, ingest pipeline, or feedback store.
+
+**Root cause:** `rag-lab --help` only showed `query / chat / ingest / docs / tags / cache /
+feedback`. The operational tools (`doctor`, `benchmark`, `reconcile`, `diagnose`) only
+existed as `python -m rag_lab.<module>` entry points. There was no `rag-lab <cmd>` surface.
+
+**Approach:** Thin pass-through Typer commands in `cli.py` using
+`context_settings={"allow_extra_args": True, "ignore_unknown_options": True}`.
+Each command captures raw args from `ctx.args` and delegates to the respective
+`main(argv)` function in the target module. No logic is duplicated.
+
+**Refactored modules** (added `def main(argv=None) -> int` with `parser.parse_args(argv)`):
+- `rag_lab/doctor.py`
+- `rag_lab/maintenance/reconcile.py`
+- `rag_lab/maintenance/diagnose.py`
+
+`rag_lab/benchmark/__main__.py` already had `main(argv=None)`.
+
+**New CLI surface:**
+```bash
+rag-lab doctor                                     # full health check
+rag-lab doctor --checks config,docstore            # subset of checks
+rag-lab reconcile                                  # consistency report
+rag-lab reconcile --check                          # CI mode (exit 0/1)
+rag-lab reconcile --repair-fts                     # fix FTS5 duplicates
+rag-lab diagnose                                   # system diagnostic
+rag-lab diagnose --query "What is SDMX?" --explain
+rag-lab benchmark --suite official --variants full --no-cache
+```
+
+**Benchmark flag (corrected in docs):**
+- Correct: `--variants full` (plural, space-separated list)
+- Not valid: `--variant full` (singular — this is only used by `benchmark.compare`)
+- Not valid: `rag-lab benchmark run ...` — no `run` sub-command exists
+
+**Backward compat:** All `python -m rag_lab.*` invocations continue to work unchanged.
+
+**Tests nuevos:** `tests/test_cli/test_ops_commands.py` — 17 tests covering `--help` presence,
+sub-command help content, benchmark flag correctness, and `main(argv=[...])` callability.
+
+**Docs corregidas:** `docs/OPERATIONS.md` quickref updated to `rag-lab <cmd>` forms.
+`docs/BENCHMARKS.md` comment corrected from `benchmark run` to `benchmark --suite`.
+
+---
+
 ## v1.16.1 — 2026-05-23
 
 ### Bug fix: FTS5 duplicate rows on --force re-ingest

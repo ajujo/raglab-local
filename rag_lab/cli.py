@@ -482,6 +482,44 @@ def feedback_clear(
     console.print(f"[bold green]Cleared — {n} events deleted.[/bold green]")
 
 
+# =============================================================================
+# Operational commands — thin pass-through wrappers for argparse-based tools
+# =============================================================================
+
+_OPS_CTX = {"allow_extra_args": True, "ignore_unknown_options": True}
+
+
+@app.command("doctor", context_settings=_OPS_CTX, add_help_option=False)
+def cmd_doctor(ctx: typer.Context) -> None:
+    """System health checks (config, stores, reconcile, test query)."""
+    from rag_lab.doctor import main as _main
+    raise typer.Exit(_main(ctx.args))
+
+
+@app.command("benchmark", context_settings=_OPS_CTX, add_help_option=False)
+def cmd_benchmark(ctx: typer.Context) -> None:
+    """Retrieval benchmark — compare pipeline variants.
+
+    Example: rag-lab benchmark --suite official --variants full --no-cache
+    """
+    from rag_lab.benchmark.__main__ import main as _main
+    raise typer.Exit(_main(ctx.args))
+
+
+@app.command("reconcile", context_settings=_OPS_CTX, add_help_option=False)
+def cmd_reconcile(ctx: typer.Context) -> None:
+    """Cross-store consistency check (DocStore vs ChromaDB vs FTS5)."""
+    from rag_lab.maintenance.reconcile import main as _main
+    raise typer.Exit(_main(ctx.args))
+
+
+@app.command("diagnose", context_settings=_OPS_CTX, add_help_option=False)
+def cmd_diagnose(ctx: typer.Context) -> None:
+    """Full system diagnostic with optional test query."""
+    from rag_lab.maintenance.diagnose import main as _main
+    raise typer.Exit(_main(ctx.args))
+
+
 if __name__ == "__main__":
     app()
 

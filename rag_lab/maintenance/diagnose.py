@@ -303,7 +303,7 @@ def _print_explain(chunk: dict) -> None:
         print(f"       └─ MMR: not active")
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     setup_logging("INFO")
     parser = argparse.ArgumentParser(description="RAG-Lab system diagnostic")
     parser.add_argument("--query", default=None, help="Optional test query")
@@ -315,7 +315,7 @@ if __name__ == "__main__":
                         help="Include only documents with this tag (repeatable)")
     parser.add_argument("--exclude-tag", action="append", dest="tags_exclude", metavar="TAG",
                         help="Exclude documents with this tag (repeatable)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.explain and not args.query:
         parser.error("--explain requires --query")
     result = diagnose(
@@ -325,4 +325,8 @@ if __name__ == "__main__":
         tags_include=args.tags_include,
         tags_exclude=args.tags_exclude,
     )
-    sys.exit(1 if result.get("duplicates", 0) > 0 else 0)
+    return 1 if result.get("duplicates", 0) > 0 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

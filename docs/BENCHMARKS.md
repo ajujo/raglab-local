@@ -192,7 +192,7 @@ Categorías en la suite oficial: todos los 10 tipos cubren ≥4 queries, excepto
 ## Ejecutar el benchmark (v1.8.1+)
 
 ```bash
-# Suite oficial (65 queries validadas) — equivalente a "rag-lab benchmark run --suite official"
+# Suite oficial (65 queries validadas) — equivalente a: rag-lab benchmark --suite official --variants full --no-cache
 python -m rag_lab.benchmark \
   --suite official \
   --variants full \
