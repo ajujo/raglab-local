@@ -26,6 +26,7 @@ class CitationResult:
     citation_text: str
     status: CitationStatus
     matched_chunk: Optional[dict] = None
+    chunk_id: Optional[str] = None
 
 
 def verify_citations_layer(
@@ -58,6 +59,7 @@ def verify_citations_layer(
             citation_text=citation_text,
             status=status,
             matched_chunk=matched,
+            chunk_id=matched.get("chunk_id") if matched else None,
         ))
 
     return results
