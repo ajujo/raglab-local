@@ -35,7 +35,7 @@ set of SDMX queries with ground-truth relevance grades.
 ### Comparar contra este baseline
 
 ```bash
-python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
+rag-lab benchmark --suite official --variants full --no-cache --output /tmp/current.json
 python -m rag_lab.benchmark.compare \
     --baseline data/baselines/v1.11_official_full_eval.json \
     --current  /tmp/current.json
