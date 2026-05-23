@@ -56,6 +56,9 @@ app.add_typer(tags_app, name="tags")
 cache_app = typer.Typer(name="cache", help="Query cache management.")
 app.add_typer(cache_app, name="cache")
 
+feedback_app = typer.Typer(name="feedback", help="Chunk-level feedback management.")
+app.add_typer(feedback_app, name="feedback")
+
 console = Console()
 
 
@@ -239,6 +242,9 @@ def query(
                     # Print verification block
                     console.print(f"\n{verification.format_verification_block()}")
 
+                    # Print chunk feedback hints
+                    _print_feedback_hints(question, unique_results[:RERANK_TOP_K], cache_hit, cache_key)
+
                     # Profile report
                     if profile:
                         console.print(f"\n{generate_report(timer.get_all_durations())}")
@@ -356,8 +362,156 @@ def cache_inspect(
     console.print(f"  hits:        {info['hit_count']}")
 
 
+# =============================================================================
+# Feedback sub-commands
+# =============================================================================
+
+@feedback_app.command("add")
+def feedback_add(
+    query: str = typer.Option(..., "--query", "-q", help="Query text."),
+    chunk_id: str = typer.Option(..., "--chunk-id", "-c", help="Chunk ID."),
+    feedback: str = typer.Option(..., "--feedback", "-f",
+        help=f"Feedback type: {', '.join(sorted(__import__('rag_lab.feedback.store', fromlist=['VALID_FEEDBACK']).VALID_FEEDBACK))}"),
+    doc_id: str = typer.Option("", "--doc-id", help="Document ID (optional if chunk-id is unique)."),
+    rank: int = typer.Option(None, "--rank", help="Rank position of chunk in results."),
+    rating: int = typer.Option(None, "--rating", help="Numeric rating 1-5 (optional)."),
+    reason: str = typer.Option(None, "--reason", help="Short reason (optional)."),
+    note: str = typer.Option(None, "--note", help="Free-text note (optional)."),
+) -> None:
+    """Record chunk-level feedback for a retrieval result."""
+    from rag_lab.feedback.store import FeedbackStore, VALID_FEEDBACK
+    setup_logging("WARNING")
+    if feedback not in VALID_FEEDBACK:
+        console.print(f"[bold red]Invalid feedback {feedback!r}. Valid: {sorted(VALID_FEEDBACK)}[/bold red]")
+        raise typer.Exit(1)
+    store = FeedbackStore()
+    store.initialize()
+    row_id = store.add(
+        query, chunk_id=chunk_id, doc_id=doc_id, rank=rank,
+        feedback=feedback, rating=rating, reason=reason, user_note=note,
+    )
+    store.close()
+    console.print(f"[bold green]Feedback recorded (id={row_id}).[/bold green]")
+
+
+@feedback_app.command("list")
+def feedback_list(
+    limit: int = typer.Option(20, "--limit", "-n", help="Max rows to show."),
+    query_hash: str = typer.Option(None, "--query-hash", help="Filter by query hash."),
+    chunk_id: str = typer.Option(None, "--chunk-id", help="Filter by chunk ID."),
+    feedback_type: str = typer.Option(None, "--feedback", help="Filter by feedback type."),
+) -> None:
+    """List recent feedback events."""
+    from rag_lab.feedback.store import FeedbackStore
+    setup_logging("WARNING")
+    store = FeedbackStore()
+    store.initialize()
+    rows = store.list(
+        query_hash=query_hash,
+        chunk_id=chunk_id,
+        feedback=feedback_type,
+        limit=limit,
+    )
+    store.close()
+    if not rows:
+        console.print("[dim]No feedback events found.[/dim]")
+        return
+    console.print(f"[bold]Feedback events[/bold] (showing {len(rows)})")
+    for r in rows:
+        chunk_short = r["chunk_id"][:16] + "…" if len(r["chunk_id"]) > 16 else r["chunk_id"]
+        console.print(
+            f"  [{r['id']}] {r['created_at'][:16]}  rank={r['rank'] or '-':>3}  "
+            f"{r['feedback']:<12}  {chunk_short:<18}  {r['doc_id']}"
+        )
+
+
+@feedback_app.command("stats")
+def feedback_stats() -> None:
+    """Show feedback aggregate statistics."""
+    from rag_lab.feedback.store import FeedbackStore
+    setup_logging("WARNING")
+    store = FeedbackStore()
+    store.initialize()
+    s = store.stats()
+    store.close()
+    console.print("[bold]Feedback Statistics[/bold]")
+    console.print(f"  total events:    {s['total_events']}")
+    console.print(f"  unique queries:  {s['unique_queries']}")
+    console.print(f"  unique chunks:   {s['unique_chunks']}")
+    if s["by_feedback_type"]:
+        console.print("  by type:")
+        for ftype, count in sorted(s["by_feedback_type"].items()):
+            console.print(f"    {ftype:<16} {count}")
+
+
+@feedback_app.command("export")
+def feedback_export(
+    output: str = typer.Option(None, "--output", "-o", help="Output file path (default: stdout)."),
+    fmt: str = typer.Option("jsonl", "--format", help="Export format (only 'jsonl' supported)."),
+) -> None:
+    """Export all feedback events to JSONL."""
+    from rag_lab.feedback.store import FeedbackStore
+    setup_logging("WARNING")
+    if fmt != "jsonl":
+        console.print(f"[bold red]Unsupported format {fmt!r}. Only 'jsonl' is supported.[/bold red]")
+        raise typer.Exit(1)
+    store = FeedbackStore()
+    store.initialize()
+    out_path = Path(output) if output else None
+    jsonl = store.export_jsonl(path=out_path)
+    store.close()
+    if output:
+        console.print(f"[bold green]Exported to {output}[/bold green]")
+    else:
+        console.print(jsonl)
+
+
+@feedback_app.command("clear")
+def feedback_clear(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
+) -> None:
+    """Delete all feedback events."""
+    from rag_lab.feedback.store import FeedbackStore
+    setup_logging("WARNING")
+    if not yes:
+        typer.confirm("Delete all feedback events?", abort=True)
+    store = FeedbackStore()
+    store.initialize()
+    n = store.clear()
+    store.close()
+    console.print(f"[bold green]Cleared — {n} events deleted.[/bold green]")
+
+
 if __name__ == "__main__":
     app()
+
+
+def _print_feedback_hints(
+    question: str,
+    chunks: list[dict],
+    cache_hit: bool,
+    cache_key: str | None,
+) -> None:
+    """Print a compact table of top chunks with feedback command hints."""
+    if not chunks:
+        return
+    console.print("\n[dim]── Retrieved chunks (for feedback) ──[/dim]")
+    for i, c in enumerate(chunks, 1):
+        cid = c.get("chunk_id", "")
+        cid_short = cid[:20] + "…" if len(cid) > 20 else cid
+        score = c.get("rerank_score", c.get("rrf_score", 0.0))
+        doc = c.get("doc_id", "")
+        console.print(
+            f"  [dim]{i:>2}. chunk={cid_short}  doc={doc}  score={score:.3f}[/dim]"
+        )
+    # Show one example command for the top chunk
+    top = chunks[0]
+    top_cid = top.get("chunk_id", "")
+    q_escaped = question.replace('"', '\\"')
+    console.print(
+        f'\n[dim]  To give feedback: rag-lab feedback add --query "{q_escaped}" '
+        f'--chunk-id "{top_cid}" --feedback relevant[/dim]'
+    )
 
 
 def _collect_feedback(

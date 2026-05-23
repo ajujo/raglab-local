@@ -52,6 +52,11 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Inspect cache entry | `rag-lab cache inspect <key>` |
 | Benchmark without cache (default) | `python -m rag_lab.benchmark --suite official --variants full` |
 | Benchmark with cache | `python -m rag_lab.benchmark --suite official --variants full --cache` |
+| Add chunk feedback | `rag-lab feedback add --query "..." --chunk-id "..." --feedback relevant` |
+| List feedback events | `rag-lab feedback list` |
+| Feedback statistics | `rag-lab feedback stats` |
+| Export feedback JSONL | `rag-lab feedback export --output path.jsonl` |
+| Clear all feedback | `rag-lab feedback clear --yes` |
 
 ---
 
@@ -886,3 +891,114 @@ rag-lab docs validate docs/SDMX_2-1_User_Guide_6.md
 ```
 
 All commands must exit 0 (or WARN-only for doctor with justified reason).
+
+---
+
+## Feedback — chunk-level signals — v1.15+
+
+### Qué es y qué no es
+
+El módulo de feedback captura juicios de relevancia por chunk. En v1.15, es
+**puramente un log de observación**: no altera el ranking, los scores, la caché
+ni ningún índice. El feedback acumulado está previsto para alimentar señales de
+re-ranking en v1.16.
+
+### Tipos de feedback admitidos
+
+| Valor | Significado |
+|-------|-------------|
+| `relevant` | Chunk relevante para la query |
+| `irrelevant` | Chunk no relevante para la query |
+| `useful` | Respuesta basada en este chunk fue útil |
+| `not_useful` | Respuesta basada en este chunk no fue útil |
+| `wrong_doc` | El chunk es de un documento equivocado |
+| `outdated` | El contenido del chunk está desactualizado |
+| `duplicate` | Este chunk repite contenido de otro chunk recuperado |
+| `bad_citation` | La cita generada a partir de este chunk es incorrecta |
+
+### Comandos CLI
+
+```bash
+# Registrar feedback sobre un chunk específico
+rag-lab feedback add --query "What is SDMX?" --chunk-id "<chunk_id>" --feedback relevant
+rag-lab feedback add --query "What is SDMX?" --chunk-id "<chunk_id>" --feedback irrelevant --reason wrong_doc
+rag-lab feedback add --query "..." --chunk-id "..." --feedback bad_citation --note "cita línea 42 incorrecta"
+
+# Listar eventos recientes
+rag-lab feedback list                     # últimos 20
+rag-lab feedback list --limit 50
+rag-lab feedback list --feedback irrelevant
+rag-lab feedback list --chunk-id "<id>"
+
+# Estadísticas
+rag-lab feedback stats
+
+# Exportar para evaluación futura
+rag-lab feedback export                   # imprime JSONL en stdout
+rag-lab feedback export --output data/feedback_export.jsonl
+
+# Limpiar
+rag-lab feedback clear --yes
+```
+
+### Integración con query
+
+Tras mostrar la respuesta, `rag-lab query` imprime el rank, chunk_id, doc_id y score
+de cada chunk recuperado, más un comando de ejemplo:
+
+```
+── Retrieved chunks (for feedback) ──
+   1. chunk=<id>…  doc=sdmx_glossary  score=0.912
+   2. chunk=<id>…  doc=sdmx_user_guide  score=0.887
+   ...
+
+  To give feedback: rag-lab feedback add --query "..." --chunk-id "..." --feedback relevant
+```
+
+### Backend y schema
+
+- **DB:** `storage/docstore.sqlite` (misma base que corpus metadata)
+- **Tabla:** `feedback_events`
+- **Campos clave:** `query_text`, `query_hash`, `chunk_id`, `doc_id`, `rank`,
+  `feedback`, `rating`, `reason`, `source`, `pipeline_variant`, `cache_hit`,
+  `cache_key`, `corpus_fingerprint`, `retrieval_config_hash`, `user_note`, `created_at`
+
+La tabla se crea automáticamente en el primer `feedback add`.
+
+### Trazabilidad
+
+- `query_hash` — SHA-256 de la query normalizada. Permite agrupar feedback
+  de la misma pregunta independientemente de mayúsculas o espacios extra.
+- `corpus_fingerprint` — captura el estado del corpus en el momento del feedback
+  (`n_chunks:max_ingest_run_id:revision`). Útil para detectar si el feedback es
+  de un corpus diferente al actual.
+- `retrieval_config_hash` — SHA-256 de los parámetros de retrieval (top_k, rrf_k,
+  pesos, MMR, HNSW, etc.). Permite filtrar feedback tomado con configuraciones distintas.
+
+### Exportación como benchmark queries
+
+El JSONL exportado puede convertirse en queries de benchmark curadas:
+
+```bash
+# Exportar feedback negativo para revisar
+rag-lab feedback export | jq 'select(.feedback == "irrelevant" or .feedback == "wrong_doc")'
+```
+
+Los casos negativos recurrentes son candidatos a nuevas queries en
+`data/benchmark_queries.yaml` con `expected_behavior: low_recall_expected` o similar.
+
+### Garantías de aislamiento (v1.15)
+
+- Leer o escribir `feedback_events` no invoca código de retrieval.
+- `make_query_hash()` y `make_retrieval_config_hash()` no leen embeddings ni índices.
+- `FeedbackStore.add()` no llama a `MetadataStore.bump_revision()` —
+  el `corpus_fingerprint` no cambia con operaciones de feedback.
+- Tests explícitos en `tests/test_feedback/test_feedback_events.py` verifican
+  que los resultados de retrieval son idénticos antes y después de añadir feedback.
+
+### Plan v1.16
+
+En v1.16 se evaluará usar el feedback acumulado como señal adicional en el re-ranking:
+- Boost a chunks marcados como `relevant` para queries similares (query_hash match).
+- Penalización a chunks marcados como `irrelevant` o `wrong_doc`.
+- El uso de feedback como señal será opt-in y benchmarkeado antes de activarse.
