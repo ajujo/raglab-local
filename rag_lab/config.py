@@ -108,6 +108,42 @@ SPARSE_INDEX_PATH = STORAGE_DIR / "sparse_index.json"
 DOCDSTORE_SQLITE_PATH = STORAGE_DIR / "docstore.sqlite"
 
 # =============================================================================
+# 6.5 PARÁMETROS HNSW DEL VECTOR STORE
+# =============================================================================
+# IMPORTANTE: Todos estos parámetros son BUILD-TIME en ChromaDB 1.x.
+# Solo se aplican cuando se crea una colección nueva (ingest desde cero o rebuild).
+# Cambiarlos en config.py sin hacer rebuild produce un aviso de mismatch
+# pero NO modifica ni destruye la colección existente.
+#
+# Para aplicar nuevos valores: eliminar la colección existente y reingestar.
+#   python -m rag_lab.cli ingest --rebuild
+#
+# A ≤1k chunks, las diferencias entre perfiles HNSW son < 1ms en latencia
+# y < 0.001 en recall. El beneficio es visible a partir de ~10k chunks.
+
+VECTOR_HNSW_SPACE: str = "cosine"
+# Distancia usada para comparar embeddings. "cosine" = similitud coseno.
+# Valores: "cosine", "l2", "ip". Cambiar requiere rebuild + re-embedding.
+
+VECTOR_HNSW_M: int = 16
+# Número de conexiones bi-direccionales por nodo en el grafo HNSW.
+# M más alto → más recall, más memoria, construcción más lenta.
+# Rango razonable: 4–64. Default ChromaDB: 16.
+
+VECTOR_HNSW_CONSTRUCTION_EF: int = 100
+# ef_construction: tamaño del candidato pool durante la indexación.
+# Más alto → mejor calidad del grafo, indexación más lenta.
+# Rango: 50–500. Default ChromaDB: 100.
+
+VECTOR_HNSW_SEARCH_EF: int = 100
+# ef_search: tamaño del candidato pool durante la búsqueda.
+# Más alto → más recall, búsqueda más lenta.
+# Rango: 10–500. Debe ser >= top_k. Default ChromaDB: 100.
+# NOTA: En ChromaDB 1.x, este valor solo es efectivo en nuevas colecciones
+# o tras rebuild. En instancias existentes, persist en metadata pero no
+# modifica el índice hnswlib en memoria.
+
+# =============================================================================
 # 7. RECUPERACIÓN (RETRIEVAL)
 # =============================================================================
 

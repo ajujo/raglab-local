@@ -4,6 +4,84 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.13 — 2026-05-23
+
+### HNSW configurable — parámetros auditados, config añadida, rebuild documentado (6.3.3)
+
+No changes to retrieval logic, reranker, chunking, HyDE, RRF, MMR, sparse, FTS5, or embeddings.
+
+**Auditoría de ChromaDB 1.5.5**
+
+- Todos los parámetros HNSW son **build-time** en ChromaDB 1.x: `hnsw:space`, `hnsw:M`,
+  `hnsw:construction_ef`, `hnsw:search_ef`.
+- No existe parámetro mutable en query-time: `ef_search` persiste en metadata vía `modify()`
+  pero NO modifica el índice hnswlib cargado en memoria.
+- Cambiar `hnsw:space` en una colección existente lanza `ValueError` explícito de ChromaDB.
+- Para aplicar nuevos valores: eliminar `storage/chroma_db/` y reingestar.
+
+**Benchmark de perfiles HNSW (610 vectors, top_k=50, 50 iteraciones)**
+
+| Perfil    |  M | ef_c | ef_s | build(ms) | p50(ms) | p95(ms) | recall vs prod |
+|-----------|----|------|------|-----------|---------|---------|----------------|
+| current   | 16 |  100 |  100 |       368 |    1.87 |    2.12 | 0.9547         |
+| fast      |  8 |   64 |   50 |       371 |    1.87 |    2.10 | **0.8313** ❌  |
+| balanced  | 16 |  128 |  100 |       366 |    1.91 |    2.16 | 0.9553         |
+| recall    | 32 |  200 |  200 |       367 |    2.09 |    2.33 | 0.9533         |
+
+**Hallazgos:**
+- `fast` (M=8) degrada recall significativamente (-12pp) — no recomendado.
+- `balanced` y `recall` son estadísticamente equivalentes a `current` (Δ < 0.001).
+- Latencia HNSW pura (~2ms) es insignificante vs reranker (~250ms); ningún perfil mejora el benchmark E2E.
+- Build time idéntico para todos los perfiles a 610 chunks (~370ms).
+
+**Recomendación: mantener `current` (M=16, ef_c=100, ef_s=100).**
+El beneficio de `recall` (M=32) solo sería visible a partir de ~10k+ chunks.
+
+**Benchmark oficial: Δ+0.0000 vs baseline v1.11.**
+
+**Config añadida (`rag_lab/config.py`, sección 6.5)**
+
+```python
+VECTOR_HNSW_SPACE: str = "cosine"       # distancia (build-time, inmutable post-create)
+VECTOR_HNSW_M: int = 16                 # conexiones por nodo (build-time)
+VECTOR_HNSW_CONSTRUCTION_EF: int = 100  # ef_construction (build-time)
+VECTOR_HNSW_SEARCH_EF: int = 100        # ef_search (build-time en ChromaDB 1.x)
+```
+
+Valores idénticos a los hardcodeados anteriores → la colección existente no tiene mismatch.
+
+**`VectorStore.initialize()` mejorado**
+
+- Detecta si la colección ya existe usando `list_collections()`.
+- Si existe: compara metadata con config y emite WARNING de mismatch (sin destruir la colección).
+- Si no existe: crea con todos los parámetros configurados vía `create_collection()`.
+- Log informativo con M, ef_c, ef_s, space en cada inicialización.
+
+**Nuevo `rag_lab/maintenance/hnsw_profiles.py`**
+
+Herramienta standalone que crea colecciones temporales con cada perfil, copia los embeddings
+de producción y mide latencia y recall. No toca la colección de producción.
+
+```bash
+python -m rag_lab.maintenance.hnsw_profiles
+```
+
+**Tests (`tests/test_storage/test_vector_store_hnsw.py`)**
+
+722 total (24 nuevos):
+- Config values correctos y consistentes con colección existente
+- `_hnsw_creation_metadata()` retorna las 4 claves con valores del config
+- Sin warning cuando metadata coincide
+- Sin warning con metadata vacía (colección legacy)
+- Warning cuando M/ef_c/ef_s/space difieren → menciona rebuild
+- Colección existente no destruida en mismatch
+- Metadata de colección existente no alterada al inicializar con mismatch
+- Perfiles: current/fast/balanced/recall presentes; current coincide con config; recall > fast
+
+**Active CI baseline:** `data/baselines/v1.11_official_full_eval.json` (unchanged)
+
+---
+
 ## v1.12 — 2026-05-22
 
 ### HyDE / query rewriter: controlled implementation with benchmark evidence (6.3.3)

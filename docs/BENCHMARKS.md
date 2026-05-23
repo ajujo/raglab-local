@@ -375,3 +375,32 @@ python -m rag_lab.benchmark.compare \
 
 **Configuración actual:** `HYDE_ENABLED = False` en `rag_lab/config.py`.
 Para habilitar temporalmente: `HYDE_ENABLED = True` (no recomendado salvo evidencia nueva).
+
+---
+
+## Experimento HNSW (v1.13) — parámetros build-time, sin beneficio a 610 chunks
+
+**Método:** colecciones temporales con cada perfil, mismos 610 embeddings de producción,
+50 queries aleatorias, top_k=50. Recall medido como solapamiento de IDs con producción.
+
+| Perfil   |  M | ef_c | ef_s | build(ms) | p50(ms) | recall vs prod |
+|----------|----|----- |------|-----------|---------|----------------|
+| current  | 16 |  100 |  100 |       368 |    1.87 | 0.9547         |
+| fast     |  8 |   64 |   50 |       371 |    1.87 | **0.8313** ❌  |
+| balanced | 16 |  128 |  100 |       366 |    1.91 | 0.9553         |
+| recall   | 32 |  200 |  200 |       367 |    2.09 | 0.9533         |
+
+**Conclusiones:**
+- `fast` (M=8) degrada recall ~12pp — **no usar**.
+- `balanced` y `recall` equivalentes a `current` (Δ < 0.002 en recall, < 0.2ms en latencia).
+- Latencia HNSW pura (~2ms) insignificante vs reranker (~250ms) — sin impacto E2E.
+- Build time idéntico para todos los perfiles a 610 chunks.
+- Recall vs producción no es 1.0 incluso con parámetros idénticos — HNSW tiene no-determinismo
+  en construcción del grafo que introduce variación < 5% a top_k=50 con 610 vectores.
+
+**Recomendación: mantener `current` (M=16, ef_c=100, ef_s=100).**
+
+Para re-ejecutar el experimento:
+```bash
+python -m rag_lab.maintenance.hnsw_profiles
+```
