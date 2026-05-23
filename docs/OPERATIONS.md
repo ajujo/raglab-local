@@ -252,7 +252,38 @@ VECTOR_HNSW_SEARCH_EF = 100        # pool de candidatos en búsqueda
 
 **Todos los parámetros son build-time.** No existe mecanismo de query-time mutable.
 Cambiar `hnsw:space` en una colección existente lanza un error explícito.
-`hnsw:search_ef` actualiza el metadata pero no modifica el índice hnswlib cargado.
+Llamar a `col.modify(metadata={"hnsw:search_ef": N})` persiste el valor en metadata
+pero **no modifica el índice hnswlib en memoria** — el índice sigue usando el valor
+con el que fue construido.
+
+### Fuente de verdad: `configuration_json` vs `metadata`
+
+ChromaDB 1.5+ expone dos fuentes de información HNSW:
+
+| Fuente | Qué representa |
+|--------|----------------|
+| `col.configuration_json['hnsw']` | Parámetros reales del índice construido (**autoritativa**) |
+| `col.metadata` | Anotaciones opcionales; pueden ser stale tras `modify()` |
+
+`VectorStore.initialize()` usa `configuration_json` como fuente autoritativa para
+la detección de mismatch. Esto evita falsos warnings por anotaciones vestigiales en
+metadata de experimentos pasados.
+
+### Colección oficial de producción (baseline aceptado)
+
+```
+collection: sdmx_rag
+configuration_json.hnsw:
+  space:           cosine
+  max_neighbors:   16     (= hnsw:M)
+  ef_construction: 100
+  ef_search:       100
+metadata (vestigial): {hnsw:search_ef: 500}  <- stale, sin efecto
+```
+
+El `hnsw:search_ef=500` en `metadata` es un residuo de un experimento anterior
+(llamada a `modify()`). El índice real usa `ef_search=100`. No se debe modificar
+la colección para corregir esto — es inofensivo y no produce warnings.
 
 ### Cuándo se aplican los parámetros
 
@@ -263,19 +294,19 @@ Cambiar `hnsw:space` en una colección existente lanza un error explícito.
 | Cambiar config sin rebuild | No — se emite WARNING de mismatch |
 | Rebuild (eliminar chroma_db + reingestar) | Sí — nueva colección con nuevos params |
 
-### Cómo detectar la configuración activa
+### Cómo detectar la configuración activa real
 
 ```python
 import chromadb
 c = chromadb.PersistentClient("storage/chroma_db")
 col = c.get_collection("sdmx_rag")
-print(col.metadata)         # hnsw:M, hnsw:construction_ef, etc.
-print(col.configuration)    # hnsw dict interno
+print(col.configuration_json['hnsw'])  # parámetros reales del índice (autoritativo)
+print(col.metadata)                    # anotaciones (pueden ser stale)
 ```
 
 O con el doctor:
 ```bash
-python -m rag_lab.doctor   # muestra config activa
+python -m rag_lab.doctor
 ```
 
 ### Cómo hacer rebuild
@@ -287,9 +318,12 @@ python -m rag_lab.cli ingest
 
 ### Mismatch warning
 
-Si los valores en `config.py` difieren de los stored en la colección existente,
-`VectorStore.initialize()` emite un WARNING con las diferencias y el comando de rebuild.
-La colección **no se destruye ni modifica** en ningún caso.
+Si los parámetros reales del índice (`configuration_json`) difieren de los valores
+en `config.py`, `VectorStore.initialize()` emite un WARNING con las diferencias y el
+comando de rebuild. La colección **no se destruye ni modifica** en ningún caso.
+
+Las anotaciones de metadata que difieran del config pero no reflejen los parámetros
+reales del índice **no producen warning** (no son mismatches reales).
 
 ### Benchmark de perfiles (2026-05-23, 610 chunks)
 
