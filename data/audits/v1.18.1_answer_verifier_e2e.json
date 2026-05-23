@@ -1,0 +1,1272 @@
+{
+  "suite": "answer_e2e",
+  "generated_at": "2026-05-23T20:44:53.739493+00:00",
+  "dry_run": false,
+  "counts": {
+    "PASS": 10,
+    "WARN": 0,
+    "FAIL": 0
+  },
+  "entries": [
+    {
+      "id": "e01",
+      "category": "easy_direct",
+      "query": "What does SDMX stand for?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "SDMX stands for 'Statistical Data and Metadata eXchange' [[1] Fuente: SDMX-Training-introduction-2015 | Sección: 2 Why should you be interested in SDMX? | Líneas: 40-66]. This definition is also confirmed in the glossary entry, which defines SDMX as a technical standard and content-oriented guidelines for the exchange and sharing of statistical information between organisations [[4] Fuente: SDMX_Glossary | Sección: Statistical Data and Metadata eXchange, SDMX | Líneas: 6738-6767]. Additionally, the test glossary fragment explicitly states that SDMX (Statistical Data and Metadata eXchange) is a set of standards for the exchange of statistical data and metadata [[2] Fuente: SDMX_Glossary_Test | Sección: Documento de Prueba SDMX — Glossario y Referencias | Líneas: 1-2].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: SDMX-Training-introduction-2015  | Sección: 2 Why should you be interested in SDMX?  | Líneas: 40-66",
+          "status": "VALID",
+          "chunk_id": "d23b11413e1d"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX_Glossary  | Sección: Statistical Data and Metadata eXchange, SDMX  | Líneas: 6738-6767",
+          "status": "VALID",
+          "chunk_id": "baf62c47ab85"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX_Glossary_Test  | Sección: Documento de Prueba SDMX — Glossario y Referencias  | Líneas: 1-2",
+          "status": "VALID",
+          "chunk_id": "d135fa08cb6b"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX-Training-introduction-2015 | Líneas 40-66  10.0/10 ██████████\n  [2] SDMX_Glossary_Test | Líneas 1-2   6.4/10 ██████░░░░\n  [3] SDMX-Training-introduction-2015 | Líneas 22-37   4.8/10 █████░░░░░\n  [4] SDMX_Glossary | Líneas 6738-6767   3.4/10 ███░░░░░░░\n  [5] SDMX-Training-introduction-2015 | Líneas 29-39   2.8/10 ███░░░░░░░\n  [6] SDMX-Training-introduction-2015 | Líneas 67-91   2.5/10 ███░░░░░░░\n  [7] SDMX_2-1_User_Guide_6 | Líneas 1739-1759   1.1/10 █░░░░░░░░░\n  [8] SDMX-Training-introduction-2015 | Líneas 84-100   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 3/3 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.91 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX-Training-introduction-2015 | Líneas 40-66  →  chunk_id: d23b11413e1d\n        \"## 2 Why should you be interested in SDMX?  Why should statisticians and National Statistical Office…\"\n    [2] SDMX_Glossary | Líneas 6738-6767  →  chunk_id: baf62c47ab85\n        \"# Statistical Data and Metadata eXchange, SDMX  **Definition** Technical standard and content-orient…\"\n    [3] SDMX_Glossary_Test | Líneas 1-2  →  chunk_id: d135fa08cb6b\n        \"# Documento de Prueba SDMX — Glossario y Referencias  ## 1. Definiciones Básicas  SDMX (Statistical …\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "d23b11413e1d",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            40,
+            66
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "baf62c47ab85",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6738,
+            6767
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "d135fa08cb6b",
+          "doc_id": "SDMX_Glossary_Test",
+          "lines": [
+            1,
+            2
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9120656703667398,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 16.59,
+      "verdict": "PASS",
+      "verdict_reason": "All 3 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "e02",
+      "category": "easy_direct",
+      "query": "What is a DataFlow in SDMX?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "En el contexto de SDMX, un **Dataflow** (o flujo de datos) se define como una estructura que describe, categoriza y restringe el contenido admisible de un conjunto de datos que los proveedores suministrarán para diferentes períodos de referencia [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].\n\nA continuación se detallan sus características principales según los fragmentos proporcionados:\n\n*   **Naturaleza abstracta:** Un Dataflow es un concepto abstracto de los conjuntos de datos, es decir, una estructura sin datos [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].\n*   **Relación con la Definición de Estructura de Datos:** La definición de Dataflow identifica la Definición de Estructura de Datos (DSD) y puede asociarse con una o más dominios de materia temática [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781]. Mientras que la DSD define las dimensiones, atributos y medidas, la definición de Dataflow asocia esa estructura con una o más categorías [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].\n*   **Composición:** Un flujo de datos está compuesto por sus conjuntos de datos miembros (incluyendo aquellos que llegarán en el futuro) [[3] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167].\n*   **Ejemplos:** Ejemplos de flujos de datos incluyen las estadísticas de Cuentas Nacionales Trimestrales y las estadísticas de Desempleo Trimestrales (o mensuales) que producen muchas oficinas estadísticas [[3] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167].\n*   **Metadatos adicionales:** La definición de Dataflow puede tener metadatos adicionales adjuntos, que definen información cualitativa y restricciones sobre el uso de la DSD, en términos de periodicidad de reporte o especificando el subconjunto de códigos a usar en una dimensión [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].\n*   **Identificación:** Para facilitar el reconocimiento de la institución que administra las definiciones de flujo de datos, muchas instituciones centrales utilizan los primeros caracteres de los identificadores de la definición de flujo de datos para identificar a su institución (ej. BIS_EER, ECB_BOP1) [[4] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 3.4.2.4 Identification of the Data Flows 408 | Líneas: 756-800].\n*   **Distinción terminológica:** Es importante notar que el término \"Data Set\" en SDMX se usa para describir el \"contenedor\" para una instancia de datos, mientras que en GESMES/TS el término \"Data Set\" juega el papel de la definición de flujo de datos [[4] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 3.4.2.4 Identification of the Data Flows 408 | Líneas: 756-800].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[4] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 3.4.2.4 Identification of the Data Flows 408  | Líneas: 756-800",
+          "status": "VALID",
+          "chunk_id": "98da500c97ed"
+        },
+        {
+          "citation_text": "[[4] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 3.4.2.4 Identification of the Data Flows 408  | Líneas: 756-800",
+          "status": "VALID",
+          "chunk_id": "98da500c97ed"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_Glossary | Líneas 2744-2781  10.0/10 ██████████\n  [2] SDMX-Training-introduction-2015 | Líneas 163-173   9.4/10 █████████░\n  [3] SDMX-Training-introduction-2015 | Líneas 150-167   7.8/10 ████████░░\n  [4] Notas_Tecnicas_SDMX_2.1 | Líneas 756-800   5.3/10 █████░░░░░\n  [5] SDMX_Glossary | Líneas 2965-2997   3.3/10 ███░░░░░░░\n  [6] SDMX_2-1_User_Guide_6 | Líneas 2363-2368   2.8/10 ███░░░░░░░\n  [7] Notas_Tecnicas_SDMX_2.1 | Líneas 746-752   2.5/10 ███░░░░░░░\n  [8] SDMX_2-1_User_Guide_6 | Líneas 2086-2095   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 9/9 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.97 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [2] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [3] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [4] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [5] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [6] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [7] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [8] Notas_Tecnicas_SDMX_2.1 | Líneas 756-800  →  chunk_id: 98da500c97ed\n        \"## 3.4.2.4 Identification of the Data Flows 408  In order to facilitate the easy and immediate recog…\"\n    [9] Notas_Tecnicas_SDMX_2.1 | Líneas 756-800  →  chunk_id: 98da500c97ed\n        \"## 3.4.2.4 Identification of the Data Flows 408  In order to facilitate the easy and immediate recog…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "98da500c97ed",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            756,
+            800
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "98da500c97ed",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            756,
+            800
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9721388859750341,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 20.82,
+      "verdict": "PASS",
+      "verdict_reason": "All 9 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "e03",
+      "category": "easy_direct",
+      "query": "What is a Key Family in SDMX?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "En la versión 2.1 de los estándares SDMX, el término \"Key family\" ha sido reemplazado por \"Data Structure Definition\" (también conocido como DSD) tanto en los esquemas XML como en el Modelo de Información [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 2  General Notes on This Document | Líneas: 139-186].\n\nEl término \"Key family\" no es familiar para muchas personas y su nombre fue tomado del modelo de SDMX-EDI (anteriormente conocido como GESMES/TS) [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 2  General Notes on This Document | Líneas: 139-186].\n\nAunque el término ha sido reemplazado en las especificaciones técnicas de SDMX-ML y el Modelo de Información, el término \"Key family\" sigue utilizándose en la especificación de SDMX-EDI [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 2  General Notes on This Document | Líneas: 139-186].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 2  General Notes on This Document  | Líneas: 139-186",
+          "status": "VALID",
+          "chunk_id": "f35fc264d821"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 2  General Notes on This Document  | Líneas: 139-186",
+          "status": "VALID",
+          "chunk_id": "f35fc264d821"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 2  General Notes on This Document  | Líneas: 139-186",
+          "status": "VALID",
+          "chunk_id": "f35fc264d821"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] Notas_Tecnicas_SDMX_2.1 | Líneas 139-186  10.0/10 ██████████\n  [2] Notas_Tecnicas_SDMX_2.1 | Líneas 3-10   9.1/10 █████████░\n  [3] SDMX_2-1_User_Guide_6 | Líneas 869-882   4.7/10 █████░░░░░\n  [4] SDMX_2-1_User_Guide_6 | Líneas 1037-1046   2.6/10 ███░░░░░░░\n  [5] SDMX_2-1_User_Guide_6 | Líneas 1793-1808   1.8/10 ██░░░░░░░░\n  [6] Notas_Tecnicas_SDMX_2.1 | Líneas 2154-2159   0.8/10 █░░░░░░░░░\n  [7] SDMX_2-1_User_Guide_6 | Líneas 1400-1421   0.8/10 █░░░░░░░░░\n  [8] Notas_Tecnicas_SDMX_2.1 | Líneas 267-267   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 3/3 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.94 — HIGH ✓\n  Trazabilidad:\n    [1] Notas_Tecnicas_SDMX_2.1 | Líneas 139-186  →  chunk_id: f35fc264d821\n        \"## 2  General Notes on This Document  At this version of the standards, the term 'Key family' is rep…\"\n    [2] Notas_Tecnicas_SDMX_2.1 | Líneas 139-186  →  chunk_id: f35fc264d821\n        \"## 2  General Notes on This Document  At this version of the standards, the term 'Key family' is rep…\"\n    [3] Notas_Tecnicas_SDMX_2.1 | Líneas 139-186  →  chunk_id: f35fc264d821\n        \"## 2  General Notes on This Document  At this version of the standards, the term 'Key family' is rep…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "f35fc264d821",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            139,
+            186
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "f35fc264d821",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            139,
+            186
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "f35fc264d821",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            139,
+            186
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9381722237160527,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 7.76,
+      "verdict": "PASS",
+      "verdict_reason": "All 3 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "t01",
+      "category": "technical_sdmx",
+      "query": "What is the difference between a Data Structure Definition and a DataFlow in SDMX 2.1?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "Basado en los fragmentos proporcionados, la diferencia fundamental entre una **Data Structure Definition (DSD)** y un **Dataflow** en SDMX radica en su función y nivel de abstracción dentro del modelo de información:\n\n**1. Data Structure Definition (DSD): Define la estructura de los datos**\nLa Data Structure Definition es la definición formal de la estructura del \"hipercubo\" de datos [[7] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167]. Esta definición establece las dimensiones, las vincula con Conceptos y Clasificaciones (llamadas Codelists en SDMX), y proporciona información de atributos para datos de calidad o estados de observación [[7] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167]. En esencia, la DSD describe los metadatos estructurales que permiten comprender qué se expresa en el conjunto de datos, definiendo las dimensiones, atributos, medidas y su representación asociada [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].\n\n**2. Dataflow: Define el flujo y el contexto de reporte**\nEl Dataflow es un concepto abstracto de los conjuntos de datos, es decir, una estructura sin datos reales [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781]. La definición de Dataflow asocia una Data Structure Definition con una o más Categorías, lo que permite al sistema indicar qué conjuntos de datos deben reportarse para una categoría dada y qué conjuntos pueden reportarse utilizando esa DSD específica [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781]. Además, la definición de Dataflow proporciona el identificador y otra información importante (como la periodicidad de reporte) que es común a todos sus conjuntos de datos componentes [[2] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 3.4.2.3 Identification of Data Structure Definitions (DSDs) 402 … 4 General Notes for Implementers | Líneas: 746-752].\n\n**3. Relación entre ambos**\nEn SDMX, los conjuntos de datos (Data Sets) se reportan o difunden según una definición de Dataflow [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781]. La definición de Dataflow identifica la Data Structure Definition correspondiente [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781]. Mientras que la DSD describe la estructura válida de los datos y los metadatos relacionados contenidos en un conjunto de datos, el Dataflow agrupa estos conjuntos en una secuencia o serie de conjuntos de datos repetidos regularmente (por ejemplo, por períodos de tiempo o países) [[7] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167].\n\nEn resumen, la **DSD** define *cómo* están estructurados los datos (dimensiones, atributos), mientras que el **Dataflow** define *qué* datos se reportan (identificador, periodicidad, categorías) y agrupa los conjuntos de datos individuales que comparten esa estructura [[1] Fuente: SDMX_Glossary | Sección: Dataflow | Líneas: 2744-2781].",
+      "citation_results": [
+        {
+          "citation_text": "[[7] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[7] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[2] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 3.4.2.3 Identification of Data Structure Definitions (DSDs) 402 … 4 General Notes for Implementers  | Líneas: 746-752",
+          "status": "VALID",
+          "chunk_id": "e1aee55369b1"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        },
+        {
+          "citation_text": "[[7] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Dataflow  | Líneas: 2744-2781",
+          "status": "VALID",
+          "chunk_id": "cf886ee1c5db"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_Glossary | Líneas 2744-2781  10.0/10 ██████████\n  [2] Notas_Tecnicas_SDMX_2.1 | Líneas 746-752   6.7/10 ███████░░░\n  [3] SDMX_Glossary | Líneas 2965-2997   4.3/10 ████░░░░░░\n  [4] Notas_Tecnicas_SDMX_2.1 | Líneas 268-275   3.8/10 ████░░░░░░\n  [5] SDMX-Training-introduction-2015 | Líneas 163-173   3.7/10 ████░░░░░░\n  [6] SDMX_2-1_User_Guide_6 | Líneas 2096-2104   0.4/10 ░░░░░░░░░░\n  [7] SDMX-Training-introduction-2015 | Líneas 150-167   0.1/10 ░░░░░░░░░░\n  [8] SDMX_2-1_User_Guide_6 | Líneas 1080-1086   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 10/10 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.91 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [2] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [3] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [4] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [5] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [6] Notas_Tecnicas_SDMX_2.1 | Líneas 746-752  →  chunk_id: e1aee55369b1\n        \"## 3.4.2.3 Identification of Data Structure Definitions (DSDs) 402 - In  order  to  facilitate  the …\"\n    [7] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [8] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n    [9] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [10] SDMX_Glossary | Líneas 2744-2781  →  chunk_id: cf886ee1c5db\n        \"# Dataflow  **Definition** Structure which describes, categorises and constrains the allowable conte…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "e1aee55369b1",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            746,
+            752
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "10": {
+          "chunk_id": "cf886ee1c5db",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            2744,
+            2781
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9101290436627186,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 21.88,
+      "verdict": "PASS",
+      "verdict_reason": "All 10 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "t02",
+      "category": "technical_sdmx",
+      "query": "How does SDMX represent time series data, and what role does the TIME_PERIOD dimension play?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "Based on the provided fragments, SDMX represents time series data and the role of the TIME_PERIOD dimension as follows:\n\n**Representation of Time Series Data**\n\nIn SDMX, a \"Series\" is defined as a set of data observations disambiguated by the values of a single dimension, which is usually time [[4] Fuente: SDMX_Glossary | Sección: Series | Líneas: 6544-6571]. A time series specifically groups data that share the same dimension values except for the time dimension, allowing users to observe changes over time while holding other dimensions constant [[4] Fuente: SDMX_Glossary | Sección: Series | Líneas: 6544-6571].\n\nThe representation of time in SDMX is structured as a hierarchical collection of representations, allowing data structure definitions to use any of these formats [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967]. The hierarchy includes:\n*   **Observational Time Period**: The superset of all time representations, allowing time to be expressed in any allowable format [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967].\n*   **Standard Time Period**: A superset of predefined time periods or distinct points in time, consisting of a start and end point [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967].\n*   **Gregorian Time Period**: Represented by year, year-month, or day based on ISO 8601 dates [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967].\n*   **Date Time**: Used to unambiguously state that a date-time represents an observation at a single point in time [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967].\n*   **Reporting Time Period**: Includes standard reporting periods related to a reporting year, with a specific duration based on ISO 8601 [[1] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 4.2.1 Introduction … Reporting Week : | Líneas: 964-967].\n\n**Role of the TIME_PERIOD Dimension**\n\nThe provided fragments do not explicitly define a dimension named \"TIME_PERIOD\" as a standard dimension in the Data Structure Definition (DSD). However, they do define the concept **TIME_PER_COLLECT** (Time period - collection), which specifies the segment of the time period for which observations have been collected (e.g., middle, average, or end of period) for the target reference period [[7] Fuente: SDMX_Glossary | Sección: [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf) | Líneas: 7343-7378]. This concept is crucial for time period transformations and is related to the concept TIME_PERIOD, further specifying it (e.g., TIME_PERIOD \"Monthly\" and TIME_PER_COLLECT \"End of period\") [[7] Fuente: SDMX_Glossary | Sección: [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf) | Líneas: 7343-7378].\n\nAdditionally, in the context of Data Flows, the Time dimension allows for the organization of data sets coming from different time periods [[3] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167]. The Time dimension is not coded via a codelist but uses a time value to indicate the time of the observation [[5] Fuente: SDMX_2-1_User_Guide_6 | Sección: SDMX 2.1 documentation | Líneas: 1654-1671]. While the Time Dimension has an explicitly defined role and cannot be further specified with additional concept roles, other dimensions can have roles such as Frequency, Geography, or Unit of Measure [[6] Fuente: SDMX_2-1_User_Guide_6 | Sección: 10.4.1 Overview | Líneas: 1461-1474].",
+      "citation_results": [
+        {
+          "citation_text": "[[4] Fuente: SDMX_Glossary  | Sección: Series  | Líneas: 6544-6571",
+          "status": "VALID",
+          "chunk_id": "316b090d6192"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX_Glossary  | Sección: Series  | Líneas: 6544-6571",
+          "status": "VALID",
+          "chunk_id": "316b090d6192"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[1] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 4.2.1 Introduction … Reporting Week :  | Líneas: 964-967",
+          "status": "VALID",
+          "chunk_id": "3df9abebde8e"
+        },
+        {
+          "citation_text": "[[7] Fuente: SDMX_Glossary  | Sección: [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf)  | Líneas: 7343-7378",
+          "status": "VALID",
+          "chunk_id": "83b1a90ad0d4"
+        },
+        {
+          "citation_text": "[[7] Fuente: SDMX_Glossary  | Sección: [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf)  | Líneas: 7343-7378",
+          "status": "VALID",
+          "chunk_id": "83b1a90ad0d4"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[5] Fuente: SDMX_2-1_User_Guide_6  | Sección: SDMX 2.1 documentation  | Líneas: 1654-1671",
+          "status": "VALID",
+          "chunk_id": "11fb6b2333d7"
+        },
+        {
+          "citation_text": "[[6] Fuente: SDMX_2-1_User_Guide_6  | Sección: 10.4.1 Overview  | Líneas: 1461-1474",
+          "status": "VALID",
+          "chunk_id": "0eacbc8e6f8e"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  10.0/10 ██████████\n  [2] Notas_Tecnicas_SDMX_2.1 | Líneas 964-981   6.7/10 ███████░░░\n  [3] SDMX-Training-introduction-2015 | Líneas 150-167   2.9/10 ███░░░░░░░\n  [4] SDMX_Glossary | Líneas 6544-6571   2.7/10 ███░░░░░░░\n  [5] SDMX_2-1_User_Guide_6 | Líneas 1654-1671   1.2/10 █░░░░░░░░░\n  [6] SDMX_2-1_User_Guide_6 | Líneas 1461-1474   1.2/10 █░░░░░░░░░\n  [7] SDMX_Glossary | Líneas 7343-7378   0.4/10 ░░░░░░░░░░\n  [8] SDMX_Glossary | Líneas 6572-6599   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 13/13 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.90 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_Glossary | Líneas 6544-6571  →  chunk_id: 316b090d6192\n        \"# Series  **Definition** Set of data observations disambiguated by the values of a single dimension,…\"\n    [2] SDMX_Glossary | Líneas 6544-6571  →  chunk_id: 316b090d6192\n        \"# Series  **Definition** Set of data observations disambiguated by the values of a single dimension,…\"\n    [3] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [4] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [5] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [6] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [7] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [8] Notas_Tecnicas_SDMX_2.1 | Líneas 964-967  →  chunk_id: 3df9abebde8e\n        \"## 4.2.1 Introduction First,  it  is  important  to  recognize  that  most  observation  times  are …\"\n    [9] SDMX_Glossary | Líneas 7343-7378  →  chunk_id: 83b1a90ad0d4\n        \"# [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf)  …\"\n    [10] SDMX_Glossary | Líneas 7343-7378  →  chunk_id: 83b1a90ad0d4\n        \"# [Time period - collection](https://sdmx.org/wp-content/uploads/03_sdmx_cog_annex_3_smd_2009.pdf)  …\"\n    [11] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [12] SDMX_2-1_User_Guide_6 | Líneas 1654-1671  →  chunk_id: 11fb6b2333d7\n        \"## SDMX 2.1 documentation  The view here shows a number of very important things:  The ID, Agency, a…\"\n    [13] SDMX_2-1_User_Guide_6 | Líneas 1461-1474  →  chunk_id: 0eacbc8e6f8e\n        \"## 10.4.1 Overview  The DSD Components of Dimension and Attribute can play a specific role in the DS…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "316b090d6192",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6544,
+            6571
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "316b090d6192",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6544,
+            6571
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "3df9abebde8e",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            964,
+            967
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "83b1a90ad0d4",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            7343,
+            7378
+          ],
+          "status": "VALID"
+        },
+        "10": {
+          "chunk_id": "83b1a90ad0d4",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            7343,
+            7378
+          ],
+          "status": "VALID"
+        },
+        "11": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "12": {
+          "chunk_id": "11fb6b2333d7",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            1654,
+            1671
+          ],
+          "status": "VALID"
+        },
+        "13": {
+          "chunk_id": "0eacbc8e6f8e",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            1461,
+            1474
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.8960286458333333,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 27.43,
+      "verdict": "PASS",
+      "verdict_reason": "All 13 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "t03",
+      "category": "technical_sdmx",
+      "query": "What are the mandatory structural components of a Concept Scheme in SDMX?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "Based on the provided fragments, the mandatory structural components of a Concept Scheme are not explicitly listed as a single set of mandatory fields for the scheme itself, but the fragments describe the mandatory components of the **Concepts** contained within the scheme and the nature of the scheme.\n\nAccording to fragment [1], a concept itself consists of three main components, where the identification must be unique within the scheme [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused. | Líneas: 448-462]. These components are:\n1. Its identification (which must be unique within the scheme).\n2. Its name.\n3. Its description (noted as not mandatory but highly recommended).\n\nFurthermore, fragment [2] defines a Concept Scheme as a set of Concepts used in a Data Structure Definition or Metadata Structure Definition [[2] Fuente: SDMX_Glossary | Sección: Concept Scheme | Líneas: 1767-1792]. It states that Concept Schemes group a set of Concepts, provide their definitions and names, and it is possible for a single Concept Scheme to be used for both data and metadata structures [[2] Fuente: SDMX_Glossary | Sección: Concept Scheme | Líneas: 1767-1792].\n\nRegarding roles, fragment [3] and [4] indicate that while there is no explicit technical indication on the Concept whether it is a 'role' concept, it is the responsibility of Agencies to ensure the community knows which concepts play a role [[3] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 7.2  Information Model … 8 Constraints | Líneas: 2153-2153]. Fragment [4] adds that each Component (Data Attribute, Primary Measure, Dimension, etc.) has a mandatory identity association (Concept Identity), and if the Concept also identifies the role, it is possible to state this by means of the `isRole` attribute or the `+role` association [[4] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: 7.4  SDMX-ML Examples in a DSD 1156 | Líneas: 2074-2151].\n\nIn summary, the core mandatory elements for the concepts within the scheme are the **identification** (unique within the scheme) and the **name** [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused. | Líneas: 448-462]. The description is optional but recommended [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused. | Líneas: 448-462].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused.  | Líneas: 448-462",
+          "status": "VALID",
+          "chunk_id": "ae12e600799a"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX_Glossary  | Sección: Concept Scheme  | Líneas: 1767-1792",
+          "status": "VALID",
+          "chunk_id": "1bcf50c70f70"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX_Glossary  | Sección: Concept Scheme  | Líneas: 1767-1792",
+          "status": "VALID",
+          "chunk_id": "1bcf50c70f70"
+        },
+        {
+          "citation_text": "[[3] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 7.2  Information Model … 8 Constraints  | Líneas: 2153-2153",
+          "status": "VALID",
+          "chunk_id": "915e92ba93da"
+        },
+        {
+          "citation_text": "[[4] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: 7.4  SDMX-ML Examples in a DSD 1156  | Líneas: 2074-2151",
+          "status": "VALID",
+          "chunk_id": "f45017db77bc"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused.  | Líneas: 448-462",
+          "status": "VALID",
+          "chunk_id": "ae12e600799a"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 2.  Can allow data and metadata for different structures to be comparable when concepts are reused.  | Líneas: 448-462",
+          "status": "VALID",
+          "chunk_id": "ae12e600799a"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_2-1_User_Guide_6 | Líneas 448-462  10.0/10 ██████████\n  [2] SDMX_Glossary | Líneas 1767-1792   5.0/10 █████░░░░░\n  [3] Notas_Tecnicas_SDMX_2.1 | Líneas 2153-2153   4.4/10 ████░░░░░░\n  [4] Notas_Tecnicas_SDMX_2.1 | Líneas 2074-2151   2.7/10 ███░░░░░░░\n  [5] SDMX_Glossary | Líneas 7063-7090   1.3/10 █░░░░░░░░░\n  [6] SDMX_2-1_User_Guide_6 | Líneas 1475-1480   0.9/10 █░░░░░░░░░\n  [7] SDMX_Glossary | Líneas 6283-6321   0.4/10 ░░░░░░░░░░\n  [8] SDMX_Glossary | Líneas 4293-4321   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 7/7 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.89 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_2-1_User_Guide_6 | Líneas 448-462  →  chunk_id: ae12e600799a\n        \"## 2.  Can allow data and metadata for different structures to be comparable when concepts are reuse…\"\n    [2] SDMX_Glossary | Líneas 1767-1792  →  chunk_id: 1bcf50c70f70\n        \"# Concept Scheme  **Definition** Set of Concepts that are used in a Data Structure Definition or Met…\"\n    [3] SDMX_Glossary | Líneas 1767-1792  →  chunk_id: 1bcf50c70f70\n        \"# Concept Scheme  **Definition** Set of Concepts that are used in a Data Structure Definition or Met…\"\n    [4] Notas_Tecnicas_SDMX_2.1 | Líneas 2153-2153  →  chunk_id: 915e92ba93da\n        \"2.  The  concept  scheme  that  contains  the  'role'  concepts  can  contain  concepts that do not …\"\n    [5] Notas_Tecnicas_SDMX_2.1 | Líneas 2074-2151  →  chunk_id: f45017db77bc\n        \"## 7.4  SDMX-ML Examples in a DSD 1156  - The Cross-Domain Concept Scheme maintained by SDMX contain…\"\n    [6] SDMX_2-1_User_Guide_6 | Líneas 448-462  →  chunk_id: ae12e600799a\n        \"## 2.  Can allow data and metadata for different structures to be comparable when concepts are reuse…\"\n    [7] SDMX_2-1_User_Guide_6 | Líneas 448-462  →  chunk_id: ae12e600799a\n        \"## 2.  Can allow data and metadata for different structures to be comparable when concepts are reuse…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "ae12e600799a",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            448,
+            462
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "1bcf50c70f70",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            1767,
+            1792
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "1bcf50c70f70",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            1767,
+            1792
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "915e92ba93da",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            2153,
+            2153
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "f45017db77bc",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            2074,
+            2151
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "ae12e600799a",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            448,
+            462
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "ae12e600799a",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            448,
+            462
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.8936122961837414,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 17.5,
+      "verdict": "PASS",
+      "verdict_reason": "All 7 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "s01",
+      "category": "spanish",
+      "query": "¿Qué es SDMX y para qué sirve en el intercambio de datos estadísticos?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "SDMX (Statistical Data and Metadata eXchange) es un estándar técnico y un conjunto de directrices orientadas al contenido para el intercambio y el intercambio de información estadística entre organizaciones [[1] Fuente: SDMX_Glossary | Sección: Statistical Data and Metadata eXchange, SDMX | Líneas: 6738-6767]. También se define como un conjunto de estándares para el intercambio de datos estadísticos y metadatos [[3] Fuente: SDMX_Glossary_Test | Sección: Documento de Prueba SDMX — Glossario y Referencias | Líneas: 1-2].\n\nEn cuanto a su función en el intercambio de datos, SDMX sirve para describir los datos estadísticos y los metadatos, normalizar su intercambio y mejorar el intercambio eficiente entre organizaciones [[1] Fuente: SDMX_Glossary | Sección: Statistical Data and Metadata eXchange, SDMX | Líneas: 6738-6767]. Proporciona formatos estándar bien definidos para contener todos los elementos del proceso estadístico y vincularlos en un modelo claro, lo que permite maximizar la cantidad de información de contexto y metadatos que se transmite a los clientes [[6] Fuente: SDMX-Training-introduction-2015 | Sección: 1 SDMX in short | Líneas: 22-37].\n\nAdemás, SDMX organiza y clasifica los metadatos y datos estadísticos para apoyar la búsqueda y el descubrimiento, vincular material relacionado y conectar todos los datos con sus metadatos, fuentes y proveedores [[2] Fuente: SDMX-Training-introduction-2015 | Sección: 1 SDMX in short | Líneas: 29-39]. Esto proporciona una base excelente para que las herramientas automatizadas operen sobre los datos y metadatos, permitiendo poblar sitios web, ofrecer presentaciones dinámicas y convertir el material a otros formatos [[2] Fuente: SDMX-Training-introduction-2015 | Sección: 1 SDMX in short | Líneas: 29-39].\n\nEl objetivo principal de la iniciativa SDMX es desarrollar y utilizar procesos más eficientes para el intercambio y el intercambio de datos estadísticos y metadatos entre organizaciones internacionales y sus países miembros [[5] Fuente: SDMX-Training-introduction-2015 | Sección: 3 Background: origin and purpose of SDMX | Líneas: 67-91]. Busca asegurar que los metadatos siempre acompañen a los datos, haciendo la información inmediatamente comprensible y útil [[5] Fuente: SDMX-Training-introduction-2015 | Sección: 3 Background: origin and purpose of SDMX | Líneas: 84-100]. Los estándares comunes facilitan el acceso fácil a los datos estadísticos sin necesidad de acuerdos previos entre socios, y facilitan el acceso a metadatos que hacen que los datos sean más comparables, significativos y utilizables [[5] Fuente: SDMX-Training-introduction-2015 | Sección: 3 Background: origin and purpose of SDMX | Líneas: 84-100].\n\nFinalmente, SDMX ofrece una variedad de herramientas técnicas y directrices para la aplicación de conceptos y códigos estadísticos armonizados, representando un marco para el proceso de armonización dentro de los dominios [[6] Fuente: SDMX-Training-introduction-2015 | Sección: 1 SDMX in short | Líneas: 22-37].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Statistical Data and Metadata eXchange, SDMX  | Líneas: 6738-6767",
+          "status": "VALID",
+          "chunk_id": "baf62c47ab85"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX_Glossary_Test  | Sección: Documento de Prueba SDMX — Glossario y Referencias  | Líneas: 1-2",
+          "status": "VALID",
+          "chunk_id": "d135fa08cb6b"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_Glossary  | Sección: Statistical Data and Metadata eXchange, SDMX  | Líneas: 6738-6767",
+          "status": "VALID",
+          "chunk_id": "baf62c47ab85"
+        },
+        {
+          "citation_text": "[[6] Fuente: SDMX-Training-introduction-2015  | Sección: 1 SDMX in short  | Líneas: 22-37",
+          "status": "VALID",
+          "chunk_id": "411e3294d75e"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX-Training-introduction-2015  | Sección: 1 SDMX in short  | Líneas: 29-39",
+          "status": "VALID",
+          "chunk_id": "366df5834c91"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX-Training-introduction-2015  | Sección: 1 SDMX in short  | Líneas: 29-39",
+          "status": "VALID",
+          "chunk_id": "366df5834c91"
+        },
+        {
+          "citation_text": "[[5] Fuente: SDMX-Training-introduction-2015  | Sección: 3 Background: origin and purpose of SDMX  | Líneas: 67-91",
+          "status": "VALID",
+          "chunk_id": "1d39679051f2"
+        },
+        {
+          "citation_text": "[[5] Fuente: SDMX-Training-introduction-2015  | Sección: 3 Background: origin and purpose of SDMX  | Líneas: 84-100",
+          "status": "VALID",
+          "chunk_id": "86d1fec5ffdc"
+        },
+        {
+          "citation_text": "[[5] Fuente: SDMX-Training-introduction-2015  | Sección: 3 Background: origin and purpose of SDMX  | Líneas: 84-100",
+          "status": "VALID",
+          "chunk_id": "86d1fec5ffdc"
+        },
+        {
+          "citation_text": "[[6] Fuente: SDMX-Training-introduction-2015  | Sección: 1 SDMX in short  | Líneas: 22-37",
+          "status": "VALID",
+          "chunk_id": "411e3294d75e"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_Glossary | Líneas 6738-6767  10.0/10 ██████████\n  [2] SDMX-Training-introduction-2015 | Líneas 29-39   7.6/10 ████████░░\n  [3] SDMX_Glossary_Test | Líneas 1-2   6.7/10 ███████░░░\n  [4] SDMX-Training-introduction-2015 | Líneas 40-66   4.2/10 ████░░░░░░\n  [5] SDMX-Training-introduction-2015 | Líneas 67-91   3.6/10 ████░░░░░░\n  [6] SDMX-Training-introduction-2015 | Líneas 22-37   3.4/10 ███░░░░░░░\n  [7] SDMX_Glossary_Test | Líneas 7-13   1.5/10 █░░░░░░░░░\n  [8] SDMX-Training-introduction-2015 | Líneas 84-100   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 10/10 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.94 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_Glossary | Líneas 6738-6767  →  chunk_id: baf62c47ab85\n        \"# Statistical Data and Metadata eXchange, SDMX  **Definition** Technical standard and content-orient…\"\n    [2] SDMX_Glossary_Test | Líneas 1-2  →  chunk_id: d135fa08cb6b\n        \"# Documento de Prueba SDMX — Glossario y Referencias  ## 1. Definiciones Básicas  SDMX (Statistical …\"\n    [3] SDMX_Glossary | Líneas 6738-6767  →  chunk_id: baf62c47ab85\n        \"# Statistical Data and Metadata eXchange, SDMX  **Definition** Technical standard and content-orient…\"\n    [4] SDMX-Training-introduction-2015 | Líneas 22-37  →  chunk_id: 411e3294d75e\n        \"## 1 SDMX in short SDMX provides support for things that are important to statisticians and are ofte…\"\n    [5] SDMX-Training-introduction-2015 | Líneas 29-39  →  chunk_id: 366df5834c91\n        \"In short, SDMX is a model for describing statistical data and metadata, and formats for presenting t…\"\n    [6] SDMX-Training-introduction-2015 | Líneas 29-39  →  chunk_id: 366df5834c91\n        \"In short, SDMX is a model for describing statistical data and metadata, and formats for presenting t…\"\n    [7] SDMX-Training-introduction-2015 | Líneas 67-91  →  chunk_id: 1d39679051f2\n        \"## 3 Background: origin and purpose of SDMX The Statistical Data and Metadata eXchange (SDMX) initia…\"\n    [8] SDMX-Training-introduction-2015 | Líneas 84-100  →  chunk_id: 86d1fec5ffdc\n        \"SDMX aims to ensure that metadata always come along with the data, making the information immediatel…\"\n    [9] SDMX-Training-introduction-2015 | Líneas 84-100  →  chunk_id: 86d1fec5ffdc\n        \"SDMX aims to ensure that metadata always come along with the data, making the information immediatel…\"\n    [10] SDMX-Training-introduction-2015 | Líneas 22-37  →  chunk_id: 411e3294d75e\n        \"## 1 SDMX in short SDMX provides support for things that are important to statisticians and are ofte…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "baf62c47ab85",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6738,
+            6767
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "d135fa08cb6b",
+          "doc_id": "SDMX_Glossary_Test",
+          "lines": [
+            1,
+            2
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "baf62c47ab85",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6738,
+            6767
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "411e3294d75e",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            22,
+            37
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "366df5834c91",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            29,
+            39
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "366df5834c91",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            29,
+            39
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "1d39679051f2",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            67,
+            91
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "86d1fec5ffdc",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            84,
+            100
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "86d1fec5ffdc",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            84,
+            100
+          ],
+          "status": "VALID"
+        },
+        "10": {
+          "chunk_id": "411e3294d75e",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            22,
+            37
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9433587786259542,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 20.57,
+      "verdict": "PASS",
+      "verdict_reason": "All 10 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "s02",
+      "category": "spanish",
+      "query": "¿Cómo se define una estructura de datos en SDMX y qué elementos la componen?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "En el modelo de información de SDMX, una estructura de datos se define formalmente a través de una **Definición de Estructura de Datos** (Data Structure Definition, DSD). Esta definición organiza las definiciones de conceptos en varios componentes que identifican y complementan los datos, permitiendo que los datos sean validados y comprendidos [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555]. La DSD define el \"hipercubo\" en términos de sus dimensiones, vinculándolas con Conceptos y Clasificaciones (llamadas listas de códigos o *codelists*) [[4] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167].\n\nLos elementos principales que componen esta estructura son:\n\n1.  **Dimensiones**: La DSD define las dimensiones del hipercubo, que organizan los datos multidimensionales [[4] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167].\n2.  **Conceptos y Clasificaciones**: Las dimensiones se vinculan con conceptos y clasificaciones (codelists) [[4] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167]. Una comprensión clara de la estructura depende de conceptos bien definidos [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555].\n3.  **Atributos**: La DSD proporciona información de atributos que pueden añadir datos adicionales, como información de calidad estadística, estado de la observación u otra información tipo nota al pie, a nivel de celda, de tabla o en niveles intermedios [[4] Fuente: SDMX-Training-introduction-2015 | Sección: 5 The SDMX information model | Líneas: 150-167]. La ubicación de estos atributos está dictada por la dimensión de observación y las relaciones de atributo definidas en la estructura [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555].\n4.  **Grupos**: La estructura puede contener grupos, donde cada grupo tiene un conjunto único de valores clave y proporciona los valores de atributo asociados a ese conjunto de claves [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555]. En la versión 2.1, el constructo de \"grupo hermano\" se generalizó y se renombró como \"grupo\", permitiendo que cualquier dimensión sea comodín, y se introdujo la definición de \"Relación de Atributo\" [[7] Fuente: Notas_Tecnicas_SDMX_2.1 | Sección: SDMX STANDARDS: SECTION 6 … 3.3  SDMX-ML and SDMX-EDI: Comparison of Expressive Capabilities and Function | Líneas: 267-267].\n\nAdemás, la DSD no dicta la orientación exacta de los datos; esa orientación se define por el propio conjunto de datos, que puede ser una lista plana de observaciones o una colección de series donde todas las dimensiones menos una tienen el mismo valor [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555].",
+      "citation_results": [
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX-Training-introduction-2015  | Sección: 5 The SDMX information model  | Líneas: 150-167",
+          "status": "VALID",
+          "chunk_id": "098f5d4784d4"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        },
+        {
+          "citation_text": "[[7] Fuente: Notas_Tecnicas_SDMX_2.1  | Sección: SDMX STANDARDS: SECTION 6 … 3.3  SDMX-ML and SDMX-EDI: Comparison of Expressive Capabilities and Function  | Líneas: 267-267",
+          "status": "VALID",
+          "chunk_id": "6176a0748f35"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_2-1_User_Guide_6 | Líneas 541-555  10.0/10 ██████████\n  [2] SDMX_Glossary | Líneas 2965-2997   5.9/10 ██████░░░░\n  [3] SDMX_Glossary_Test | Líneas 7-13   3.2/10 ███░░░░░░░\n  [4] SDMX-Training-introduction-2015 | Líneas 150-167   2.1/10 ██░░░░░░░░\n  [5] SDMX_2-1_User_Guide_6 | Líneas 478-481   1.9/10 ██░░░░░░░░\n  [6] SDMX-Training-introduction-2015 | Líneas 29-39   1.6/10 ██░░░░░░░░\n  [7] Notas_Tecnicas_SDMX_2.1 | Líneas 267-267   0.5/10 ░░░░░░░░░░\n  [8] SDMX_2-1_User_Guide_6 | Líneas 1636-1653   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 10/10 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.89 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n    [2] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [3] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [4] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [5] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n    [6] SDMX-Training-introduction-2015 | Líneas 150-167  →  chunk_id: 098f5d4784d4\n        \"## 5 The SDMX information model SDMX deals with things statisticians understand well - metadata abou…\"\n    [7] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n    [8] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n    [9] Notas_Tecnicas_SDMX_2.1 | Líneas 267-267  →  chunk_id: 6176a0748f35\n        \"- 72 ## 3  Guide for SDMX Format Standards ## 3.1  Introduction This  guide  exists  to  provide  in…\"\n    [10] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "098f5d4784d4",
+          "doc_id": "SDMX-Training-introduction-2015",
+          "lines": [
+            150,
+            167
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "6176a0748f35",
+          "doc_id": "Notas_Tecnicas_SDMX_2.1",
+          "lines": [
+            267,
+            267
+          ],
+          "status": "VALID"
+        },
+        "10": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.8906154783668494,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 22.37,
+      "verdict": "PASS",
+      "verdict_reason": "All 10 citation(s) VALID, confidence HIGH.",
+      "error": null
+    },
+    {
+      "id": "a01",
+      "category": "ambiguous",
+      "query": "What is a key?",
+      "expect_citations": true,
+      "expect_in_corpus": true,
+      "response": "Basado en los fragmentos proporcionados, un \"key\" (clave) se define y utiliza de las siguientes maneras en el contexto de SDMX:\n\n**1. Definición general de Metadata Key**\nUna clave de metadatos es una estructura compuesta por uno o más identificadores de objetos (Object Type/Object Id) con el fin de identificar de manera única un elemento dentro de una colección de metadatos de referencia [[2] Fuente: SDMX_Glossary | Sección: Metadata Key | Líneas: 4667-4688]. Por ejemplo, para un código o concepto, la clave sería su identificador, como una URN [[2] Fuente: SDMX_Glossary | Sección: Metadata Key | Líneas: 4667-4688].\n\n**2. Series Key (Clave de Serie)**\nUna clave de serie es el producto cruzado de los valores de las dimensiones, donde este producto cruzado (o combinado con un valor de tiempo) identifica de forma única una observación [[4] Fuente: SDMX_Glossary | Sección: Series Key | Líneas: 6572-6599]. La combinación del significado de los nombres de los conceptos utilizados por la Dimensión (excluyendo el tiempo) describe una clave de serie [[4] Fuente: SDMX_Glossary | Sección: Series Key | Líneas: 6572-6599].\n\n**3. Group Key (Clave de Grupo)**\nUna clave de grupo es un conjunto de valores de clave que componen una clave parcial [[3] Fuente: SDMX_Glossary | Sección: Group Key | Líneas: 3921-3932]. Esta clave se deriva de la dimensionalidad de la Clave de Serie con el propósito de adjuntar atributos de datos [[3] Fuente: SDMX_Glossary | Sección: Group Key | Líneas: 3921-3932]. Su estructura está compuesta por el subconjunto de Dimensiones que especifica la estructura de la clave parcial, derivada del Descriptor de Dimensión en una Definición de Estructura de Datos [[7] Fuente: SDMX_Glossary | Sección: Group key structure | Líneas: 3933-3945].\n\n**4. Uso en conjuntos de datos (Data Sets)**\nEn el procesamiento de datos, una clave completa debe especificarse en el Conjunto de Metadatos cuando se utiliza un `DATA_KEY_TARGET`, el cual combina un Descriptor de Clave y un Objeto Identificable (Dataflow) [[1] Fuente: SDMX_2-1_User_Guide_6 | Sección: Notes | Líneas: 1067-1079]. En un conjunto de datos plano, se proporciona la clave completa para cada valor observado [[6] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555]. En una orientación de serie, cada observación se distingue por la dimensión de observación (como el tiempo), mientras que el resto de las dimensiones mantienen el mismo valor para toda la serie [[6] Fuente: SDMX_2-1_User_Guide_6 | Sección: 4.3.2 Data Sets | Líneas: 541-555].",
+      "citation_results": [
+        {
+          "citation_text": "[[2] Fuente: SDMX_Glossary  | Sección: Metadata Key  | Líneas: 4667-4688",
+          "status": "VALID",
+          "chunk_id": "79c1d7bb9a3b"
+        },
+        {
+          "citation_text": "[[2] Fuente: SDMX_Glossary  | Sección: Metadata Key  | Líneas: 4667-4688",
+          "status": "VALID",
+          "chunk_id": "79c1d7bb9a3b"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX_Glossary  | Sección: Series Key  | Líneas: 6572-6599",
+          "status": "VALID",
+          "chunk_id": "ef73517a9d99"
+        },
+        {
+          "citation_text": "[[4] Fuente: SDMX_Glossary  | Sección: Series Key  | Líneas: 6572-6599",
+          "status": "VALID",
+          "chunk_id": "ef73517a9d99"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX_Glossary  | Sección: Group Key  | Líneas: 3921-3932",
+          "status": "VALID",
+          "chunk_id": "fc904a54dad6"
+        },
+        {
+          "citation_text": "[[3] Fuente: SDMX_Glossary  | Sección: Group Key  | Líneas: 3921-3932",
+          "status": "VALID",
+          "chunk_id": "fc904a54dad6"
+        },
+        {
+          "citation_text": "[[7] Fuente: SDMX_Glossary  | Sección: Group key structure  | Líneas: 3933-3945",
+          "status": "VALID",
+          "chunk_id": "94c0ae3698fd"
+        },
+        {
+          "citation_text": "[[1] Fuente: SDMX_2-1_User_Guide_6  | Sección: Notes  | Líneas: 1067-1079",
+          "status": "VALID",
+          "chunk_id": "f23afc0d45b5"
+        },
+        {
+          "citation_text": "[[6] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        },
+        {
+          "citation_text": "[[6] Fuente: SDMX_2-1_User_Guide_6  | Sección: 4.3.2 Data Sets  | Líneas: 541-555",
+          "status": "VALID",
+          "chunk_id": "12a907e059e6"
+        }
+      ],
+      "warnings": [],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_2-1_User_Guide_6 | Líneas 1067-1079  10.0/10 ██████████\n  [2] SDMX_Glossary | Líneas 4667-4688   9.1/10 █████████░\n  [3] SDMX_Glossary | Líneas 3921-3932   7.0/10 ███████░░░\n  [4] SDMX_Glossary | Líneas 6572-6599   5.8/10 ██████░░░░\n  [5] SDMX_Glossary | Líneas 4689-4703   5.7/10 ██████░░░░\n  [6] SDMX_2-1_User_Guide_6 | Líneas 541-555   5.2/10 █████░░░░░\n  [7] SDMX_Glossary | Líneas 3933-3945   2.3/10 ██░░░░░░░░\n  [8] SDMX_2-1_User_Guide_6 | Líneas 1960-1972   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 10/10 ✓\n  Consistencia      : OK ✓\n  Score de confianza: 0.96 — HIGH ✓\n  Trazabilidad:\n    [1] SDMX_Glossary | Líneas 4667-4688  →  chunk_id: 79c1d7bb9a3b\n        \"# Metadata Key  **Definition** Construct comprised of one or more Object Type/Object Id(s) in order …\"\n    [2] SDMX_Glossary | Líneas 4667-4688  →  chunk_id: 79c1d7bb9a3b\n        \"# Metadata Key  **Definition** Construct comprised of one or more Object Type/Object Id(s) in order …\"\n    [3] SDMX_Glossary | Líneas 6572-6599  →  chunk_id: ef73517a9d99\n        \"# Series Key  **Definition** Cross product of values of Dimensions where either the cross product or…\"\n    [4] SDMX_Glossary | Líneas 6572-6599  →  chunk_id: ef73517a9d99\n        \"# Series Key  **Definition** Cross product of values of Dimensions where either the cross product or…\"\n    [5] SDMX_Glossary | Líneas 3921-3932  →  chunk_id: fc904a54dad6\n        \"# Group Key  **Definition** Set of key values that comprise a partial key.  **Context** A Group Key …\"\n    [6] SDMX_Glossary | Líneas 3921-3932  →  chunk_id: fc904a54dad6\n        \"# Group Key  **Definition** Set of key values that comprise a partial key.  **Context** A Group Key …\"\n    [7] SDMX_Glossary | Líneas 3933-3945  →  chunk_id: 94c0ae3698fd\n        \"# Group key structure  **Definition** Set of metadata concepts that define a partial key derived fro…\"\n    [8] SDMX_2-1_User_Guide_6 | Líneas 1067-1079  →  chunk_id: f23afc0d45b5\n        \"## Notes  The DATA\\_KEY\\_TARGET  comprises two components:  1.  A Key Descriptor (dimension descript…\"\n    [9] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n    [10] SDMX_2-1_User_Guide_6 | Líneas 541-555  →  chunk_id: 12a907e059e6\n        \"## 4.3.2 Data Sets  Every data set in SDMX must conform to a data structure definition. As described…\"\n─────────────────────────────────────────────",
+      "evidence_map": {
+        "1": {
+          "chunk_id": "79c1d7bb9a3b",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            4667,
+            4688
+          ],
+          "status": "VALID"
+        },
+        "2": {
+          "chunk_id": "79c1d7bb9a3b",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            4667,
+            4688
+          ],
+          "status": "VALID"
+        },
+        "3": {
+          "chunk_id": "ef73517a9d99",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6572,
+            6599
+          ],
+          "status": "VALID"
+        },
+        "4": {
+          "chunk_id": "ef73517a9d99",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            6572,
+            6599
+          ],
+          "status": "VALID"
+        },
+        "5": {
+          "chunk_id": "fc904a54dad6",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            3921,
+            3932
+          ],
+          "status": "VALID"
+        },
+        "6": {
+          "chunk_id": "fc904a54dad6",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            3921,
+            3932
+          ],
+          "status": "VALID"
+        },
+        "7": {
+          "chunk_id": "94c0ae3698fd",
+          "doc_id": "SDMX_Glossary",
+          "lines": [
+            3933,
+            3945
+          ],
+          "status": "VALID"
+        },
+        "8": {
+          "chunk_id": "f23afc0d45b5",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            1067,
+            1079
+          ],
+          "status": "VALID"
+        },
+        "9": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        },
+        "10": {
+          "chunk_id": "12a907e059e6",
+          "doc_id": "SDMX_2-1_User_Guide_6",
+          "lines": [
+            541,
+            555
+          ],
+          "status": "VALID"
+        }
+      },
+      "confidence_score": 0.9607244995233556,
+      "confidence_level": "HIGH",
+      "consistency_parse_success": true,
+      "elapsed_s": 19.35,
+      "verdict": "PASS",
+      "verdict_reason": "Ambiguous query resolved with 10/10 valid citations.",
+      "error": null
+    },
+    {
+      "id": "o01",
+      "category": "out_of_corpus",
+      "query": "What is the capital of France?",
+      "expect_citations": false,
+      "expect_in_corpus": false,
+      "response": "No encuentro esta información en los documentos proporcionados.",
+      "citation_results": [],
+      "warnings": [
+        "⚠ Respuesta sin citas — no se puede trazar al documento fuente."
+      ],
+      "verification_block": "─────────────────────────────────────────────\nVerificación de respuesta\n  Fragmentos recuperados:\n  [1] SDMX_2-1_User_Guide_6 | Líneas 2226-2233  10.0/10 ██████████\n  [2] SDMX_2-1_User_Guide_6 | Líneas 2250-2270   8.4/10 ████████░░\n  [3] SDMX_2-1_User_Guide_6 | Líneas 1928-1945   3.4/10 ███░░░░░░░\n  [4] SDMX_Glossary | Líneas 7725-8424   2.6/10 ███░░░░░░░\n  [5] SDMX-Training-introduction-2015 | Líneas 150-167   1.9/10 ██░░░░░░░░\n  [6] SDMX_Glossary | Líneas 7722-8271   1.1/10 █░░░░░░░░░\n  [7] SDMX_Glossary | Líneas 7719-8580   1.0/10 █░░░░░░░░░\n  [8] SDMX_Glossary | Líneas 7722-8736   0.0/10 ░░░░░░░░░░\n  Citas verificadas : 0/0 ✗\n  Consistencia      : OK ✓\n  Score de confianza: 0.64 — MEDIUM ⚠\n─────────────────────────────────────────────",
+      "evidence_map": {},
+      "confidence_score": 0.6425983436853002,
+      "confidence_level": "MEDIUM",
+      "consistency_parse_success": true,
+      "elapsed_s": 2.48,
+      "verdict": "PASS",
+      "verdict_reason": "System correctly declared information not in corpus.",
+      "error": null
+    }
+  ]
+}

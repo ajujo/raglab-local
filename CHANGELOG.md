@@ -4,6 +4,112 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.18.1 — 2026-05-23 — Answer Verifier E2E Audit
+
+### Scope
+
+End-to-end validation of the answer/citation/verification layer introduced in v1.18.
+No retrieval changes. No new loaders. No feedback-as-reranking.
+
+### Audit result: 10/10 PASS
+
+Full live E2E run against 10 representative queries (3 easy, 3 technical SDMX,
+2 Spanish, 1 ambiguous, 1 out-of-corpus).  All four v1.18 bug-fix invariants confirmed
+in production:
+
+- **BUG-1** (0/0 ✓ false positive): not triggered on any query.
+- **BUG-2** (zero-citation warning): correctly emitted for the out-of-corpus query
+  that produced no citations.
+- **BUG-3** (N/A consistency status): not triggered on any query.
+- **FEAT** (evidence_map): populated for all entries with VALID citations.
+
+Observed citation rates: 3–13 VALID citations per query, all HIGH confidence.
+Out-of-corpus query: system correctly responded "No encuentro esta información…"
+and the verifier emitted the expected zero-citation warning.
+
+Full JSON report: `data/audits/v1.18.1_answer_verifier_e2e.json`
+
+### New artefacts
+
+- `scripts/audit_answer_verifier.py` — reusable E2E audit script.
+  `python scripts/audit_answer_verifier.py [--suite answer_e2e] [--dry-run]`
+- `docs/ANSWER_VERIFICATION.md` — verification layer reference documentation.
+- `data/audits/v1.18.1_answer_verifier_e2e.json` — live audit report.
+
+### Tests added
+
+`tests/test_cli/test_audit_script.py` — 21 tests across 3 classes:
+- `TestModuleStructure` — script structure and QUERY_SUITES schema.
+- `TestAssessLogic` — verdict logic (PASS/WARN/FAIL) without LLM or stores.
+- `TestDryRunExecution` — dry-run pipeline: JSON output structure, v1.18 invariants,
+  out-of-corpus citation behaviour.
+
+**Total: 972 passed (21 new tests).**
+
+### Benchmark (official, full, no-cache, 65 queries)
+
+| Variant | R@5 | R@10 | R@30 | MRR | nDCG@10 | P50ms |
+|---------|-----|------|------|-----|---------|-------|
+| full | 0.821 | 0.896 | 0.978 | 0.939 | 0.837 | 249 |
+
+Δ = 0.000 vs v1.11 baseline. Zero regression.
+
+---
+
+## v1.18 — 2026-05-23 — Verification Hardening
+
+### Scope
+
+Bug fixes and enrichment for the answer verification layer. No retrieval changes.
+No new loaders. No feedback-as-reranking.
+
+### Bugs fixed
+
+1. **`0/0 ✓` false positive** (`pipeline.py`): responses with zero citations showed
+   a green checkmark. Fixed: now shows `0/0 ✗`.
+
+2. **Silent DEGRADED status** (`pipeline.py`): when `consistency_result.parse_success=False`
+   the verification block showed `N/A`, which was indistinguishable from "check not run".
+   Fixed: now shows `DEGRADED ⚠`.
+
+3. **Disabled consistency = score boost** (`pipeline.py`): `enable_consistency_check=False`
+   assigned `score=1.0`, silently boosting the final confidence score.
+   Fixed: uses `score=0.75` (neutral-leaning).
+
+4. **No warning for zero citations** (`pipeline.py`): responses without any citation
+   produced no warning at all. Fixed: `get_warnings()` now emits
+   `"⚠ Respuesta sin citas — no se puede trazar al documento fuente."`.
+
+### Enrichments
+
+- **`CitationResult.chunk_id`** (`verifier.py`): new optional field populated from
+  `matched_chunk.get("chunk_id")` when a match is found. Backward-compatible (defaults `None`).
+
+- **`VerificationResult.evidence_map`** (`pipeline.py`): computed property that maps
+  citation index (1-based) to `{chunk_id, doc_id, lines, status}`. No new persistence.
+
+- **`format_verification_block(verbose=True)`** (`pipeline.py`): when `verbose=True`,
+  appends a "Trazabilidad" section with `chunk_id`, doc/lines, and a 100-char text
+  snippet per citation.
+
+### Prompt hardening
+
+`SYSTEM_PROMPT` rule 2 (`config.py`) strengthened: explicit instruction to cite
+every factual claim using the exact `[[N] Fuente: … | Sección: … | Líneas: …]`
+format, with a concrete example and "Una oración sin cita es una oración sin respaldo."
+
+### Tests added
+
+`tests/test_verification/test_v1_18_improvements.py` — 29 tests across 7 classes.
+
+**Total: 951 passed.**
+
+### Benchmark (official, full, no-cache, 65 queries)
+
+Δ = 0.000 vs v1.11 baseline.
+
+---
+
 ## v1.17 — 2026-05-23 — Release Candidate Audit
 
 ### Audit findings and fixes
