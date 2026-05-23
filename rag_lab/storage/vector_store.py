@@ -56,6 +56,39 @@ class VectorStore:
             _HNSW_META_SEARCH_EF: VECTOR_HNSW_SEARCH_EF,
         }
 
+    def _hnsw_effective_params(self, collection) -> dict:
+        """Return the actual build-time HNSW params for an existing collection.
+
+        Reads from collection.configuration_json (the authoritative source written
+        by the hnswlib index at creation time). Falls back to collection.metadata
+        for collections created before ChromaDB 1.5 when configuration_json was
+        unavailable.
+
+        Returns a dict keyed by the standard hnsw: metadata keys so it can be
+        passed directly to _check_hnsw_mismatch.
+
+        Note: collection.metadata may contain stale annotations from past
+        modify() calls (e.g. hnsw:search_ef=500) that do NOT reflect the running
+        index. configuration_json is the ground truth.
+        """
+        try:
+            cfg = collection.configuration_json
+            hnsw = cfg.get("hnsw") or {}
+            if hnsw:
+                params = {}
+                if hnsw.get("space") is not None:
+                    params[_HNSW_META_SPACE] = hnsw["space"]
+                if hnsw.get("max_neighbors") is not None:
+                    params[_HNSW_META_M] = hnsw["max_neighbors"]
+                if hnsw.get("ef_construction") is not None:
+                    params[_HNSW_META_CONSTRUCTION_EF] = hnsw["ef_construction"]
+                if hnsw.get("ef_search") is not None:
+                    params[_HNSW_META_SEARCH_EF] = hnsw["ef_search"]
+                return params
+        except Exception:
+            pass
+        return collection.metadata or {}
+
     def _check_hnsw_mismatch(self, existing_meta: dict) -> None:
         """Warn if the existing collection's HNSW params differ from config.
 
@@ -88,16 +121,15 @@ class VectorStore:
         if ef_s is not None and ef_s != VECTOR_HNSW_SEARCH_EF:
             mismatches.append(
                 f"hnsw:search_ef existing={ef_s} config={VECTOR_HNSW_SEARCH_EF}"
-                " (note: search_ef is only effective in new collections)"
             )
 
         if mismatches:
             logger.warning(
-                "HNSW config mismatch — existing collection %r was created with "
-                "different parameters. New values are ignored until rebuild.\n"
+                "HNSW build-time parameter mismatch — collection %r was built with "
+                "different parameters. Config changes have no effect on the running "
+                "index; a full rebuild is required to apply them.\n"
                 "  Mismatches: %s\n"
-                "  To apply: run `python -m rag_lab.cli ingest` (fresh ingest after "
-                "deleting storage/chroma_db) or use --rebuild if supported.",
+                "  Rebuild: delete storage/chroma_db and run `python -m rag_lab.cli ingest`.",
                 self.collection_name,
                 "; ".join(mismatches),
             )
@@ -105,9 +137,9 @@ class VectorStore:
     def initialize(self) -> None:
         """Initialize the ChromaDB connection and collection.
 
-        If the collection already exists, verifies that its stored HNSW
-        metadata matches the configured values and logs a warning if they
-        differ. Does not modify or destroy the existing collection.
+        If the collection already exists, reads its actual build-time HNSW
+        parameters from configuration_json and warns if they differ from config.
+        Does not modify or destroy the existing collection.
 
         If the collection does not exist, creates it with the HNSW parameters
         from config.py (VECTOR_HNSW_SPACE, VECTOR_HNSW_M,
@@ -125,7 +157,8 @@ class VectorStore:
                 self._collection = self._client.get_collection(
                     name=self.collection_name
                 )
-                self._check_hnsw_mismatch(self._collection.metadata or {})
+                effective = self._hnsw_effective_params(self._collection)
+                self._check_hnsw_mismatch(effective)
             else:
                 self._collection = self._client.create_collection(
                     name=self.collection_name,

@@ -250,6 +250,35 @@ class TestVectorStoreHnswLifecycle:
         )
         assert store.count() == 1
 
+    def test_no_warning_for_stale_metadata_annotation(self, tmp_path, caplog):
+        """Stale metadata from a past modify() call must not produce a false mismatch warning.
+
+        Scenario: collection built with default params (matching config), then
+        metadata annotated via col.modify({"hnsw:search_ef": <different>}).
+        The running index is unchanged. initialize() must read configuration_json
+        (actual index params), not metadata — so no warning is emitted.
+        """
+        import chromadb
+        import logging
+
+        client = chromadb.PersistentClient(path=str(tmp_path))
+        col = client.create_collection(
+            name="test_hnsw",
+            metadata={
+                _HNSW_META_SPACE: VECTOR_HNSW_SPACE,
+                _HNSW_META_M: VECTOR_HNSW_M,
+                _HNSW_META_CONSTRUCTION_EF: VECTOR_HNSW_CONSTRUCTION_EF,
+                _HNSW_META_SEARCH_EF: VECTOR_HNSW_SEARCH_EF,
+            },
+        )
+        # Simulate the stale annotation that was on the production collection
+        col.modify(metadata={_HNSW_META_SEARCH_EF: VECTOR_HNSW_SEARCH_EF + 400})
+
+        store = _make_store(tmp_path)
+        with caplog.at_level(logging.WARNING, logger="rag_lab"):
+            store.initialize()
+        assert "mismatch" not in caplog.text.lower()
+
 
 # ---------------------------------------------------------------------------
 # Profile constant sanity

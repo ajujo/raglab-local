@@ -4,6 +4,51 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.13.1 — 2026-05-23
+
+### HNSW baseline alignment — mismatch detection reads authoritative index params
+
+Operational close: eliminates the false HNSW mismatch warning that appeared in
+doctor/reconcile after v1.13. No changes to retrieval, reranker, chunking,
+HyDE, RRF, MMR, sparse, FTS5, or ChromaDB data.
+
+**Root cause**
+
+The production collection `sdmx_rag` had a stale metadata annotation
+`hnsw:search_ef=500` from a past `modify()` experiment. The actual running HNSW
+index was built with `ef_search=100` (visible in `col.configuration_json`). The
+v1.13 mismatch check read `col.metadata` — the stale annotation — instead of the
+authoritative source, producing a spurious warning on every `initialize()`.
+
+**Fix**
+
+`VectorStore._hnsw_effective_params(collection)` (new) reads
+`collection.configuration_json['hnsw']` and translates it to the standard
+metadata-key format. Falls back to `collection.metadata` for pre-1.5 ChromaDB.
+`initialize()` now calls `_check_hnsw_mismatch(self._hnsw_effective_params(...))`.
+
+**Production collection actual params** (from `configuration_json`):
+
+| param            | value  |
+|------------------|--------|
+| hnsw:space       | cosine |
+| hnsw:M           | 16     |
+| hnsw:construction_ef | 100 |
+| hnsw:search_ef   | 100    |
+
+These match `VECTOR_HNSW_*` config defaults exactly — no mismatch, no warning.
+The `hnsw:search_ef=500` in `col.metadata` is vestigial and has zero effect.
+
+**New test**
+
+`test_no_warning_for_stale_metadata_annotation`: creates collection with default
+params, annotates metadata via `modify()` with a different `search_ef`, then
+verifies that `initialize()` does NOT emit a warning (regression guard).
+
+**Verification:** 723 tests green · reconcile 610/610 · doctor 8/8 OK · benchmark no regression.
+
+---
+
 ## v1.13 — 2026-05-23
 
 ### HNSW configurable — parámetros auditados, config añadida, rebuild documentado (6.3.3)
