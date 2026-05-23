@@ -216,17 +216,36 @@ def _run_test_query(
         query_dense = dense_emb[0]
         query_sparse = next(iter(sparse_dict.values()), {})
 
-        results = hybrid_search(
-            query, vs, ds, fts,
-            query_dense=query_dense,
-            query_sparse=query_sparse,
-            top_k=5,
-            filter_spec=filter_spec,
-        )
+        from rag_lab.config import QUERY_CACHE_ENABLED
+        from rag_lab.cache.query_cache import make_cache_key, get_corpus_fingerprint, get_cache
+
+        corpus_fp = get_corpus_fingerprint(ds._conn)
+        cache_key = make_cache_key(query, top_k=5, corpus_fingerprint=corpus_fp)
+        cache_hit = False
+        results = None
+        if QUERY_CACHE_ENABLED:
+            cached = get_cache().get(cache_key, corpus_fp)
+            if cached is not None:
+                results = cached[:5]
+                cache_hit = True
+
+        if results is None:
+            results = hybrid_search(
+                query, vs, ds, fts,
+                query_dense=query_dense,
+                query_sparse=query_sparse,
+                top_k=5,
+                filter_spec=filter_spec,
+            )
+            if QUERY_CACHE_ENABLED and results:
+                get_cache().set(cache_key, corpus_fp, results, query_norm=query.lower())
 
         if not results:
             print("  (no results)")
             return
+
+        if cache_hit:
+            print(f"  cache_hit=true · key={cache_key[:12]}… · corpus={corpus_fp}")
 
         print(f"  Top {len(results)} results:")
         for i, chunk in enumerate(results):

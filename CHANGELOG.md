@@ -4,6 +4,57 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.14 — 2026-05-23
+
+### Caché de queries — retrieval/reranking persistente, invalidación automática (6.3.7)
+
+No changes to retrieval logic, reranker, chunking, HyDE, MMR, RRF, sparse, FTS5, HNSW, or ChromaDB data.
+
+**Módulo nuevo: `rag_lab/cache/query_cache.py`**
+
+- `QueryCache` — SQLite backend (`data/query_cache.sqlite`), WAL mode.
+- `make_cache_key(query, *, filters, top_k, rrf_k, weights, mmr, hyde, emb_version, corpus_fp)` — SHA-256 estable.
+- `get_corpus_fingerprint(conn)` — `"{n_chunks}:{max_ingest_run_id}"` — cambia automáticamente en ingest/delete.
+- API: `get()`, `set()`, `invalidate()`, `clear()`, `vacuum()`, `stats()`, `inspect()`.
+
+**Qué se cachea:**
+
+| Elemento | ¿Cacheado? |
+|----------|------------|
+| Resultados hybrid_search + reranker | Sí |
+| Respuesta final LLM | **No** (estocástico; queda fuera v1.14) |
+
+**Integración:**
+
+- `rag_lab/cli.py` → `query` command: bypass embed+search+rerank on hit. `--no-cache` para override.
+- `rag_lab/cli.py` → nuevo sub-app `cache`: `stats`, `clear`, `vacuum`, `inspect`.
+- `rag_lab/benchmark/runner.py` → `BenchmarkRunner.run(use_cache=False)` — cache off by default.
+- `rag_lab/benchmark/__main__.py` → `--no-cache` (default) / `--cache`.
+- `rag_lab/maintenance/diagnose.py` → muestra `cache_hit=true · key=<12chars>… · corpus=<fp>`.
+
+**Config:**
+```python
+QUERY_CACHE_ENABLED: bool = True
+QUERY_CACHE_PATH = DATA_DIR / "query_cache.sqlite"
+QUERY_CACHE_TTL_SECONDS: int = 604800  # 7 días
+```
+
+**Tests:** 41 nuevos en `tests/test_cache/test_query_cache.py` (764 total).
+
+**Benchmark (65 queries, variant=full, suite=official):**
+
+| Ejecución | R@5 | nDCG@10 | MRR | p50(ms) |
+|-----------|-----|---------|-----|---------|
+| sin caché (baseline) | 0.821 | 0.837 | 0.939 | 240 |
+| con caché, 1ª vez (misses) | 0.821 | 0.837 | 0.939 | 246 |
+| con caché, 2ª vez (hits) | 0.821 | 0.837 | 0.939 | **0** |
+
+La caché no altera métricas de calidad. Latencia ≈ 0ms en hits (solo SQLite lookup).
+
+**Verificación:** 764 tests · reconcile 610/610 · doctor 8/8 OK · benchmark Δ+0.0000 vs v1.11.
+
+---
+
 ## v1.13.1 — 2026-05-23
 
 ### HNSW baseline alignment — mismatch detection reads authoritative index params

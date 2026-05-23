@@ -46,6 +46,12 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Delete document (all stores) | `python -m rag_lab.cli docs delete SDMX_Glossary` |
 | List all tags | `python -m rag_lab.cli tags list` |
 | Rename a tag | `python -m rag_lab.cli tags rename old-name new-name` |
+| Cache stats | `rag-lab cache stats` |
+| Clear cache | `rag-lab cache clear` |
+| Vacuum cache (remove expired) | `rag-lab cache vacuum` |
+| Inspect cache entry | `rag-lab cache inspect <key>` |
+| Benchmark without cache (default) | `python -m rag_lab.benchmark --suite official --variants full` |
+| Benchmark with cache | `python -m rag_lab.benchmark --suite official --variants full --cache` |
 
 ---
 
@@ -412,6 +418,75 @@ QUERY_REWRITING_TIMEOUT_SECONDS: int = 10
 ```bash
 rag-lab query "What is DSD?" --rewrite
 ```
+
+---
+
+## Caché de queries — v1.14+
+
+### Qué cachea y qué no cachea
+
+| Elemento | ¿Cacheado? |
+|----------|------------|
+| Resultados de `hybrid_search` + reranker (lista de chunks con scores) | **Sí** |
+| Respuesta final del LLM | **No** (intencionado: LLM es estocástico) |
+| Verificación / trust score | **No** |
+| Embeddings de queries | **No** (recalculados siempre; eficientes) |
+
+### Configuración
+
+```python
+QUERY_CACHE_ENABLED: bool = True          # activa/desactiva globalmente
+QUERY_CACHE_PATH = DATA_DIR / "query_cache.sqlite"
+QUERY_CACHE_TTL_SECONDS: int = 604800     # 7 días; 0 = sin TTL
+```
+
+### Cache key
+
+La clave incluye: query normalizada, filtros, top_k, rrf_k, pesos dense/bm25/sparse,
+MMR, HyDE, reranker_heading_context, versión del modelo de embedding, sparse format
+version, y **corpus fingerprint** (`n_chunks:max_ingest_run_id`).
+
+El corpus fingerprint cambia automáticamente en cada ingest y delete — las entradas
+de caché para el corpus anterior se vuelven inaccesibles sin borrarlas explícitamente.
+
+### Invalidación automática
+
+Cuando se ingesta o elimina un documento, `max_ingest_run_id` aumenta y el
+fingerprint cambia. Las entradas antiguas no se devuelven aunque existan físicamente.
+`rag-lab cache vacuum` limpia entradas expiradas por TTL o con TTL 0.
+
+### Comandos CLI
+
+```bash
+rag-lab cache stats            # estadísticas (entries, hits, tamaño DB)
+rag-lab cache clear            # eliminar todas las entradas
+rag-lab cache vacuum           # borrar expiradas + VACUUM SQLite
+rag-lab cache inspect <key>    # inspeccionar una entrada por su clave
+```
+
+### Bypass temporal
+
+```bash
+rag-lab query "..." --no-cache  # ignorar la caché para esta consulta
+```
+
+### Comportamiento en benchmark
+
+El benchmark ignora la caché por defecto para medir calidad y latencia real:
+```bash
+python -m rag_lab.benchmark --suite official --variants full          # cache desactivada (default)
+python -m rag_lab.benchmark --suite official --variants full --cache  # cache activada (mide beneficio)
+```
+
+La caché **no cambia las métricas de calidad** (R@5, nDCG, MRR). Solo reduce latencia
+en hits. La comparación oficial contra baseline siempre debe hacerse sin caché.
+
+### Por qué no se cachean respuestas LLM
+
+Las respuestas del LLM son estocásticas (temperatura > 0) y dependen del contexto
+completo del sistema. Cachearlas introduciría respuestas potencialmente stale ante
+cambios de corpus, config, o prompt. El retrieval es el cuello de botella a reducir;
+el LLM se llama una vez por query de todas formas.
 
 ---
 

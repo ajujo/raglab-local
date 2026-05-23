@@ -119,6 +119,18 @@ def main(argv=None) -> int:
              "or specify with --output)",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        default=True,
+        help="Bypass query cache for accurate latency/quality measurement (default).",
+    )
+    parser.add_argument(
+        "--cache",
+        dest="no_cache",
+        action="store_false",
+        help="Enable query cache (measures cache benefit; hits reduce latency).",
+    )
+    parser.add_argument(
         "--log-level",
         default="WARNING",
         help="Logging level (default: WARNING)",
@@ -170,8 +182,14 @@ def main(argv=None) -> int:
         mmr_lambda=args.mmr_lambda,
     )
 
+    use_cache = not args.no_cache
+    if use_cache:
+        print("  Cache: enabled (--cache)")
+    else:
+        print("  Cache: disabled (default — use --cache to enable)")
+
     print("\nRunning benchmark…")
-    result = runner.run(queries, variants=variants, warmup=not args.no_warmup)
+    result = runner.run(queries, variants=variants, warmup=not args.no_warmup, use_cache=use_cache)
 
     if args.output:
         BenchmarkRunner.save(result, args.output)

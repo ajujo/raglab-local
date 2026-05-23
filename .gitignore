@@ -49,3 +49,4 @@ Thumbs.db
 
 # Notebook outputs
 .ipynb_checkpoints/
+data/query_cache.sqlite
