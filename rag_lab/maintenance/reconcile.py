@@ -1,18 +1,20 @@
 """Reconcile: cross-store consistency check (DocStore vs ChromaDB).
 
 Checks that every chunk_id in DocStore exists in ChromaDB and vice-versa.
-Also reports sparse BLOB coverage and model-version / dimension mismatches.
+Also reports sparse BLOB coverage, model-version / dimension mismatches, and
+FTS5 duplicate rows (chunk_ids appearing more than once in chunks_fts).
 
 Modes:
-    python -m rag_lab.maintenance.reconcile            # report + exit code
-    python -m rag_lab.maintenance.reconcile --check    # explicit CI mode (same behaviour)
-    python -m rag_lab.maintenance.reconcile --repair   # remove orphaned IDs from ChromaDB
-    python -m rag_lab.maintenance.reconcile --fix      # alias for --repair (backward compat)
+    python -m rag_lab.maintenance.reconcile                # report + exit code
+    python -m rag_lab.maintenance.reconcile --check        # explicit CI mode (same behaviour)
+    python -m rag_lab.maintenance.reconcile --repair       # remove orphaned IDs from ChromaDB
+    python -m rag_lab.maintenance.reconcile --fix          # alias for --repair (backward compat)
+    python -m rag_lab.maintenance.reconcile --repair-fts   # remove FTS5 duplicate rows
     python -m rag_lab.maintenance.reconcile --report-json out.json
 
 Exit codes:
     0 = all consistent
-    1 = issues detected (orphans, mismatches, duplicates, etc.)
+    1 = issues detected (orphans, mismatches, duplicates, FTS5 duplicates, etc.)
 """
 
 import argparse
@@ -32,17 +34,21 @@ logger = logging.getLogger("rag_lab")
 def reconcile(
     fix: bool = False,
     repair: bool = False,
+    repair_fts: bool = False,
     quiet: bool = False,
 ) -> dict:
     """Check consistency between DocStore, ChromaDB, FTS5, and sparse BLOBs.
 
     Args:
-        fix:    Backward-compat alias for repair.
-        repair: If True, remove orphaned entries from ChromaDB.
-        quiet:  If True, suppress all stdout output (useful for programmatic callers).
+        fix:        Backward-compat alias for repair.
+        repair:     If True, remove orphaned entries from ChromaDB.
+        repair_fts: If True, remove duplicate rows from chunks_fts (keeps one
+                    row per chunk_id, rebuilt from the chunks table).
+        quiet:      If True, suppress all stdout output (programmatic callers).
 
     Returns:
-        Extended dict with counts, orphan lists, and mismatch lists.
+        Extended dict with counts, orphan lists, mismatch lists, and
+        fts_duplicate_chunk_ids (list of chunk_ids with > 1 FTS5 row).
     """
     from rag_lab.config import (
         EMBEDDING_DIM,
@@ -77,6 +83,15 @@ def reconcile(
         fts_count = conn.execute("SELECT COUNT(*) FROM chunks_fts").fetchone()[0]
     except Exception:
         fts_count = 0
+
+    # --- FTS5 duplicate chunk_ids (INSERT OR REPLACE bug — fixed in v1.16.1) ---
+    try:
+        fts_dup_rows = conn.execute(
+            "SELECT chunk_id FROM chunks_fts GROUP BY chunk_id HAVING COUNT(*) > 1"
+        ).fetchall()
+        fts_duplicate_chunk_ids = [r[0] for r in fts_dup_rows]
+    except Exception:
+        fts_duplicate_chunk_ids = []
 
     # --- Sparse BLOB coverage ---
     try:
@@ -205,6 +220,7 @@ def reconcile(
         "docstore_count": len(docstore_ids),
         "chroma_count": len(chroma_ids),
         "fts_count": fts_count,
+        "fts_duplicate_chunk_ids": fts_duplicate_chunk_ids,
         "sparse_blob_count": sparse_count,
         "chroma_orphans": sorted(in_chroma_not_docstore),
         "missing_from_chroma": sorted(in_docstore_not_chroma),
@@ -218,6 +234,7 @@ def reconcile(
         "stale_ingest_runs": stale_ingest_runs,
         "failed_ingest_runs": failed_ingest_runs,
         "repaired": False,
+        "fts_repaired": False,
     }
 
     if not quiet:
@@ -230,6 +247,34 @@ def reconcile(
         if not quiet:
             print(f"  ✓ Removed {len(ids_to_delete)} orphaned IDs from ChromaDB")
             sep = "─" * 50
+            print(f"{sep}\n")
+
+    if repair_fts and fts_duplicate_chunk_ids:
+        # Rebuild chunks_fts for affected doc_ids: delete all rows for those
+        # chunk_ids, then re-insert exactly once from the chunks table.
+        affected = fts_duplicate_chunk_ids
+        placeholders = ", ".join("?" * len(affected))
+        # Collect (chunk_id, doc_id, text) from the canonical chunks table
+        rows = conn.execute(
+            f"SELECT chunk_id, doc_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
+            affected,
+        ).fetchall()
+        conn.execute(
+            f"DELETE FROM chunks_fts WHERE chunk_id IN ({placeholders})", affected
+        )
+        for row in rows:
+            conn.execute(
+                "INSERT INTO chunks_fts(chunk_id, doc_id, text) VALUES (?, ?, ?)", row
+            )
+        conn.commit()
+        result["fts_repaired"] = True
+        result["fts_duplicate_chunk_ids"] = []
+        result["fts_count"] = conn.execute(
+            "SELECT COUNT(*) FROM chunks_fts"
+        ).fetchone()[0]
+        if not quiet:
+            sep = "─" * 50
+            print(f"  ✓ Removed {len(affected)} FTS5 duplicate chunk_id(s)")
             print(f"{sep}\n")
 
     ds.close()
@@ -262,6 +307,10 @@ def _print_report(result: dict, docstore_count: int) -> None:
 
     if result["duplicate_chunk_ids"]:
         print(f"  ⚠ {len(result['duplicate_chunk_ids'])} duplicate chunk_ids in DocStore")
+
+    if result.get("fts_duplicate_chunk_ids"):
+        n = len(result["fts_duplicate_chunk_ids"])
+        print(f"  ⚠ {n} FTS5 duplicate chunk_id(s) — run: python -m rag_lab.maintenance.reconcile --repair-fts")
 
     if result["model_version_mismatches"]:
         print(f"  ⚠ {len(result['model_version_mismatches'])} chunks with stale embedding_model_version")
@@ -299,6 +348,9 @@ def _print_report(result: dict, docstore_count: int) -> None:
     if result["fts_count"] < docstore_count:
         missing = docstore_count - result["fts_count"]
         print(f"  ℹ {missing} chunks not in FTS5 — run: python -m rag_lab.maintenance.migrate_to_v2")
+    elif result["fts_count"] > docstore_count and not result.get("fts_duplicate_chunk_ids"):
+        extra = result["fts_count"] - docstore_count
+        print(f"  ⚠ FTS5 has {extra} extra row(s) vs DocStore — run: python -m rag_lab.maintenance.reconcile --repair-fts")
 
     print(f"{sep}\n")
 
@@ -316,6 +368,7 @@ def _has_issues(result: dict) -> bool:
         result.get("chroma_orphans")
         or result.get("missing_from_chroma")
         or result.get("duplicate_chunk_ids")
+        or result.get("fts_duplicate_chunk_ids")
         or result.get("model_version_mismatches")
         or result.get("embedding_dim_mismatches")
         or result.get("sparse_format_version_mismatches")
@@ -341,13 +394,15 @@ if __name__ == "__main__":
                         help="Alias for --repair (backward compat)")
     parser.add_argument("--repair", action="store_true",
                         help="Remove orphaned entries from ChromaDB")
+    parser.add_argument("--repair-fts", action="store_true",
+                        help="Remove FTS5 duplicate rows (chunk_ids with >1 row in chunks_fts)")
     parser.add_argument("--check", action="store_true",
                         help="CI mode: exit 0 if consistent, 1 if issues (default behaviour)")
     parser.add_argument("--report-json", metavar="PATH", default=None,
                         help="Save JSON report to this path")
     args = parser.parse_args()
 
-    result = reconcile(fix=args.fix, repair=args.repair)
+    result = reconcile(fix=args.fix, repair=args.repair, repair_fts=args.repair_fts)
 
     if args.report_json:
         save_report(result, args.report_json)
