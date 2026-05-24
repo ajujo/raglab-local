@@ -4,6 +4,19 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## Sprint v1.x — cierre (2026-05-23)
+
+**Estado:** Cerrado. Sistema estable y apto para uso real controlado.
+
+- 972 tests passing.
+- 610/610/610/610 stores sincronizados.
+- E2E answer verifier: 10/10 PASS.
+- Benchmark oficial sin regresión desde v1.11 (R@5=0.821, nDCG=0.837, MRR=0.939).
+- No se abre v1.19 hasta que el uso real genere problemas concretos.
+- Ver `docs/PROJECT_STATUS.md` para el estado completo del sistema.
+
+---
+
 ## v1.18.1 — 2026-05-23 — Answer Verifier E2E Audit
 
 ### Scope
