@@ -12,7 +12,7 @@ RAG-Lab is a local, CLI-only Retrieval-Augmented Generation system for querying 
 
 ## Current state
 
-Version **v1.19.1** — stable, in controlled local use. 1031 tests passing. Production corpus: 610 chunks.
+Version **v1.20** — stable, in controlled local use. 1031 tests passing. Production corpus: 610 chunks.
 
 ## Quick start
 
