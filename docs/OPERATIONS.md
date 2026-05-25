@@ -614,14 +614,16 @@ Documentada en `v1.11_official_full_eval.json` meta → `known_regressions`.
 
 Every ingest run validates the source document against the canonical Markdown contract before opening any transaction.
 
+For full documentation of the frontmatter contract (fields, derived tags, filter integration), see **[docs/FRONTMATTER.md](FRONTMATTER.md)**.
+
 ### Validation checks
+
+#### General document checks
 
 | Code | Severity | Description |
 |------|----------|-------------|
 | `encoding_error` | ERROR | File is not valid UTF-8 |
 | `empty_file` | ERROR | File is empty or whitespace-only |
-| `frontmatter_invalid_yaml` | ERROR | YAML frontmatter fails to parse |
-| `frontmatter_unclosed` | WARN | `---` block opened but never closed |
 | `min_content` | WARN | Content below `min_content_tokens` threshold (default 50) |
 | `missing_title` | WARN | No H1 heading found |
 | `heading_hierarchy_skip` | WARN | Heading levels skip (e.g. H1→H3) |
@@ -629,6 +631,27 @@ Every ingest run validates the source document against the canonical Markdown co
 | `large_table` | WARN | Table has more than `max_table_rows` rows (default 200) |
 | `estimated_chunks_high` | WARN | Document will exceed `max_estimated_chunks` (default 200) |
 | `long_line` | INFO | Line length exceeds `max_line_length` (default 500 chars) |
+
+#### Frontmatter checks (v1.19+)
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| `frontmatter_missing` | WARN | No `---` frontmatter block found at start of file |
+| `frontmatter_unclosed` | WARN | `---` block opened but never closed |
+| `frontmatter_invalid_yaml` | ERROR | YAML frontmatter fails to parse |
+| `frontmatter_not_mapping` | ERROR | Frontmatter parses but is not a key-value mapping |
+| `frontmatter_scope_violation` | ERROR | Prohibited field present (`dataset` or `dataset_id`) |
+| `frontmatter_missing_doc_id` | ERROR | `doc_id` field is absent — required for ingestion |
+| `frontmatter_missing_title` | WARN | `title` field is absent (H1 will be used as fallback) |
+| `frontmatter_missing_domain` | WARN | `domain` classification field is absent |
+| `frontmatter_missing_source_type` | WARN | `source_type` classification field is absent |
+| `frontmatter_missing_language` | WARN | `language` classification field is absent |
+| `frontmatter_tags_not_list` | ERROR | `tags` field is present but is not a YAML list |
+| `frontmatter_tag_not_string` | ERROR | A tag element is not a string |
+| `frontmatter_tag_empty` | WARN | A tag element is an empty string |
+| `frontmatter_tag_whitespace` | WARN | A tag element contains only whitespace |
+| `frontmatter_tag_duplicate` | WARN | A tag element appears more than once |
+| `yaml_unavailable` | INFO | `pyyaml` is not installed; frontmatter skipped |
 
 ### Blocking behaviour
 
