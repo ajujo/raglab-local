@@ -205,6 +205,52 @@ def reconcile(
     except Exception:
         orphaned_document_tags = []
 
+    # --- v1.19 frontmatter tag consistency ---
+    # Documents with domain/source_type/language/version fields but missing the
+    # corresponding derived tag (e.g., domain="sdmx" but no "domain:sdmx" tag).
+    docs_missing_derived_tags: list = []
+    try:
+        _prefixes = {
+            "domain":      "domain:",
+            "source_type": "source_type:",
+            "language":    "lang:",
+            "version":     "version:",
+        }
+        existing_cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(documents)").fetchall()
+        }
+        if all(col in existing_cols for col in _prefixes):
+            rows = conn.execute(
+                "SELECT doc_id, domain, source_type, language, version FROM documents"
+            ).fetchall()
+            for row in rows:
+                _doc_id, _domain, _source_type, _lang, _ver = row
+                _existing_tags = {
+                    r[0]
+                    for r in conn.execute(
+                        """
+                        SELECT t.name FROM tags t
+                        JOIN document_tags dt ON t.tag_id = dt.tag_id
+                        WHERE dt.doc_id = ?
+                        """,
+                        (_doc_id,),
+                    ).fetchall()
+                }
+                _missing = []
+                if _domain and f"domain:{_domain.strip().lower()}" not in _existing_tags:
+                    _missing.append(f"domain:{_domain.strip().lower()}")
+                if _source_type and f"source_type:{_source_type.strip().lower()}" not in _existing_tags:
+                    _missing.append(f"source_type:{_source_type.strip().lower()}")
+                if _lang and f"lang:{_lang.strip().lower()}" not in _existing_tags:
+                    _missing.append(f"lang:{_lang.strip().lower()}")
+                if _ver and f"version:{str(_ver).strip()}" not in _existing_tags:
+                    _missing.append(f"version:{str(_ver).strip()}")
+                if _missing:
+                    docs_missing_derived_tags.append({"doc_id": _doc_id, "missing_tags": _missing})
+    except Exception:
+        docs_missing_derived_tags = []
+
     # --- v4 ingest transaction checks ---
     # Stale IN_PROGRESS runs (started > 30 min ago — likely crashed)
     try:
@@ -247,6 +293,7 @@ def reconcile(
         "orphaned_documents": orphaned_documents,
         "chunks_without_document": chunks_without_document,
         "orphaned_document_tags": orphaned_document_tags,
+        "docs_missing_derived_tags": docs_missing_derived_tags,
         "stale_ingest_runs": stale_ingest_runs,
         "failed_ingest_runs": failed_ingest_runs,
         "missing_model_metadata_count": missing_meta_count,
@@ -372,6 +419,13 @@ def _print_report(result: dict, docstore_count: int) -> None:
               " — run: python -m rag_lab.maintenance.migrate_to_v3")
     if result.get("orphaned_document_tags"):
         print(f"  ⚠ {len(result['orphaned_document_tags'])} document_tags pointing to non-existent documents")
+    if result.get("docs_missing_derived_tags"):
+        n = len(result["docs_missing_derived_tags"])
+        print(f"  ℹ {n} document(s) have classification fields but missing derived tags")
+        for entry in result["docs_missing_derived_tags"][:5]:
+            print(f"    {entry['doc_id']}: missing {entry['missing_tags']}")
+        if n > 5:
+            print(f"    … and {n - 5} more")
 
     if result.get("stale_ingest_runs"):
         n = len(result["stale_ingest_runs"])

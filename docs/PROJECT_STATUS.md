@@ -1,6 +1,6 @@
 # RAG-Lab — Estado del Proyecto
 
-**Versión actual:** v1.18.1  
+**Versión actual:** v1.19  
 **Estado:** Estable — cerrado — apto para uso real controlado  
 **Fecha de cierre:** 2026-05-23  
 
@@ -213,6 +213,7 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 | Versión | Cambio principal |
 |---------|-----------------|
+| v1.19 | Frontmatter metadata contract — doc_id, domain, source_type, language, version, tags |
 | v1.18.2 | Remove legacy SparseStore (JSON) — SQLite BLOBs son canónicos |
 | v1.18.1 | E2E audit verificador citas — 10/10 PASS; script + docs |
 | v1.18 | Verification hardening — 4 bugs, evidence_map, verbose trace, prompt hardening |

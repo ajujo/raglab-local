@@ -172,6 +172,24 @@ def diagnose(
         "sparse_ok": sparse_ok,
     }
 
+    # Show document metadata if --doc-id is given
+    if doc_id:
+        from rag_lab.storage.metadata_store import MetadataStore
+        _ms = MetadataStore(conn=conn)
+        _ms.initialize()
+        _doc = _ms.get_document(doc_id)
+        if _doc:
+            print(f"\n  Document metadata for '{doc_id}':")
+            for _k in ("title", "domain", "source_type", "language", "version"):
+                _v = _doc.get(_k)
+                if _v:
+                    print(f"    {_k:<20} {_v}")
+            _tags = _doc.get("tags", [])
+            if _tags:
+                print(f"    {'tags':<20} {', '.join(_tags)}")
+        else:
+            print(f"\n  [!] No document metadata row found for '{doc_id}'.")
+
     if query:
         print(f"\n  Test query: {query!r}")
         if not _filter_spec.is_empty():
@@ -183,6 +201,14 @@ def diagnose(
                 print(f"    tags_exclude : {_filter_spec.tags_exclude}")
             if _filter_spec.doc_ids:
                 print(f"    doc_ids      : {_filter_spec.doc_ids}")
+            if _filter_spec.domain:
+                print(f"    domain       : {_filter_spec.domain}")
+            if _filter_spec.source_type:
+                print(f"    source_type  : {_filter_spec.source_type}")
+            if _filter_spec.language:
+                print(f"    language     : {_filter_spec.language}")
+            if _filter_spec.version:
+                print(f"    version      : {_filter_spec.version}")
             print(f"    → {stats['matched_documents']}/{stats['total_documents']} documents match filter")
         print("  " + "·" * 50)
         _run_test_query(query, ds, explain=explain, filter_spec=_filter_spec)

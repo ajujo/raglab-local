@@ -62,6 +62,14 @@ class _PrepResult:
     validation_summary: str = ""
     ok: bool = True
     error: Optional[str] = None
+    # Frontmatter fields parsed during preparation
+    fm_title: Optional[str] = None
+    fm_domain: Optional[str] = None
+    fm_source_type: Optional[str] = None
+    fm_language: Optional[str] = None
+    fm_version: Optional[str] = None
+    fm_tags: List[str] = field(default_factory=list)
+    fm_derived_tags: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +85,7 @@ def _prepare_no_db(source_path: Path, strict: bool) -> _PrepResult:
     from rag_lab.ingest.manifest import compute_md5
     from rag_lab.ingest.cleaner import clean_document
     from rag_lab.ingest.markdown_contract import validate_markdown
+    from rag_lab.ingest.frontmatter import parse_frontmatter, extract_h1_title
     from rag_lab.chunking.splitter import chunk_document
     from rag_lab.config import CHUNK_MAX_TOKENS, CHUNK_OVERLAP
 
@@ -94,6 +103,12 @@ def _prepare_no_db(source_path: Path, strict: bool) -> _PrepResult:
                 ok=False, error=f"validation failed: {validation_summary}",
             )
 
+        # Parse frontmatter for document classification metadata
+        raw_text = source_path.read_text(encoding="utf-8")
+        fm = parse_frontmatter(raw_text)
+        # Resolve title: frontmatter > H1 heading
+        title = fm.title or extract_h1_title(raw_text)
+
         cleaned_path = clean_document(source_path)
         cleaned_text = cleaned_path.read_text(encoding="utf-8")
         chunks = chunk_document(
@@ -105,6 +120,13 @@ def _prepare_no_db(source_path: Path, strict: bool) -> _PrepResult:
             chunk_dicts=[c.to_dict() for c in chunks],
             validation_summary=validation_summary,
             ok=True,
+            fm_title=title,
+            fm_domain=fm.domain,
+            fm_source_type=fm.source_type,
+            fm_language=fm.language,
+            fm_version=fm.version,
+            fm_tags=fm.tags,
+            fm_derived_tags=fm.derived_tags,
         )
     except Exception as exc:
         return _PrepResult(
@@ -340,9 +362,19 @@ def _run_batch_ingest(
                     chunks_written_fts5=len(result.chunk_dicts),
                     chunks_written_sparse=n_sparse,
                 )
-                MetadataStore(conn=doc_store._conn).upsert_document(
-                    doc_id, path=str(result.source_path),
+                ms = MetadataStore(conn=doc_store._conn)
+                ms.upsert_document(
+                    doc_id,
+                    path=str(result.source_path),
+                    title=result.fm_title,
+                    domain=result.fm_domain,
+                    source_type=result.fm_source_type,
+                    language=result.fm_language,
+                    version=result.fm_version,
                 )
+                # Import explicit tags + derived tags from frontmatter
+                for tag in result.fm_tags + result.fm_derived_tags:
+                    ms.assign_tag(doc_id, tag)
                 txn.update(metadata_written=1)
 
             # Update manifest for backward compatibility
@@ -872,6 +904,12 @@ def _ingest_one(
 
     console.print(f"[bold cyan]Ingesting: {source_path.name}[/bold cyan]")
 
+    # Parse frontmatter for document classification metadata
+    from rag_lab.ingest.frontmatter import parse_frontmatter, extract_h1_title
+    raw_text = source_path.read_text(encoding="utf-8")
+    _fm = parse_frontmatter(raw_text)
+    _fm_title = _fm.title or extract_h1_title(raw_text)
+
     cleaned_path = clean_document(source_path)
     create_manifest(source_path, cleaned_path, force=force)
 
@@ -927,7 +965,18 @@ def _ingest_one(
             chunks_written_sparse=n_sparse,
         )
 
-        MetadataStore(conn=doc_store._conn).upsert_document(doc_id, path=str(source_path))
+        _ms = MetadataStore(conn=doc_store._conn)
+        _ms.upsert_document(
+            doc_id,
+            path=str(source_path),
+            title=_fm_title,
+            domain=_fm.domain,
+            source_type=_fm.source_type,
+            language=_fm.language,
+            version=_fm.version,
+        )
+        for tag in _fm.tags + _fm.derived_tags:
+            _ms.assign_tag(doc_id, tag)
         txn.update(metadata_written=1)
 
     console.print(
