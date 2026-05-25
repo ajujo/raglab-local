@@ -1,8 +1,8 @@
 # RAG-Lab — Estado del Proyecto
 
-**Versión actual:** v1.19  
+**Versión actual:** v1.19.1  
 **Estado:** Estable — cerrado — apto para uso real controlado  
-**Fecha de cierre:** 2026-05-23  
+**Fecha de cierre:** 2026-05-25  
 
 ---
 
@@ -100,8 +100,9 @@ suficiente volumen y análisis real. Ver sección "Qué NO está activado".
 
 | Suite | Tests | Estado |
 |-------|-------|--------|
-| `pytest tests/ -q` | 972 | ✓ |
+| `pytest tests/ -q` | 1031 | ✓ |
 | `tests/test_verification/` | 47 | ✓ |
+| `tests/test_ingest/test_frontmatter_contract.py` | 52 | ✓ |
 | `tests/test_cli/test_audit_script.py` | 21 | ✓ |
 | `tests/test_cli/test_store_isolation_guard.py` | 7 | ✓ |
 
@@ -209,10 +210,22 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 ---
 
+## Documentación de referencia
+
+| Documento | Descripción |
+|-----------|-------------|
+| [docs/FRONTMATTER.md](FRONTMATTER.md) | Contrato canónico de frontmatter — campos, tags derivados, validación, filtros |
+| [docs/OPERATIONS.md](OPERATIONS.md) | Guía operativa — comandos, diagnóstico, mantenimiento |
+| [docs/BENCHMARKS.md](BENCHMARKS.md) | Histórico de benchmarks y baseline activo |
+| [docs/ANSWER_VERIFICATION.md](ANSWER_VERIFICATION.md) | Verificador de citas y consistencia |
+
+---
+
 ## Historial de versiones relevante
 
 | Versión | Cambio principal |
 |---------|-----------------|
+| v1.19.1 | Documentación canónica frontmatter — `docs/FRONTMATTER.md`, tabla de códigos en OPERATIONS.md |
 | v1.19 | Frontmatter metadata contract — doc_id, domain, source_type, language, version, tags |
 | v1.18.2 | Remove legacy SparseStore (JSON) — SQLite BLOBs son canónicos |
 | v1.18.1 | E2E audit verificador citas — 10/10 PASS; script + docs |
@@ -235,18 +248,17 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 ## Próximo trabajo recomendado
 
-El sprint v1.18.1 cierra la fase de infraestructura y verificación.
+v1.19.1 cierra la fase de documentación del contrato de frontmatter.
 
 **Recomendación:** pausa activa de desarrollo de features. Usar el sistema en producción
 real, observar fallos, recoger feedback, y dejar que los problemas reales dicten la
 siguiente fase.
 
-Señales que justificarían abrir v1.19:
+Señales que justificarían abrir v1.20:
 
 - Feedback acumulado suficiente (>50 eventos) con patrón claro de fallos evitables.
 - Corpus nuevo (documento real a ingestar) que revele un problema de chunking o calidad.
 - Una pregunta de usuario que el sistema falle sistemáticamente con HIGH confidence
   (falso positivo del verificador).
-- Necesidad real de ingestar PDF/DOCX (no anticipada).
 
 Hasta entonces: usar, observar, registrar feedback.

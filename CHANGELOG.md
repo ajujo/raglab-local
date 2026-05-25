@@ -4,6 +4,29 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.19.1 — 2026-05-25 — Frontmatter Documentation
+
+### Scope
+
+Documentation-only micro-release. No code changes. No schema changes. No benchmark impact.
+
+### Changes
+
+- **`docs/FRONTMATTER.md`** (new) — canonical frontmatter contract reference: all fields,
+  required/recommended/optional status, explicit vs derived tags, validation codes,
+  filter integration, full CLI workflow, and future-evolution notes.
+- **`docs/OPERATIONS.md`** — added reference link to `FRONTMATTER.md`; split validation
+  codes table into "General document checks" and "Frontmatter checks (v1.19+)"; added
+  all 16 frontmatter-specific codes with severity and description.
+- **`docs/PROJECT_STATUS.md`** — bumped to v1.19.1; updated test count (972 → 1031);
+  added documentation reference table; updated v1.20 forward-looking signals.
+
+### Tests
+
+1031 passed, 0 failed (no new tests — documentation only).
+
+---
+
 ## v1.19 — 2026-05-25 — Frontmatter Metadata Contract
 
 ### Scope
