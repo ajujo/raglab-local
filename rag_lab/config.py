@@ -109,7 +109,6 @@ CHUNK_MIN_TOKENS = 50
 
 # Rutas centralizadas para los almacenes
 VECTOR_STORE_PATH = STORAGE_DIR / "chroma_db"
-SPARSE_INDEX_PATH = STORAGE_DIR / "sparse_index.json"
 DOCDSTORE_SQLITE_PATH = STORAGE_DIR / "docstore.sqlite"
 
 # Structured chunk-level feedback (v1.15+). Stored in docstore.sqlite alongside

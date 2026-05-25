@@ -3,10 +3,8 @@
 Handles both dense and sparse embeddings for all chunks.
 """
 
-import json
 import logging
 import os
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,7 +14,6 @@ from rag_lab.config import (
     EMBEDDING_DEVICE,
     EMBEDDING_MAX_LENGTH,
     EMBEDDING_MODEL,
-    SPARSE_INDEX_PATH,
 )
 from rag_lab.exceptions import EmbeddingError
 
@@ -171,24 +168,3 @@ def encode_chunks(
         raise EmbeddingError(f"Failed to generate embeddings: {e}")
 
 
-def save_sparse_index(
-    sparse_embeddings: Dict[str, float],
-    output_path: Optional[Path] = None,
-) -> Path:
-    """Save sparse embeddings to a JSON file.
-
-    Args:
-        sparse_embeddings: Dict of chunk_id to sparse vector.
-        output_path: Path to save the file.
-
-    Returns:
-        Path to the saved file.
-    """
-    output_path = output_path or SPARSE_INDEX_PATH
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(sparse_embeddings, f, ensure_ascii=False)
-
-    logger.info(f"Saved sparse index to {output_path}")
-    return output_path

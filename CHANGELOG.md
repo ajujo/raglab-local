@@ -4,6 +4,46 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.18.2 — 2026-05-25 — Remove Legacy Sparse Store
+
+### Scope
+
+Dead-code removal. No retrieval logic changes. No new features. No benchmark impact.
+
+### What was removed
+
+The JSON-backed `SparseStore` class (`rag_lab/storage/sparse_store.py`) was a migration
+artifact from the pre-v2-schema era. Since v2 migration (2026-05-20), sparse vectors
+live exclusively as BLOB columns (`sparse_tokens`, `sparse_weights`) in `docstore.sqlite`
+and are accessed via `rag_lab/retrieval/sparse_scorer.py`. The JSON file was never
+read by any production retrieval, benchmark, diagnose, or CLI path.
+
+### Changes
+
+**Deleted:**
+- `rag_lab/storage/sparse_store.py` — JSON-backed SparseStore class
+
+**Modified:**
+- `rag_lab/storage/__init__.py` — removed SparseStore from exports
+- `rag_lab/doc_manager/interactive.py` — removed SparseStore import and 3-line write path
+- `rag_lab/embedding/encoder.py` — removed `save_sparse_index()` function (zero callers) and `SPARSE_INDEX_PATH` import
+- `rag_lab/config.py` — removed `SPARSE_INDEX_PATH` constant
+- `rag_lab/maintenance/migrate_to_v2.py` — inlined path, removed config import
+- `.gitignore` — added `storage/sparse_index.json` to prevent future creation
+
+**Tests:**
+- `tests/test_storage/test_sparse_store.py` → deleted (tested removed class)
+- `tests/test_storage/test_sparse_scorer_v2.py` → new — tests canonical SQLite BLOB path
+  and 5 scope-guard invariants (module deleted, not exported, SPARSE_INDEX_PATH gone,
+  hybrid_search uses SQLite, save_sparse_index gone)
+- `tests/test_fase0_regressions.py` — removed `TestSparseStoreAutoLoad` (3 tests)
+- `tests/integration/test_full_pipeline.py` — removed SPARSE_INDEX_PATH from 2 fixtures
+- `tests/test_ingest/test_validation.py` — removed SPARSE_INDEX_PATH from fixture
+
+### Test count: 978 (was 972 — net +6 from new scope-guard tests)
+
+---
+
 ## Sprint v1.x — cierre (2026-05-23)
 
 **Estado:** Cerrado. Sistema estable y apto para uso real controlado.

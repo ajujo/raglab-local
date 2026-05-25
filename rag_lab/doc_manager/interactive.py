@@ -137,7 +137,6 @@ def interactive_mode():
 
         # Phase 4: Storage
         from rag_lab.storage.vector_store import VectorStore
-        from rag_lab.storage.sparse_store import SparseStore
         from rag_lab.storage.docstore import DocStore
         from rag_lab.ingest.manifest import create_manifest
 
@@ -151,13 +150,6 @@ def interactive_mode():
             documents=[c.get("text", "") for c in chunk_dicts],
             metadatas=[{"heading_path": c.get("heading_path", ""), "doc_id": c.get("doc_id", "")} for c in chunk_dicts],
         )
-
-        sparse_store = SparseStore()
-        sparse_store.add(
-            ids=[c.get("chunk_id", "") for c in chunk_dicts],
-            sparse_vectors=list(sparse_embeddings.values()),
-        )
-        sparse_store.save()
 
         doc_store = DocStore()
         doc_store.add(chunk_dicts)

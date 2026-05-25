@@ -1,7 +1,6 @@
 """Regression tests for Fase 0 bug fixes.
 
 Covers:
-- Bug 1: SparseStore auto-loads existing data on __init__ (no overwrite on reinit)
 - Bug 2: _delete_chunks_from_chroma uses where filter, not broken query_embedding
 - Bug 3: cli_chat._run_query encodes each query variant exactly once (no triple-encoding)
 - Bug 4: ingest command does not write chunks.jsonl
@@ -13,57 +12,6 @@ import json
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
-
-
-# ---------------------------------------------------------------------------
-# Bug 1 & 2: SparseStore — auto-load and no overwrite
-# ---------------------------------------------------------------------------
-
-class TestSparseStoreAutoLoad:
-    def test_auto_loads_existing_file_on_init(self, tmp_path):
-        """SparseStore.__init__ must load existing JSON without explicit load() call."""
-        from rag_lab.storage.sparse_store import SparseStore
-
-        index_file = tmp_path / "sparse.json"
-        index_file.write_text(json.dumps({
-            "chunk_aaa": {"sparse": {"token1": 0.9}},
-            "chunk_bbb": {"sparse": {"token2": 0.7}},
-        }))
-
-        store = SparseStore(storage_path=index_file)
-        assert store.count() == 2, (
-            "SparseStore must auto-load existing data in __init__; "
-            "otherwise each ingest overwrites the full index"
-        )
-
-    def test_no_overwrite_when_reinited_on_same_file(self, tmp_path):
-        """A second SparseStore instance pointing at the same file must not lose data."""
-        from rag_lab.storage.sparse_store import SparseStore
-
-        index_file = tmp_path / "sparse.json"
-
-        # First ingest: create store, add data, save
-        store_a = SparseStore(storage_path=index_file)
-        store_a.add(["doc1_c1"], [{"token_a": 0.8}])
-        store_a.save()
-
-        # Second ingest: new instance (simulates a second doc ingest)
-        store_b = SparseStore(storage_path=index_file)
-        store_b.add(["doc2_c1"], [{"token_b": 0.6}])
-        store_b.save()
-
-        # Third read: must see BOTH docs
-        store_verify = SparseStore(storage_path=index_file)
-        assert store_verify.count() == 2, (
-            "Second ingest must accumulate, not overwrite the previous index"
-        )
-
-    def test_init_with_missing_file_starts_empty(self, tmp_path):
-        """SparseStore must start empty when file doesn't exist (no crash)."""
-        from rag_lab.storage.sparse_store import SparseStore
-
-        store = SparseStore(storage_path=tmp_path / "nonexistent.json")
-        assert store.count() == 0
 
 
 # ---------------------------------------------------------------------------

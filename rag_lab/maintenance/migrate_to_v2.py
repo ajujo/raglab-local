@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rag_lab.config import DOCDSTORE_SQLITE_PATH, SPARSE_INDEX_PATH
+from rag_lab.config import DOCDSTORE_SQLITE_PATH, STORAGE_DIR
 from rag_lab.logging_config import setup_logging
 from rag_lab.storage.docstore import DocStore
 
@@ -73,9 +73,9 @@ def migrate() -> dict:
 
     # Step 3: Migrate sparse vectors from sparse_index.json
     sparse_migrated = 0
-    if SPARSE_INDEX_PATH.exists():
-        print(f"\n  Reading {SPARSE_INDEX_PATH}...")
-        with open(SPARSE_INDEX_PATH, encoding="utf-8") as f:
+    if STORAGE_DIR / "sparse_index.json".exists():
+        print(f"\n  Reading {STORAGE_DIR / "sparse_index.json"}...")
+        with open(STORAGE_DIR / "sparse_index.json", encoding="utf-8") as f:
             sparse_json = json.load(f)
 
         print(f"  Found {len(sparse_json)} entries in sparse_index.json")
@@ -109,7 +109,7 @@ def migrate() -> dict:
         else:
             print("  ✓ No new sparse vectors to migrate from JSON")
     else:
-        print(f"  (sparse_index.json not found at {SPARSE_INDEX_PATH} — skipping)")
+        print(f"  (sparse_index.json not found at {STORAGE_DIR / "sparse_index.json"} — skipping)")
 
     # Step 4: Report remaining gaps
     no_sparse = conn.execute(
