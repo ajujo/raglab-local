@@ -4,6 +4,51 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.20 — 2026-05-25 — Bilingual GitHub Documentation Restructure
+
+### Scope
+
+Documentation-only release. No code changes. No schema changes. No runtime behaviour changes. No benchmark impact.
+
+### Changes
+
+**Phase 1 — Archive:** 11 obsolete root-level docs moved to `docs/archive/` (history preserved via git rename). Added `docs/archive/README.md` index.
+
+**Phase 2 — Rename:** Existing docs given language suffixes to fit bilingual structure:
+- `docs/BENCHMARKS.md` → `docs/BENCHMARKS.en.md` (content rewritten in English)
+- `docs/FRONTMATTER.md` → `docs/FRONTMATTER.es.md`
+- `docs/OPERATIONS.md` → `docs/OPERATIONS.es.md`
+
+**Phase 3 — New bilingual pairs** (each topic has `.es.md` + `.en.md`):
+- `docs/INSTALLATION.es.md` / `docs/INSTALLATION.en.md`
+- `docs/USAGE.es.md` / `docs/USAGE.en.md`
+- `docs/ARCHITECTURE.es.md` / `docs/ARCHITECTURE.en.md`
+- `docs/BENCHMARKS.es.md` (Spanish translation of benchmark history)
+- `docs/FRONTMATTER.en.md` (English translation of frontmatter contract)
+- `docs/OPERATIONS.en.md` (English translation of operations guide)
+- `docs/ROADMAP.es.md` / `docs/ROADMAP.en.md`
+- `docs/DEVELOPMENT_HISTORY.es.md` / `docs/DEVELOPMENT_HISTORY.en.md`
+- `docs/API_REFERENCE.es.md` / `docs/API_REFERENCE.en.md`
+
+**Phase 4 — README restructure:**
+- `README.md` — rewritten as bilingual entry point with links to all doc pairs
+- `README.es.md` — new comprehensive Spanish guide (16 sections)
+- `README.en.md` — new comprehensive English guide (16 sections)
+
+**Phase 5 — Link hygiene:** Stale links updated across `OPERATIONS.es.md`, `OPERATIONS.en.md`, and `PROJECT_STATUS.md`.
+
+### Tests
+
+1031 passed, 0 failed (no new tests — documentation only).
+
+### Verified
+
+- `rag-lab doctor` — 8/8 OK
+- `rag-lab reconcile --check` — DocStore=ChromaDB=FTS5=Sparse=610 ✓
+- No Python source files modified
+
+---
+
 ## v1.19.1 — 2026-05-25 — Frontmatter Documentation
 
 ### Scope
