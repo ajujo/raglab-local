@@ -214,9 +214,9 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 | Documento | Descripción |
 |-----------|-------------|
-| [docs/FRONTMATTER.md](FRONTMATTER.md) | Contrato canónico de frontmatter — campos, tags derivados, validación, filtros |
-| [docs/OPERATIONS.md](OPERATIONS.md) | Guía operativa — comandos, diagnóstico, mantenimiento |
-| [docs/BENCHMARKS.md](BENCHMARKS.md) | Histórico de benchmarks y baseline activo |
+| [docs/FRONTMATTER.es.md](FRONTMATTER.es.md) | Contrato canónico de frontmatter — campos, tags derivados, validación, filtros |
+| [docs/OPERATIONS.es.md](OPERATIONS.es.md) | Guía operativa — comandos, diagnóstico, mantenimiento |
+| [docs/BENCHMARKS.en.md](BENCHMARKS.en.md) | Histórico de benchmarks y baseline activo |
 | [docs/ANSWER_VERIFICATION.md](ANSWER_VERIFICATION.md) | Verificador de citas y consistencia |
 
 ---
@@ -225,7 +225,7 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 | Versión | Cambio principal |
 |---------|-----------------|
-| v1.19.1 | Documentación canónica frontmatter — `docs/FRONTMATTER.md`, tabla de códigos en OPERATIONS.md |
+| v1.19.1 | Documentación canónica frontmatter — `docs/FRONTMATTER.es.md`, tabla de códigos en OPERATIONS.es.md |
 | v1.19 | Frontmatter metadata contract — doc_id, domain, source_type, language, version, tags |
 | v1.18.2 | Remove legacy SparseStore (JSON) — SQLite BLOBs son canónicos |
 | v1.18.1 | E2E audit verificador citas — 10/10 PASS; script + docs |

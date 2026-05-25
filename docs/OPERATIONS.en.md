@@ -8,9 +8,9 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 
 | Goal | Command |
 |------|---------|
-| Full health check | `python -m rag_lab.doctor` |
+| Full health check | `rag-lab doctor` |
 | Validate a document | `rag-lab docs validate path/to/doc.md` |
-| Validate (strict — warns block) | `rag-lab docs validate --strict path/to/doc.md` |
+| Validate (strict — warnings block) | `rag-lab docs validate --strict path/to/doc.md` |
 | Inspect document structure | `rag-lab docs inspect path/to/doc.md` |
 | Preview chunks without ingesting | `rag-lab docs preview-chunks path/to/doc.md` |
 | Ingest a document (transactional) | `rag-lab ingest --doc path/to/doc.md` |
@@ -25,10 +25,8 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Show a specific ingest run | `rag-lab ingest show <run_id>` |
 | Roll back a failed run manually | `rag-lab ingest rollback <run_id>` |
 | Retry a specific failed run | `rag-lab ingest retry <run_id>` |
-| Health check with test query | `python -m rag_lab.doctor --query "What is SDMX?"` |
-| Run specific checks only | `python -m rag_lab.doctor --checks config,docstore,chromadb` |
-| System health checks | `rag-lab doctor` |
-| Health check subset | `rag-lab doctor --checks config,docstore` |
+| Health check with test query | `rag-lab doctor --query "What is SDMX?"` |
+| Run specific checks only | `rag-lab doctor --checks config,docstore,chromadb` |
 | Store consistency report | `rag-lab reconcile` |
 | Store consistency (CI mode) | `rag-lab reconcile --check` |
 | Remove ChromaDB orphans | `rag-lab reconcile --repair` |
@@ -39,24 +37,23 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 | Diagnostic with signal breakdown | `rag-lab diagnose --query "..." --explain` |
 | Run benchmark | `rag-lab benchmark --suite official --variants full --no-cache` |
 | Benchmark regression check | `python -m rag_lab.benchmark.compare --baseline data/benchmark_v1_1_mmr_20260521.json --current data/benchmark_latest.json` |
-| Ingest all documents | `python -m rag_lab.cli ingest` |
 | Backfill sparse BLOBs | `python -m rag_lab.maintenance.backfill_sparse` |
 | Migrate to schema v2 | `python -m rag_lab.maintenance.migrate_to_v2` |
 | Migrate to schema v3 (metadata) | `python -m rag_lab.maintenance.migrate_to_v3` |
-| List documents | `python -m rag_lab.cli docs list` |
-| List documents by tag | `python -m rag_lab.cli docs list --tag glossary` |
-| Show document details | `python -m rag_lab.cli docs show SDMX_Glossary` |
-| Tag a document | `python -m rag_lab.cli docs tag SDMX_Glossary glossary` |
-| Untag a document | `python -m rag_lab.cli docs untag SDMX_Glossary glossary` |
-| Delete document (all stores) | `python -m rag_lab.cli docs delete SDMX_Glossary` |
-| List all tags | `python -m rag_lab.cli tags list` |
-| Rename a tag | `python -m rag_lab.cli tags rename old-name new-name` |
+| List documents | `rag-lab docs list` |
+| List documents by tag | `rag-lab docs list --tag glossary` |
+| Show document details | `rag-lab docs show SDMX_Glossary` |
+| Tag a document | `rag-lab docs tag SDMX_Glossary glossary` |
+| Untag a document | `rag-lab docs untag SDMX_Glossary glossary` |
+| Delete document (all stores) | `rag-lab docs delete SDMX_Glossary` |
+| List all tags | `rag-lab tags list` |
+| Rename a tag | `rag-lab tags rename old-name new-name` |
 | Cache stats | `rag-lab cache stats` |
 | Clear cache | `rag-lab cache clear` |
 | Vacuum cache (remove expired) | `rag-lab cache vacuum` |
 | Inspect cache entry | `rag-lab cache inspect <key>` |
-| Benchmark without cache (default) | `python -m rag_lab.benchmark --suite official --variants full` |
-| Benchmark with cache | `python -m rag_lab.benchmark --suite official --variants full --cache` |
+| Benchmark without cache (default) | `rag-lab benchmark --suite official --variants full` |
+| Benchmark with cache | `rag-lab benchmark --suite official --variants full --cache` |
 | Add chunk feedback | `rag-lab feedback add --query "..." --chunk-id "..." --feedback relevant` |
 | List feedback events | `rag-lab feedback list` |
 | Feedback statistics | `rag-lab feedback stats` |
@@ -67,7 +64,7 @@ Operational reference for diagnosing, maintaining, and protecting the RAG-Lab sy
 
 ## Installation
 
-Install the `rag-lab` CLI wrapper with editable mode:
+Install the `rag-lab` CLI wrapper in editable mode:
 
 ```bash
 pip install -e .
@@ -81,7 +78,7 @@ After this, `rag-lab ingest`, `rag-lab docs`, `rag-lab tags`, etc. all work from
 
 ## Doctor command
 
-`rag-lab doctor` (or `python -m rag_lab.doctor`) runs 8 sequential health checks and exits with a clear status.
+`rag-lab doctor` runs 8 sequential health checks and exits with a clear status.
 
 ### Checks
 
@@ -134,7 +131,7 @@ RAG-Lab Doctor
 
 ## Reconcile command
 
-`rag-lab reconcile` (or `python -m rag_lab.maintenance.reconcile`) checks consistency between DocStore and ChromaDB.
+`rag-lab reconcile` checks consistency between DocStore and ChromaDB.
 
 ### Modes
 
@@ -193,7 +190,7 @@ Any of these conditions causes exit code 1 and is flagged in the report.
 
 ## Diagnose command
 
-`rag-lab diagnose` (or `python -m rag_lab.maintenance.diagnose`) gives a detailed view of store counts and coverage.
+`rag-lab diagnose` gives a detailed view of store counts and coverage.
 
 ### Options
 
@@ -226,7 +223,7 @@ This is the primary tool for diagnosing why a specific chunk appears or doesn't 
 
 `process_query()` can generate additional query variants to broaden the candidate pool.
 Both variants are **disabled by default** — A/B testing showed zero retrieval quality benefit
-at 2-2.4× per-query latency cost.
+at 2–2.4× per-query latency cost.
 
 ### Config flags
 
@@ -255,41 +252,41 @@ Before v1.11, this was controlled by `VARIANTS_COUNT = 2`. That parameter has be
 
 ---
 
-## HNSW del vector store — v1.13+
+## HNSW vector store — v1.13+
 
-ChromaDB usa HNSW (Hierarchical Navigable Small World) para búsqueda densa.
+ChromaDB uses HNSW (Hierarchical Navigable Small World) for dense search.
 
-### Parámetros configurables (`rag_lab/config.py`, sección 6.5)
+### Configurable parameters (`rag_lab/config.py`, section 6.5)
 
 ```python
-VECTOR_HNSW_SPACE = "cosine"       # distancia: "cosine", "l2", "ip"
-VECTOR_HNSW_M = 16                 # conexiones por nodo (calidad vs memoria)
-VECTOR_HNSW_CONSTRUCTION_EF = 100  # calidad del grafo en indexación
-VECTOR_HNSW_SEARCH_EF = 100        # pool de candidatos en búsqueda
+VECTOR_HNSW_SPACE = "cosine"       # distance metric: "cosine", "l2", "ip"
+VECTOR_HNSW_M = 16                 # connections per node (quality vs memory)
+VECTOR_HNSW_CONSTRUCTION_EF = 100  # graph quality during indexing
+VECTOR_HNSW_SEARCH_EF = 100        # candidate pool during search
 ```
 
-### Restricciones importantes de ChromaDB 1.x
+### Important ChromaDB 1.x constraints
 
-**Todos los parámetros son build-time.** No existe mecanismo de query-time mutable.
-Cambiar `hnsw:space` en una colección existente lanza un error explícito.
-Llamar a `col.modify(metadata={"hnsw:search_ef": N})` persiste el valor en metadata
-pero **no modifica el índice hnswlib en memoria** — el índice sigue usando el valor
-con el que fue construido.
+**All parameters are build-time.** There is no mutable query-time mechanism.
+Changing `hnsw:space` on an existing collection raises an explicit error.
+Calling `col.modify(metadata={"hnsw:search_ef": N})` persists the value in metadata
+but **does not modify the in-memory hnswlib index** — the index continues using the
+value it was built with.
 
-### Fuente de verdad: `configuration_json` vs `metadata`
+### Source of truth: `configuration_json` vs `metadata`
 
-ChromaDB 1.5+ expone dos fuentes de información HNSW:
+ChromaDB 1.5+ exposes two sources of HNSW information:
 
-| Fuente | Qué representa |
-|--------|----------------|
-| `col.configuration_json['hnsw']` | Parámetros reales del índice construido (**autoritativa**) |
-| `col.metadata` | Anotaciones opcionales; pueden ser stale tras `modify()` |
+| Source | What it represents |
+|--------|-------------------|
+| `col.configuration_json['hnsw']` | Actual index parameters as built (**authoritative**) |
+| `col.metadata` | Optional annotations; may be stale after `modify()` |
 
-`VectorStore.initialize()` usa `configuration_json` como fuente autoritativa para
-la detección de mismatch. Esto evita falsos warnings por anotaciones vestigiales en
-metadata de experimentos pasados.
+`VectorStore.initialize()` uses `configuration_json` as the authoritative source for
+mismatch detection. This avoids false warnings from vestigial metadata annotations
+left by past experiments.
 
-### Colección oficial de producción (baseline aceptado)
+### Official production collection (accepted baseline)
 
 ```
 collection: sdmx_rag
@@ -298,73 +295,74 @@ configuration_json.hnsw:
   max_neighbors:   16     (= hnsw:M)
   ef_construction: 100
   ef_search:       100
-metadata (vestigial): {hnsw:search_ef: 500}  <- stale, sin efecto
+metadata (vestigial): {hnsw:search_ef: 500}  <- stale, no effect
 ```
 
-El `hnsw:search_ef=500` en `metadata` es un residuo de un experimento anterior
-(llamada a `modify()`). El índice real usa `ef_search=100`. No se debe modificar
-la colección para corregir esto — es inofensivo y no produce warnings.
+The `hnsw:search_ef=500` in `metadata` is a leftover from an earlier experiment
+(a `modify()` call). The actual index uses `ef_search=100`. The collection should
+not be modified to correct this — it is harmless and produces no warnings.
 
-### Cuándo se aplican los parámetros
+### When parameters take effect
 
-| Momento | Efecto |
-|---------|--------|
-| Primera ingest (colección nueva) | Sí — se aplican al crear la colección |
-| Ingest adicional (colección existente) | No — se usa la colección existente |
-| Cambiar config sin rebuild | No — se emite WARNING de mismatch |
-| Rebuild (eliminar chroma_db + reingestar) | Sí — nueva colección con nuevos params |
+| Moment | Effect |
+|--------|--------|
+| First ingest (new collection) | Yes — applied when collection is created |
+| Additional ingest (existing collection) | No — existing collection is reused |
+| Config change without rebuild | No — mismatch WARNING is emitted |
+| Rebuild (delete chroma_db + re-ingest) | Yes — new collection with new params |
 
-### Cómo detectar la configuración activa real
+### How to inspect the active configuration
 
 ```python
 import chromadb
 c = chromadb.PersistentClient("storage/chroma_db")
 col = c.get_collection("sdmx_rag")
-print(col.configuration_json['hnsw'])  # parámetros reales del índice (autoritativo)
-print(col.metadata)                    # anotaciones (pueden ser stale)
+print(col.configuration_json['hnsw'])  # real index parameters (authoritative)
+print(col.metadata)                    # annotations (may be stale)
 ```
 
-O con el doctor:
+Or with the doctor:
 ```bash
 rag-lab doctor
 ```
 
-### Cómo hacer rebuild
+### How to rebuild
 
 ```bash
 rm -rf storage/chroma_db/
-python -m rag_lab.cli ingest
+rag-lab ingest
 ```
 
 ### Mismatch warning
 
-Si los parámetros reales del índice (`configuration_json`) difieren de los valores
-en `config.py`, `VectorStore.initialize()` emite un WARNING con las diferencias y el
-comando de rebuild. La colección **no se destruye ni modifica** en ningún caso.
+If the actual index parameters (`configuration_json`) differ from the values in
+`config.py`, `VectorStore.initialize()` emits a WARNING with the differences and the
+rebuild command. The collection is **never destroyed or modified** automatically.
 
-Las anotaciones de metadata que difieran del config pero no reflejen los parámetros
-reales del índice **no producen warning** (no son mismatches reales).
+Metadata annotations that differ from the config but do not reflect the actual index
+parameters **do not produce a warning** (they are not real mismatches).
 
-### Benchmark de perfiles (2026-05-23, 610 chunks)
+### Profile benchmark (2026-05-23, 610 chunks)
 
-| Perfil   |  M | ef_c | ef_s | p50(ms) | recall vs prod |
-|----------|----|----- |------|---------|----------------|
-| current  | 16 |  100 |  100 |    1.87 | 0.9547         |
-| fast     |  8 |   64 |   50 |    1.87 | **0.8313** ❌  |
-| balanced | 16 |  128 |  100 |    1.91 | 0.9553         |
-| recall   | 32 |  200 |  200 |    2.09 | 0.9533         |
+| Profile  |  M | ef_c | ef_s | p50 (ms) | recall vs prod |
+|----------|----|------|------|----------|----------------|
+| current  | 16 |  100 |  100 |     1.87 | 0.9547         |
+| fast     |  8 |   64 |   50 |     1.87 | **0.8313** ❌  |
+| balanced | 16 |  128 |  100 |     1.91 | 0.9553         |
+| recall   | 32 |  200 |  200 |     2.09 | 0.9533         |
 
-**Recomendación:** mantener `current` (M=16). La latencia HNSW (~2ms) es irrelevante
-frente al reranker (~250ms). `fast` degrada recall. `balanced`/`recall` aportan < 0.001
-de mejora a 610 chunks. Beneficio real de `recall` solo a partir de ~10k chunks.
+**Recommendation:** keep `current` (M=16). HNSW latency (~2ms) is negligible compared
+to the reranker (~250ms). `fast` degrades recall. `balanced`/`recall` provide less than
+0.001 improvement at 610 chunks. A real benefit from `recall` only emerges above ~10k chunks.
 
-### Herramienta de perfiles
+### Profile tool
 
 ```bash
 python -m rag_lab.maintenance.hnsw_profiles
 ```
 
-Crea colecciones temporales (sin tocar producción), copia embeddings, mide latencia y recall.
+Creates temporary collections (without touching production), copies embeddings, and
+measures latency and recall.
 
 ---
 
@@ -375,7 +373,7 @@ that embedding as the dense retrieval query. The theory: hypothetical vocabulary
 to the target documents than the bare question.
 
 **Status:** Disabled by default. A/B benchmark (65 queries, 2026-05-22) shows net negative
-on this corpus: R@5 −3.8pp, nDCG@10 −1.9pp, latency ×12.5. See `docs/BENCHMARKS.md`.
+on this corpus: R@5 −3.8pp, nDCG@10 −1.9pp, latency ×12.5. See `docs/BENCHMARKS.en.md`.
 
 ### Config flags
 
@@ -435,82 +433,81 @@ rag-lab query "What is DSD?" --rewrite
 
 ---
 
-## Caché de queries — v1.14+
+## Query cache — v1.14+
 
-### Qué cachea y qué no cachea
+### What is cached and what is not
 
-| Elemento | ¿Cacheado? |
-|----------|------------|
-| Resultados de `hybrid_search` + reranker (lista de chunks con scores) | **Sí** |
-| Respuesta final del LLM | **No** (intencionado: LLM es estocástico) |
-| Verificación / trust score | **No** |
-| Embeddings de queries | **No** (recalculados siempre; eficientes) |
+| Element | Cached? |
+|---------|---------|
+| `hybrid_search` + reranker results (chunk list with scores) | **Yes** |
+| Final LLM response | **No** (intentional: LLM is stochastic) |
+| Verification / trust score | **No** |
+| Query embeddings | **No** (always recomputed; efficient) |
 
-### Configuración
+### Configuration
 
 ```python
-QUERY_CACHE_ENABLED: bool = True          # activa/desactiva globalmente
+QUERY_CACHE_ENABLED: bool = True          # global on/off switch
 QUERY_CACHE_PATH = DATA_DIR / "query_cache.sqlite"
-QUERY_CACHE_TTL_SECONDS: int = 604800     # 7 días; 0 = sin TTL
+QUERY_CACHE_TTL_SECONDS: int = 604800     # 7 days; 0 = no TTL
 ```
 
 ### Cache key
 
-La clave incluye: query normalizada, filtros, top_k, rrf_k, pesos dense/bm25/sparse,
-MMR, HyDE, reranker_heading_context, versión del modelo de embedding, sparse format
-version, y **corpus fingerprint** (`n_chunks:max_ingest_run_id:revision`).
+The key includes: normalized query, filters, top_k, rrf_k, dense/bm25/sparse weights,
+MMR, HyDE, reranker_heading_context, embedding model version, sparse format version,
+and **corpus fingerprint** (`n_chunks:max_ingest_run_id:revision`).
 
-El corpus fingerprint cambia automáticamente cuando el corpus o sus metadatos cambian.
+The corpus fingerprint changes automatically when the corpus or its metadata changes.
 
-### Invalidación automática
+### Automatic invalidation
 
-El fingerprint tiene tres componentes:
+The fingerprint has three components:
 
-| Componente | Cambia cuando |
-|------------|---------------|
-| `n_chunks` | Se ingesta o elimina un documento |
-| `max_ingest_run_id` | Cualquier operación de ingest/delete |
-| `revision` | Se asigna, desasigna, renombra o elimina un tag; se elimina un documento |
+| Component | Changes when |
+|-----------|-------------|
+| `n_chunks` | A document is ingested or deleted |
+| `max_ingest_run_id` | Any ingest/delete operation |
+| `revision` | A tag is assigned, removed, renamed, or deleted; a document is deleted |
 
-El contador `revision` vive en `MetadataStore.cache_revision` y se incrementa en
-cada operación de mutación de tags o documentos. Esto garantiza que las queries
-filtradas por tag no devuelvan resultados obsoletos tras cambios en el tagging.
+The `revision` counter lives in `MetadataStore.cache_revision` and is incremented on
+every tag or document mutation. This ensures tag-filtered queries never return stale
+results after tagging changes.
 
-Las entradas antiguas no se devuelven aunque existan físicamente (el fingerprint
-no coincide). `rag-lab cache vacuum` limpia entradas expiradas por TTL o con TTL 0.
+Old entries are not returned even if they exist physically (the fingerprint won't match).
+`rag-lab cache vacuum` removes entries expired by TTL or with TTL set to 0.
 
-### Comandos CLI
-
-```bash
-rag-lab cache stats            # estadísticas (entries, hits, tamaño DB)
-rag-lab cache clear            # eliminar todas las entradas
-rag-lab cache vacuum           # borrar expiradas + VACUUM SQLite
-rag-lab cache inspect <key>    # inspeccionar una entrada por su clave
-```
-
-### Bypass temporal
+### CLI commands
 
 ```bash
-rag-lab query "..." --no-cache  # ignorar la caché para esta consulta
+rag-lab cache stats            # stats (entries, hits, DB size)
+rag-lab cache clear            # delete all entries
+rag-lab cache vacuum           # remove expired entries + VACUUM SQLite
+rag-lab cache inspect <key>    # inspect an entry by its key
 ```
 
-### Comportamiento en benchmark
+### Temporary bypass
 
-El benchmark ignora la caché por defecto para medir calidad y latencia real:
 ```bash
-python -m rag_lab.benchmark --suite official --variants full          # cache desactivada (default)
-python -m rag_lab.benchmark --suite official --variants full --cache  # cache activada (mide beneficio)
+rag-lab query "..." --no-cache  # ignore the cache for this query
 ```
 
-La caché **no cambia las métricas de calidad** (R@5, nDCG, MRR). Solo reduce latencia
-en hits. La comparación oficial contra baseline siempre debe hacerse sin caché.
+### Benchmark behaviour
 
-### Por qué no se cachean respuestas LLM
+The benchmark ignores the cache by default to measure real quality and latency:
+```bash
+rag-lab benchmark --suite official --variants full           # cache disabled (default)
+rag-lab benchmark --suite official --variants full --cache   # cache enabled (measures benefit)
+```
 
-Las respuestas del LLM son estocásticas (temperatura > 0) y dependen del contexto
-completo del sistema. Cachearlas introduciría respuestas potencialmente stale ante
-cambios de corpus, config, o prompt. El retrieval es el cuello de botella a reducir;
-el LLM se llama una vez por query de todas formas.
+The cache **does not change quality metrics** (R@5, nDCG, MRR). It only reduces latency
+on hits. Official comparisons against baseline must always be run without cache.
+
+### Why LLM responses are not cached
+
+LLM responses are stochastic (temperature > 0) and depend on the full system context.
+Caching them would introduce potentially stale responses when corpus, config, or prompt
+changes. Retrieval is the bottleneck to reduce; the LLM is called once per query anyway.
 
 ---
 
@@ -574,11 +571,11 @@ python -m rag_lab.benchmark.compare \
 | `1` | At least one WARN |
 | `2` | At least one FAIL |
 
-### Canonical baseline (activo: v1.11)
+### Canonical baseline (active: v1.11)
 
-**`data/baselines/v1.11_official_full_eval.json`** — baseline activo desde v1.11.
+**`data/baselines/v1.11_official_full_eval.json`** — active baseline since v1.11.
 
-65 queries (suite `official`), variante `full`, `top_k=50`, `rrf_k=20`,
+65 queries (suite `official`), variant `full`, `top_k=50`, `rrf_k=20`,
 `RERANKER_USE_HEADING_CONTEXT=True`, `QUERY_VARIANT_STOPWORD_ENABLED=False`,
 `QUERY_VARIANT_LAST_TERMS_ENABLED=False`.
 
@@ -589,32 +586,34 @@ python -m rag_lab.benchmark.compare \
 | MRR     | 0.9385 |
 | nDCG@10 | 0.8373 |
 
-Métricas idénticas a v1.10 (Δ+0.0000). v1.11 reduce la latencia de candidate generation
-~2× al eliminar variantes de query con beneficio nulo (A/B evidencia sobre 65 queries).
+Metrics are identical to v1.10 (Δ+0.0000). v1.11 reduces candidate generation latency
+~2× by removing query variants that showed no benefit in A/B evidence over 65 queries.
 
-Comando estándar de regression guard:
+Standard regression guard command:
 
 ```bash
-python -m rag_lab.benchmark --suite official --variants full --output /tmp/current.json
+rag-lab benchmark --suite official --variants full --output /tmp/current.json
 python -m rag_lab.benchmark.compare \
     --baseline data/baselines/v1.11_official_full_eval.json \
     --current  /tmp/current.json
 ```
 
-**Regresión conocida (heredada de v1.10):** q070 (`cross_lingual_es_en`) MRR 1.000→0.500.
-Pre-reranker MRR=1.000 — es efecto puro del cross-encoder con heading context en español.
-Documentada en `v1.11_official_full_eval.json` meta → `known_regressions`.
+**Known regression (inherited from v1.10):** q070 (`cross_lingual_es_en`) MRR 1.000→0.500.
+Pre-reranker MRR=1.000 — this is a pure effect of the cross-encoder with heading context
+on Spanish text. Documented in `v1.11_official_full_eval.json` meta → `known_regressions`.
 
-**Baseline anterior:** `data/baselines/v1.10_official_full_eval.json` (histórico, activo v1.10).
-**Baseline histórico:** `data/baselines/v1.8.1_official_full_eval.json` (v1.9 y anterior).
+**Previous baseline:** `data/baselines/v1.10_official_full_eval.json` (historical, active during v1.10).
+**Historical baseline:** `data/baselines/v1.8.1_official_full_eval.json` (v1.9 and earlier).
 
 ---
 
 ## Markdown quality gate (v1.6+)
 
-Every ingest run validates the source document against the canonical Markdown contract before opening any transaction.
+Every ingest run validates the source document against the canonical Markdown contract
+before opening any transaction.
 
-For full documentation of the frontmatter contract (fields, derived tags, filter integration), see **[docs/FRONTMATTER.md](FRONTMATTER.md)**.
+For full documentation of the frontmatter contract (fields, derived tags, filter
+integration), see **[docs/FRONTMATTER.en.md](FRONTMATTER.en.md)**.
 
 ### Validation checks
 
@@ -651,7 +650,7 @@ For full documentation of the frontmatter contract (fields, derived tags, filter
 | `frontmatter_tag_empty` | WARN | A tag element is an empty string |
 | `frontmatter_tag_whitespace` | WARN | A tag element contains only whitespace |
 | `frontmatter_tag_duplicate` | WARN | A tag element appears more than once |
-| `yaml_unavailable` | INFO | `pyyaml` is not installed; frontmatter skipped |
+| `yaml_unavailable` | INFO | `pyyaml` is not installed; frontmatter validation skipped |
 
 ### Blocking behaviour
 
@@ -660,7 +659,8 @@ For full documentation of the frontmatter contract (fields, derived tags, filter
 | Normal (default) | ERROR only |
 | `--strict` | ERROR + WARN |
 
-On block: no stores are written and no `IngestTransaction` is opened. Exit 0 is still returned (the run is just skipped).
+On block: no stores are written and no `IngestTransaction` is opened. Exit 0 is still
+returned (the run is skipped).
 
 ### CLI tools
 
@@ -810,7 +810,7 @@ rag-lab reconcile --repair
 Chunks were ingested with an older config. Re-ingest the affected documents:
 
 ```bash
-python -m rag_lab.cli ingest --doc path/to/document.md --force
+rag-lab ingest --doc path/to/document.md --force
 ```
 
 ---
@@ -870,7 +870,7 @@ results = hybrid_search(
 )
 ```
 
-### tag include logic (AND)
+### Tag include logic (AND)
 
 `tags_include=["glossary", "sdmx-core"]` returns only documents that have
 **all** listed tags. Use multiple `--tag` flags in diagnose for AND logic.
@@ -951,61 +951,60 @@ rag-lab docs validate docs/SDMX_Glossary.md
 rag-lab docs validate docs/SDMX_2-1_User_Guide_6.md
 ```
 
-All commands must exit 0 (or WARN-only for doctor with justified reason).
+All commands must exit 0 (or WARN-only for doctor with a justified reason).
 
 ---
 
 ## Feedback — chunk-level signals — v1.15+
 
-### Qué es y qué no es
+### What it is and what it is not
 
-El módulo de feedback captura juicios de relevancia por chunk. En v1.15, es
-**puramente un log de observación**: no altera el ranking, los scores, la caché
-ni ningún índice. El feedback acumulado está previsto para alimentar señales de
-re-ranking en v1.16.
+The feedback module captures relevance judgements per chunk. In v1.15 it is
+**purely an observation log**: it does not alter ranking, scores, the cache,
+or any index. Accumulated feedback is intended to feed re-ranking signals in v1.16.
 
-### Tipos de feedback admitidos
+### Supported feedback types
 
-| Valor | Significado |
-|-------|-------------|
-| `relevant` | Chunk relevante para la query |
-| `irrelevant` | Chunk no relevante para la query |
-| `useful` | Respuesta basada en este chunk fue útil |
-| `not_useful` | Respuesta basada en este chunk no fue útil |
-| `wrong_doc` | El chunk es de un documento equivocado |
-| `outdated` | El contenido del chunk está desactualizado |
-| `duplicate` | Este chunk repite contenido de otro chunk recuperado |
-| `bad_citation` | La cita generada a partir de este chunk es incorrecta |
+| Value | Meaning |
+|-------|---------|
+| `relevant` | Chunk is relevant to the query |
+| `irrelevant` | Chunk is not relevant to the query |
+| `useful` | The response based on this chunk was useful |
+| `not_useful` | The response based on this chunk was not useful |
+| `wrong_doc` | The chunk is from the wrong document |
+| `outdated` | The chunk content is outdated |
+| `duplicate` | This chunk repeats content from another retrieved chunk |
+| `bad_citation` | The citation generated from this chunk is incorrect |
 
-### Comandos CLI
+### CLI commands
 
 ```bash
-# Registrar feedback sobre un chunk específico
+# Record feedback for a specific chunk
 rag-lab feedback add --query "What is SDMX?" --chunk-id "<chunk_id>" --feedback relevant
 rag-lab feedback add --query "What is SDMX?" --chunk-id "<chunk_id>" --feedback irrelevant --reason wrong_doc
-rag-lab feedback add --query "..." --chunk-id "..." --feedback bad_citation --note "cita línea 42 incorrecta"
+rag-lab feedback add --query "..." --chunk-id "..." --feedback bad_citation --note "citation on line 42 is wrong"
 
-# Listar eventos recientes
-rag-lab feedback list                     # últimos 20
+# List recent events
+rag-lab feedback list                     # last 20
 rag-lab feedback list --limit 50
 rag-lab feedback list --feedback irrelevant
 rag-lab feedback list --chunk-id "<id>"
 
-# Estadísticas
+# Statistics
 rag-lab feedback stats
 
-# Exportar para evaluación futura
-rag-lab feedback export                   # imprime JSONL en stdout
+# Export for future evaluation
+rag-lab feedback export                   # print JSONL to stdout
 rag-lab feedback export --output data/feedback_export.jsonl
 
-# Limpiar
+# Clear
 rag-lab feedback clear --yes
 ```
 
-### Integración con query
+### Query integration
 
-Tras mostrar la respuesta, `rag-lab query` imprime el rank, chunk_id, doc_id y score
-de cada chunk recuperado, más un comando de ejemplo:
+After displaying the response, `rag-lab query` prints the rank, chunk_id, doc_id,
+and score of each retrieved chunk, along with an example command:
 
 ```
 ── Retrieved chunks (for feedback) ──
@@ -1016,50 +1015,50 @@ de cada chunk recuperado, más un comando de ejemplo:
   To give feedback: rag-lab feedback add --query "..." --chunk-id "..." --feedback relevant
 ```
 
-### Backend y schema
+### Backend and schema
 
-- **DB:** `storage/docstore.sqlite` (misma base que corpus metadata)
-- **Tabla:** `feedback_events`
-- **Campos clave:** `query_text`, `query_hash`, `chunk_id`, `doc_id`, `rank`,
+- **DB:** `storage/docstore.sqlite` (same database as corpus metadata)
+- **Table:** `feedback_events`
+- **Key fields:** `query_text`, `query_hash`, `chunk_id`, `doc_id`, `rank`,
   `feedback`, `rating`, `reason`, `source`, `pipeline_variant`, `cache_hit`,
   `cache_key`, `corpus_fingerprint`, `retrieval_config_hash`, `user_note`, `created_at`
 
-La tabla se crea automáticamente en el primer `feedback add`.
+The table is created automatically on the first `feedback add`.
 
-### Trazabilidad
+### Traceability
 
-- `query_hash` — SHA-256 de la query normalizada. Permite agrupar feedback
-  de la misma pregunta independientemente de mayúsculas o espacios extra.
-- `corpus_fingerprint` — captura el estado del corpus en el momento del feedback
-  (`n_chunks:max_ingest_run_id:revision`). Útil para detectar si el feedback es
-  de un corpus diferente al actual.
-- `retrieval_config_hash` — SHA-256 de los parámetros de retrieval (top_k, rrf_k,
-  pesos, MMR, HNSW, etc.). Permite filtrar feedback tomado con configuraciones distintas.
+- `query_hash` — SHA-256 of the normalized query. Allows grouping feedback for the
+  same question regardless of case or extra whitespace.
+- `corpus_fingerprint` — captures the state of the corpus at the time of feedback
+  (`n_chunks:max_ingest_run_id:revision`). Useful for detecting whether feedback
+  was collected against a different corpus than the current one.
+- `retrieval_config_hash` — SHA-256 of retrieval parameters (top_k, rrf_k, weights,
+  MMR, HNSW, etc.). Allows filtering out feedback taken with different configurations.
 
-### Exportación como benchmark queries
+### Exporting as benchmark queries
 
-El JSONL exportado puede convertirse en queries de benchmark curadas:
+The exported JSONL can be converted into curated benchmark queries:
 
 ```bash
-# Exportar feedback negativo para revisar
+# Export negative feedback for review
 rag-lab feedback export | jq 'select(.feedback == "irrelevant" or .feedback == "wrong_doc")'
 ```
 
-Los casos negativos recurrentes son candidatos a nuevas queries en
-`data/benchmark_queries.yaml` con `expected_behavior: low_recall_expected` o similar.
+Recurring negative cases are candidates for new queries in
+`data/benchmark_queries.yaml` with `expected_behavior: low_recall_expected` or similar.
 
-### Garantías de aislamiento (v1.15)
+### Isolation guarantees (v1.15)
 
-- Leer o escribir `feedback_events` no invoca código de retrieval.
-- `make_query_hash()` y `make_retrieval_config_hash()` no leen embeddings ni índices.
-- `FeedbackStore.add()` no llama a `MetadataStore.bump_revision()` —
-  el `corpus_fingerprint` no cambia con operaciones de feedback.
-- Tests explícitos en `tests/test_feedback/test_feedback_events.py` verifican
-  que los resultados de retrieval son idénticos antes y después de añadir feedback.
+- Reading or writing `feedback_events` does not invoke any retrieval code.
+- `make_query_hash()` and `make_retrieval_config_hash()` do not read embeddings or indexes.
+- `FeedbackStore.add()` does not call `MetadataStore.bump_revision()` —
+  the `corpus_fingerprint` does not change with feedback operations.
+- Explicit tests in `tests/test_feedback/test_feedback_events.py` verify that
+  retrieval results are identical before and after adding feedback.
 
-### Plan v1.16
+### Plan for v1.16
 
-En v1.16 se evaluará usar el feedback acumulado como señal adicional en el re-ranking:
-- Boost a chunks marcados como `relevant` para queries similares (query_hash match).
-- Penalización a chunks marcados como `irrelevant` o `wrong_doc`.
-- El uso de feedback como señal será opt-in y benchmarkeado antes de activarse.
+v1.16 will evaluate using accumulated feedback as an additional signal in re-ranking:
+- Boost for chunks marked `relevant` for similar queries (query_hash match).
+- Penalty for chunks marked `irrelevant` or `wrong_doc`.
+- Feedback as a signal will be opt-in and benchmarked before being activated.
