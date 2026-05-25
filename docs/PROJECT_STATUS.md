@@ -41,7 +41,7 @@ Stores sincronizados: DocStore (SQLite) = ChromaDB = FTS5 index = Sparse BLOBs =
 | Embedding | BAAI/bge-m3 (dense + sparse) | activo |
 | Dense search | ChromaDB cosine, HNSW M=16 ef=100 | activo |
 | BM25 | FTS5 SQLite | activo |
-| Sparse | BGE-M3 sparse vectors (BLOB) | activo |
+| Sparse | BGE-M3 sparse vectors (SQLite BLOB, `sparse_scorer.py`) | activo |
 | Fusión | RRF (k=60), top_k=50 candidates | activo |
 | Diversidad | MMR post-RRF | activo |
 | Reranker | BAAI/bge-reranker-v2-m3, heading context | activo |
@@ -213,6 +213,7 @@ rag-lab benchmark run --suite official --variants full --no-cache
 
 | Versión | Cambio principal |
 |---------|-----------------|
+| v1.18.2 | Remove legacy SparseStore (JSON) — SQLite BLOBs son canónicos |
 | v1.18.1 | E2E audit verificador citas — 10/10 PASS; script + docs |
 | v1.18 | Verification hardening — 4 bugs, evidence_map, verbose trace, prompt hardening |
 | v1.17 | Release candidate audit — guard tests, docs, smoke E2E |

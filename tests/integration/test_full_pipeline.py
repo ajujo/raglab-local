@@ -54,7 +54,6 @@ class TestFullPipeline:
             "config.STORAGE_DIR": config.STORAGE_DIR,
             "config.DOCDSTORE_SQLITE_PATH": config.DOCDSTORE_SQLITE_PATH,
             "config.VECTOR_STORE_PATH": config.VECTOR_STORE_PATH,
-            "config.SPARSE_INDEX_PATH": config.SPARSE_INDEX_PATH,
             "ds.DOCDSTORE_SQLITE_PATH": _ds_mod.DOCDSTORE_SQLITE_PATH,
             "vs.VECTOR_STORE_PATH": _vs_mod.VECTOR_STORE_PATH,
         }
@@ -62,7 +61,6 @@ class TestFullPipeline:
         config.STORAGE_DIR = storage_dir
         config.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
         config.VECTOR_STORE_PATH = storage_dir / "chroma_db"
-        config.SPARSE_INDEX_PATH = storage_dir / "sparse_index.json"
         _ds_mod.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
         _vs_mod.VECTOR_STORE_PATH = storage_dir / "chroma_db"
 
@@ -72,7 +70,6 @@ class TestFullPipeline:
         config.STORAGE_DIR = originals["config.STORAGE_DIR"]
         config.DOCDSTORE_SQLITE_PATH = originals["config.DOCDSTORE_SQLITE_PATH"]
         config.VECTOR_STORE_PATH = originals["config.VECTOR_STORE_PATH"]
-        config.SPARSE_INDEX_PATH = originals["config.SPARSE_INDEX_PATH"]
         _ds_mod.DOCDSTORE_SQLITE_PATH = originals["ds.DOCDSTORE_SQLITE_PATH"]
         _vs_mod.VECTOR_STORE_PATH = originals["vs.VECTOR_STORE_PATH"]
 
@@ -176,7 +173,6 @@ class TestCLIIntegration:
             "c.STORAGE_DIR": config.STORAGE_DIR,
             "c.DOCDSTORE_SQLITE_PATH": config.DOCDSTORE_SQLITE_PATH,
             "c.VECTOR_STORE_PATH": config.VECTOR_STORE_PATH,
-            "c.SPARSE_INDEX_PATH": config.SPARSE_INDEX_PATH,
             "ds.DOCDSTORE_SQLITE_PATH": _ds_mod.DOCDSTORE_SQLITE_PATH,
             "vs.VECTOR_STORE_PATH": _vs_mod.VECTOR_STORE_PATH,
         }
@@ -184,7 +180,6 @@ class TestCLIIntegration:
         config.STORAGE_DIR = storage_dir
         config.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
         config.VECTOR_STORE_PATH = storage_dir / "chroma_db"
-        config.SPARSE_INDEX_PATH = storage_dir / "sparse_index.json"
         _ds_mod.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
         _vs_mod.VECTOR_STORE_PATH = storage_dir / "chroma_db"
 
@@ -194,7 +189,6 @@ class TestCLIIntegration:
         config.STORAGE_DIR = orig["c.STORAGE_DIR"]
         config.DOCDSTORE_SQLITE_PATH = orig["c.DOCDSTORE_SQLITE_PATH"]
         config.VECTOR_STORE_PATH = orig["c.VECTOR_STORE_PATH"]
-        config.SPARSE_INDEX_PATH = orig["c.SPARSE_INDEX_PATH"]
         _ds_mod.DOCDSTORE_SQLITE_PATH = orig["ds.DOCDSTORE_SQLITE_PATH"]
         _vs_mod.VECTOR_STORE_PATH = orig["vs.VECTOR_STORE_PATH"]
 

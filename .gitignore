@@ -50,3 +50,6 @@ Thumbs.db
 # Notebook outputs
 .ipynb_checkpoints/
 data/query_cache.sqlite
+
+# Legacy sparse index (removed in v1.18.2 — SQLite BLOBs are canonical)
+storage/sparse_index.json
