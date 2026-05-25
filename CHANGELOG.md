@@ -4,6 +4,80 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.19 — 2026-05-25 — Frontmatter Metadata Contract
+
+### Scope
+
+Canonical YAML frontmatter contract for document classification. No retrieval
+algorithm changes. No new loaders. No benchmark impact. Backward-compatible with
+existing documents (no frontmatter → warns, does not block).
+
+### Contract
+
+```yaml
+---
+doc_id: sdmx_user_guide_2_1       # required
+title: SDMX User Guide 2.1        # required or fallback to H1
+domain: sdmx                       # recommended (WARN if absent)
+source_type: manual                # recommended (WARN if absent)
+language: en                       # recommended (WARN if absent)
+version: "2.1"                     # optional
+tags:
+  - sdmx
+  - technical_notes
+---
+```
+
+### New module
+
+- `rag_lab/ingest/frontmatter.py` — `parse_frontmatter(text) → FrontmatterData`,
+  `extract_h1_title(text)`, `FrontmatterData.derived_tags`, `FrontmatterData.all_tags`
+
+### Validation (`markdown_contract.py`)
+
+- ERROR: `doc_id` missing/blank in frontmatter
+- ERROR: `dataset` or `dataset_id` field present (scope guard)
+- ERROR: `tags` not a list, or list element not a string
+- WARN: frontmatter block absent entirely
+- WARN: `title`, `domain`, `source_type`, `language` absent
+- WARN: duplicate or whitespace-padded tags
+
+### Persistence
+
+- `metadata_store.py`: idempotent migration adds columns `domain`, `source_type`,
+  `language`, `version` to `documents` table
+- `upsert_document()` accepts and persists all new fields
+- Ingest pipeline parses frontmatter and:
+  - passes `title`, `domain`, `source_type`, `language`, `version` to `upsert_document`
+  - auto-imports explicit tags (e.g., `sdmx`, `technical_notes`)
+  - auto-imports derived tags (e.g., `domain:sdmx`, `source_type:manual`, `lang:en`, `version:2.1`)
+
+### FilterSpec (retrieval filters)
+
+- `FilterSpec` gains `domain`, `source_type`, `language`, `version` fields
+- Resolved as derived tags: `domain=sdmx` → `domain:sdmx` included in `tags_include`
+- Not activated by default; only used when the caller passes them explicitly
+
+### CLI visibility
+
+- `docs inspect <file>`: now shows a **Frontmatter** section with all parsed fields
+  and derived tags, followed by structural stats and validation issues
+- `docs show <doc_id>`: new **Classification** section shows title, domain,
+  source_type, language, version, explicit tags, derived tags
+- `diagnose --doc-id X`: shows document metadata from MetadataStore
+- `reconcile --check`: detects documents with classification fields but missing
+  corresponding derived tags (info-level, not blocking)
+
+### Tests
+
+- 52 new tests in `tests/test_ingest/test_frontmatter_contract.py`
+- Updated `tests/test_ingest/test_validation.py` to reflect new WARN for absent
+  frontmatter (no error, backward-compatible)
+
+### Benchmark: no change (R@5=0.821, MRR=0.939, nDCG@10=0.837)
+
+---
+
 ## v1.18.2 — 2026-05-25 — Remove Legacy Sparse Store
 
 ### Scope

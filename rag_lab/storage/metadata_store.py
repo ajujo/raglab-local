@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS documents (
     ingested_at TEXT NOT NULL DEFAULT (datetime('now')),
     embedding_model_version TEXT DEFAULT '',
     embedding_dim INTEGER DEFAULT 0,
-    sparse_format_version INTEGER DEFAULT 0
+    sparse_format_version INTEGER DEFAULT 0,
+    domain TEXT DEFAULT '',
+    source_type TEXT DEFAULT '',
+    language TEXT DEFAULT '',
+    version TEXT DEFAULT ''
 )
 """
 
@@ -92,8 +96,28 @@ class MetadataStore:
             "INSERT OR IGNORE INTO cache_revision (key, value) VALUES ('retrieval', 0)"
         )
 
+        self._migrate_doc_fields()
+
         if self._own_conn:
             self._conn.commit()
+
+    def _migrate_doc_fields(self) -> None:
+        """Idempotent migration: add document classification columns (v1.19)."""
+        existing = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(documents)").fetchall()
+        }
+        for col, definition in (
+            ("domain", "TEXT DEFAULT ''"),
+            ("source_type", "TEXT DEFAULT ''"),
+            ("language", "TEXT DEFAULT ''"),
+            ("version", "TEXT DEFAULT ''"),
+        ):
+            if col not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE documents ADD COLUMN {col} {definition}"
+                )
+                logger.info(f"MetadataStore: added column documents.{col}")
 
     # ------------------------------------------------------------------
     # Document CRUD
@@ -111,13 +135,18 @@ class MetadataStore:
         embedding_model_version: str = "",
         embedding_dim: int = 0,
         sparse_format_version: int = 0,
+        domain: Optional[str] = None,
+        source_type: Optional[str] = None,
+        language: Optional[str] = None,
+        version: Optional[str] = None,
     ) -> None:
         self._conn.execute(
             """
             INSERT OR REPLACE INTO documents
             (doc_id, title, path, content_hash, source_id, status,
-             updated_at, embedding_model_version, embedding_dim, sparse_format_version)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+             updated_at, embedding_model_version, embedding_dim, sparse_format_version,
+             domain, source_type, language, version)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 doc_id,
@@ -129,6 +158,10 @@ class MetadataStore:
                 embedding_model_version,
                 embedding_dim,
                 sparse_format_version,
+                domain or "",
+                source_type or "",
+                language or "",
+                version or "",
             ),
         )
         if self._own_conn:
@@ -139,7 +172,8 @@ class MetadataStore:
             """
             SELECT doc_id, title, path, content_hash, source_id,
                    status, created_at, updated_at, ingested_at,
-                   embedding_model_version, embedding_dim, sparse_format_version
+                   embedding_model_version, embedding_dim, sparse_format_version,
+                   domain, source_type, language, version
             FROM documents WHERE doc_id = ?
             """,
             (doc_id,),
@@ -159,6 +193,10 @@ class MetadataStore:
             "embedding_model_version": row[9],
             "embedding_dim": row[10],
             "sparse_format_version": row[11],
+            "domain": row[12] or None,
+            "source_type": row[13] or None,
+            "language": row[14] or None,
+            "version": row[15] or None,
             "tags": self.get_tags_for_doc(doc_id),
         }
         return doc
@@ -213,7 +251,8 @@ class MetadataStore:
                    d.embedding_model_version, d.embedding_dim,
                    d.sparse_format_version,
                    GROUP_CONCAT(t.name, '|||') AS tag_names,
-                   {chunk_col}
+                   {chunk_col},
+                   d.domain, d.source_type, d.language, d.version
             FROM documents d
             LEFT JOIN document_tags dt ON d.doc_id = dt.doc_id
             LEFT JOIN tags t ON dt.tag_id = t.tag_id
@@ -245,6 +284,10 @@ class MetadataStore:
                     "sparse_format_version": row[11],
                     "tags": tags,
                     "chunk_count": row[13],
+                    "domain": row[14] or None,
+                    "source_type": row[15] or None,
+                    "language": row[16] or None,
+                    "version": row[17] or None,
                 }
             )
         return results

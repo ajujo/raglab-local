@@ -100,8 +100,17 @@ def validate_markdown(
 # ---------------------------------------------------------------------------
 
 def _check_frontmatter(lines: List[str], report: ValidationReport) -> None:
-    """Check YAML frontmatter validity if present."""
+    """Check YAML frontmatter validity and canonical contract fields if present."""
     if not lines or lines[0].strip() != "---":
+        # No frontmatter — doc_id cannot be extracted
+        report.issues.append(ValidationIssue(
+            severity=ValidationSeverity.WARN,
+            code="frontmatter_missing",
+            message=(
+                "No YAML frontmatter found. "
+                "Add a '--- ... ---' block with at least doc_id and title."
+            ),
+        ))
         return
 
     end_idx = None
@@ -130,7 +139,7 @@ def _check_frontmatter(lines: List[str], report: ValidationReport) -> None:
 
     frontmatter_text = "\n".join(lines[1:end_idx])
     try:
-        _yaml.safe_load(frontmatter_text)
+        parsed = _yaml.safe_load(frontmatter_text)
     except Exception as exc:
         report.issues.append(ValidationIssue(
             severity=ValidationSeverity.ERROR,
@@ -138,6 +147,119 @@ def _check_frontmatter(lines: List[str], report: ValidationReport) -> None:
             message=f"YAML frontmatter is not valid: {exc}",
             line_number=1,
         ))
+        return
+
+    if not isinstance(parsed, dict):
+        report.issues.append(ValidationIssue(
+            severity=ValidationSeverity.ERROR,
+            code="frontmatter_not_mapping",
+            message="YAML frontmatter must be a key-value mapping, not a list or scalar.",
+            line_number=1,
+        ))
+        return
+
+    _check_frontmatter_fields(parsed, report)
+
+
+def _check_frontmatter_fields(parsed: dict, report: ValidationReport) -> None:
+    """Validate canonical contract fields within a parsed frontmatter dict."""
+    # Scope guard: dataset/dataset_id are prohibited
+    for banned in ("dataset", "dataset_id"):
+        if banned in parsed:
+            report.issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="frontmatter_scope_violation",
+                message=(
+                    f"Field '{banned}' is not part of the Markdown document contract. "
+                    "RAG-Lab is a document-only system — no dataset/tabular fields."
+                ),
+                line_number=1,
+            ))
+
+    # doc_id: required
+    doc_id = parsed.get("doc_id")
+    if not doc_id or not str(doc_id).strip():
+        report.issues.append(ValidationIssue(
+            severity=ValidationSeverity.ERROR,
+            code="frontmatter_missing_doc_id",
+            message=(
+                "Frontmatter is missing required field 'doc_id'. "
+                "Every document must have a unique stable identifier."
+            ),
+            line_number=1,
+        ))
+
+    # title: recommended (H1 check is separate, but warn here if absent)
+    if not parsed.get("title") or not str(parsed.get("title", "")).strip():
+        report.issues.append(ValidationIssue(
+            severity=ValidationSeverity.WARN,
+            code="frontmatter_missing_title",
+            message=(
+                "Frontmatter is missing 'title'. "
+                "Will fall back to first H1 heading if present."
+            ),
+            line_number=1,
+        ))
+
+    # domain / source_type / language: recommended
+    for field_name in ("domain", "source_type", "language"):
+        if not parsed.get(field_name) or not str(parsed.get(field_name, "")).strip():
+            report.issues.append(ValidationIssue(
+                severity=ValidationSeverity.WARN,
+                code=f"frontmatter_missing_{field_name}",
+                message=(
+                    f"Frontmatter is missing recommended field '{field_name}'. "
+                    "This field improves document classification and filtering."
+                ),
+                line_number=1,
+            ))
+
+    # tags: must be a list of non-empty strings without duplicates
+    tags_raw = parsed.get("tags")
+    if tags_raw is not None:
+        if not isinstance(tags_raw, list):
+            report.issues.append(ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="frontmatter_tags_not_list",
+                message=(
+                    f"'tags' must be a YAML list, got {type(tags_raw).__name__}."
+                ),
+                line_number=1,
+            ))
+        else:
+            seen: set = set()
+            for i, tag in enumerate(tags_raw):
+                if not isinstance(tag, str):
+                    report.issues.append(ValidationIssue(
+                        severity=ValidationSeverity.ERROR,
+                        code="frontmatter_tag_not_string",
+                        message=f"Tag at position {i} is not a string: {tag!r}.",
+                        line_number=1,
+                    ))
+                    continue
+                tag_stripped = tag.strip()
+                if not tag_stripped:
+                    report.issues.append(ValidationIssue(
+                        severity=ValidationSeverity.WARN,
+                        code="frontmatter_tag_empty",
+                        message=f"Tag at position {i} is empty or whitespace-only.",
+                        line_number=1,
+                    ))
+                elif tag_stripped != tag:
+                    report.issues.append(ValidationIssue(
+                        severity=ValidationSeverity.WARN,
+                        code="frontmatter_tag_whitespace",
+                        message=f"Tag {tag!r} has leading/trailing whitespace.",
+                        line_number=1,
+                    ))
+                if tag_stripped in seen:
+                    report.issues.append(ValidationIssue(
+                        severity=ValidationSeverity.WARN,
+                        code="frontmatter_tag_duplicate",
+                        message=f"Tag {tag_stripped!r} appears more than once.",
+                        line_number=1,
+                    ))
+                seen.add(tag_stripped)
 
 
 def _check_title(lines: List[str], report: ValidationReport) -> None:

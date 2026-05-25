@@ -76,12 +76,28 @@ class TestMarkdownValidation:
         p.write_text(content, encoding="utf-8")
         return p
 
-    def test_valid_markdown_has_no_issues(self, tmp_path):
-        content = "# My Doc\n\n" + "Some content about the topic. " * 10 + "\n"
+    def test_valid_markdown_with_frontmatter_has_no_issues(self, tmp_path):
+        content = (
+            "---\ndoc_id: my_doc\ntitle: My Doc\n"
+            "domain: test\nsource_type: manual\nlanguage: en\n---\n"
+            "# My Doc\n\n" + "Some content about the topic. " * 10 + "\n"
+        )
         doc = self._write(tmp_path, "doc.md", content)
         report = validate_markdown(doc)
         assert report.is_valid
-        assert not report.issues
+        # Only warnings allowed: no domain/source_type/language missing since all provided
+        error_and_warn_codes = {i.code for i in report.issues}
+        assert "frontmatter_missing" not in error_and_warn_codes
+        assert "frontmatter_missing_doc_id" not in error_and_warn_codes
+
+    def test_valid_markdown_no_frontmatter_is_valid_with_warns(self, tmp_path):
+        content = "# My Doc\n\n" + "Some content about the topic. " * 10 + "\n"
+        doc = self._write(tmp_path, "doc.md", content)
+        report = validate_markdown(doc)
+        # No frontmatter → valid (no errors) but warns
+        assert report.is_valid
+        warn_codes = {i.code for i in report.warnings}
+        assert "frontmatter_missing" in warn_codes
 
     def test_empty_file_is_error(self, tmp_path):
         doc = self._write(tmp_path, "empty.md", "   \n\n")

@@ -91,15 +91,31 @@ def docs_show(doc_id: str = typer.Argument(..., help="Document ID to inspect."))
         ds.close()
 
     console.print(f"\n[bold cyan]Document:[/bold cyan] {doc_id}\n")
+
+    # Document classification metadata
+    console.print(f"  [bold]Classification[/bold]")
+    for key in ("title", "domain", "source_type", "language", "version"):
+        val = doc.get(key) or "[dim](not set)[/dim]"
+        console.print(f"  {key:<28} {val}")
+    explicit_tags = [t for t in doc["tags"] if not any(
+        t.startswith(p) for p in ("domain:", "source_type:", "lang:", "version:")
+    )]
+    derived_tags = [t for t in doc["tags"] if any(
+        t.startswith(p) for p in ("domain:", "source_type:", "lang:", "version:")
+    )]
+    console.print(f"  {'tags (explicit)':<28} {', '.join(explicit_tags) or '(none)'}")
+    console.print(f"  {'tags (derived)':<28} {', '.join(derived_tags) or '(none)'}")
+
+    # Technical metadata
+    console.print()
+    console.print(f"  [bold]Technical[/bold]")
     for key in (
-        "title", "path", "content_hash", "source_id",
+        "path", "content_hash", "source_id",
         "status", "created_at", "updated_at", "ingested_at",
         "embedding_model_version", "embedding_dim", "sparse_format_version",
     ):
         console.print(f"  {key:<28} {doc.get(key)}")
     console.print(f"  {'chunks':<28} {chunk_count}")
-    tags_str = ", ".join(doc["tags"]) if doc["tags"] else "(none)"
-    console.print(f"  {'tags':<28} {tags_str}")
     console.print()
 
 
@@ -278,13 +294,14 @@ def docs_validate(
 def docs_inspect(
     path: str = typer.Argument(..., help="Path to the Markdown file."),
 ) -> None:
-    """Show structural summary of a Markdown document."""
+    """Show structural summary and parsed frontmatter of a Markdown document."""
     import re
     from pathlib import Path as P
     from rag_lab.ingest.markdown_contract import (
         MarkdownValidationConfig,
         validate_markdown,
     )
+    from rag_lab.ingest.frontmatter import parse_frontmatter, extract_h1_title
     from rag_lab.ingest.validation import ValidationSeverity, count_tokens_approx
     from rag_lab.config import CHUNK_MAX_TOKENS
 
@@ -304,14 +321,11 @@ def docs_inspect(
     estimated_chunks = max(1, total_tokens // CHUNK_MAX_TOKENS)
 
     heading_counts: dict = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
-    title: Optional[str] = None
     for line in lines:
         m = re.match(r'^(#{1,6})\s+(.*)', line)
         if m:
             level = len(m.group(1))
             heading_counts[level] += 1
-            if level == 1 and title is None:
-                title = m.group(2).strip()
 
     total_headings = sum(heading_counts.values())
 
@@ -326,12 +340,30 @@ def docs_inspect(
         elif not is_table:
             in_table = False
 
+    fm = parse_frontmatter(text)
+    title = fm.title or extract_h1_title(text)
+
     report = validate_markdown(doc_path, MarkdownValidationConfig())
     file_size_kb = doc_path.stat().st_size / 1024
 
     console.print(f"\n[bold cyan]Inspect:[/bold cyan] {doc_path.name}\n")
-    console.print(f"  {'doc_id':<24} {doc_path.stem}")
+
+    # Frontmatter fields
+    console.print(f"  [bold]Frontmatter[/bold]")
+    console.print(f"  {'doc_id':<24} {fm.doc_id or '[dim](derived from filename: ' + doc_path.stem + ')[/dim]'}")
     console.print(f"  {'title':<24} {title or '(none)'}")
+    console.print(f"  {'domain':<24} {fm.domain or '[dim](not set)[/dim]'}")
+    console.print(f"  {'source_type':<24} {fm.source_type or '[dim](not set)[/dim]'}")
+    console.print(f"  {'language':<24} {fm.language or '[dim](not set)[/dim]'}")
+    console.print(f"  {'version':<24} {fm.version or '[dim](not set)[/dim]'}")
+    tags_str = ", ".join(fm.tags) if fm.tags else "[dim](none)[/dim]"
+    console.print(f"  {'tags':<24} {tags_str}")
+    if fm.derived_tags:
+        console.print(f"  {'derived_tags':<24} {', '.join(fm.derived_tags)}")
+
+    # Structural stats
+    console.print()
+    console.print(f"  [bold]Structure[/bold]")
     console.print(f"  {'file_size':<24} {file_size_kb:.1f} KB")
     console.print(f"  {'total_lines':<24} {len(lines):,}")
     console.print(f"  {'total_tokens (~)':<24} {total_tokens:,}")
