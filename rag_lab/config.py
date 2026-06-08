@@ -82,7 +82,7 @@ RERANKER_USE_HEADING_CONTEXT: bool = True
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:8000/v1")
 
 # Nombre del modelo LLM
-LLM_MODEL = os.getenv("LLM_MODEL", "sakamakismile/Qwen3.6-27B-NVFP4")
+LLM_MODEL = os.getenv("LLM_MODEL", "sakamakismile/Qwen3.6-27B-Text-NVFP4-MTP")
 
 # Temperatura de generación (0.0 = determinista, 1.0 = aleatorio)
 LLM_TEMPERATURE = 0.1
