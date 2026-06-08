@@ -1,0 +1,9 @@
+{
+  "input": "data/eval_runs/v1.21_baseline.jsonl",
+  "n_queries": 65,
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "scores": {
+    "faithfulness": 0.9123490444271377,
+    "answer_relevancy": 0.7623592428259809
+  }
+}
