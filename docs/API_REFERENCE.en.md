@@ -1,4 +1,4 @@
-# RAG-Lab — CLI Reference (v1.19.1)
+# RAG-Lab — CLI Reference (v1.21)
 
 Complete reference for all commands available in `rag-lab`. All commands assume the `rag-lab`
 conda environment is active and the local LLM server is available for commands that generate
@@ -19,6 +19,7 @@ answers.
 - [reconcile](#reconcile)
 - [diagnose](#diagnose)
 - [benchmark](#benchmark)
+- [eval](#eval)
 
 ---
 
@@ -774,6 +775,99 @@ rag-lab benchmark --suite all --no-cache
 
 ---
 
+## eval
+
+Runs the full pipeline end-to-end over a query set and saves all output to JSONL.
+Each line captures `question → contexts → answer → citations → trust_score` — a format
+consumable by any external evaluator (RAGAS, TruLens, human review).
+
+```
+rag-lab eval run   [options]
+rag-lab eval list  [options]
+rag-lab eval show  <run_id>
+```
+
+### eval run
+
+```
+rag-lab eval run [options]
+```
+
+| Option | Description |
+|---|---|
+| `--suite SUITE` | Query suite to evaluate. Default: `official`. |
+| `--output PATH` | Output JSONL file. Default: `data/eval_runs/<suite>_<timestamp>.jsonl`. |
+| `--limit N` | Evaluate only the first N queries in the suite. |
+| `--queries q001,q002` | Specific query IDs to evaluate (comma-separated). |
+| `--top-k N` | Retrieval pool size before reranking. Default: 50. |
+| `--rerank-top-k N` | Top-K chunks passed to the LLM. Default: 8. |
+| `--temperature F` | LLM temperature. Default: 0.0 (deterministic). |
+
+JSONL output is written **incrementally**: if the run is interrupted, results produced
+before the failure are preserved.
+
+### eval list
+
+```
+rag-lab eval list [--limit N]
+```
+
+Lists previous runs in `data/eval_runs/`, sorted by most recent. Shows query count,
+error count, mean trust score, and modification date.
+
+### eval show
+
+```
+rag-lab eval show <run_id>
+```
+
+Prints a summary of a run: mean score, mean latency, trust level distribution, and
+individual errors if any. `<run_id>` can be the full file name or a prefix.
+
+### JSONL schema
+
+Each line in the output file has this schema:
+
+```json
+{
+  "query_id": "q001",
+  "question": "What is SDMX?",
+  "language": "en",
+  "category": "glossary_definition",
+  "answer": "SDMX is...",
+  "contexts": ["chunk text 1", "chunk text 2"],
+  "context_metadata": [
+    {"chunk_id": "...", "doc_id": "SDMX_Glossary", "heading_path": "...", "rerank_score": 0.87}
+  ],
+  "citations": [{"chunk_id": "...", "doc_id": "...", "lines": "10-25", "status": "valid"}],
+  "trust_score": 0.87,
+  "trust_level": "HIGH",
+  "latency_ms": 245,
+  "expected_answer": null,
+  "expected_doc_ids": ["SDMX_Glossary"],
+  "doc_relevance": {"SDMX_Glossary": 3},
+  "error": null
+}
+```
+
+`error` is `null` on successful runs; it contains the exception message if a query fails.
+
+### Examples
+
+```bash
+# Quick smoke test: 5 queries
+rag-lab eval run --suite official --limit 5 --output /tmp/smoke.jsonl
+
+# Full suite (v1.21 baseline)
+rag-lab eval run --suite official --output data/eval_runs/v1.21_baseline.jsonl
+
+# Review results
+rag-lab eval list
+rag-lab eval show v1.21_baseline
+```
+
+---
+
 ## Common workflows
 
 ### Adding a new document
@@ -831,4 +925,4 @@ rag-lab benchmark --suite official --no-cache --output new_result.json
 
 ---
 
-*Version: v1.19.1*
+*Version: v1.21*

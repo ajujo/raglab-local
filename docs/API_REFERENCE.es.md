@@ -1,4 +1,4 @@
-# RAG-Lab — Referencia de CLI (v1.19.1)
+# RAG-Lab — Referencia de CLI (v1.21)
 
 Referencia completa de todos los comandos disponibles en `rag-lab`. Todos los comandos asumen
 que el entorno conda `rag-lab` está activo y el servidor LLM local está disponible para los
@@ -19,6 +19,7 @@ comandos que generan respuestas.
 - [reconcile](#reconcile)
 - [diagnose](#diagnose)
 - [benchmark](#benchmark)
+- [eval](#eval)
 
 ---
 
@@ -775,6 +776,100 @@ rag-lab benchmark --suite all --no-cache
 
 ---
 
+## eval
+
+Ejecuta el pipeline E2E sobre un conjunto de queries y guarda la salida completa en JSONL.
+Cada línea captura `pregunta → contextos → respuesta → citas → trust_score` — formato
+consumible por cualquier evaluador externo (RAGAS, TruLens, revisión humana).
+
+```
+rag-lab eval run   [opciones]
+rag-lab eval list  [opciones]
+rag-lab eval show  <run_id>
+```
+
+### eval run
+
+```
+rag-lab eval run [opciones]
+```
+
+| Opción | Descripción |
+|---|---|
+| `--suite SUITE` | Suite de queries a evaluar. Por defecto: `official`. |
+| `--output PATH` | Fichero JSONL de salida. Por defecto: `data/eval_runs/<suite>_<timestamp>.jsonl`. |
+| `--limit N` | Evalúa solo las primeras N queries de la suite. |
+| `--queries q001,q002` | IDs concretos a evaluar (separados por comas). |
+| `--top-k N` | Pool de candidatos antes del reranking. Por defecto: 50. |
+| `--rerank-top-k N` | Top-K chunks pasados al LLM. Por defecto: 8. |
+| `--temperature F` | Temperatura del LLM. Por defecto: 0.0 (determinista). |
+
+La escritura del JSONL es **incremental**: si la ejecución se interrumpe, los resultados
+anteriores al fallo quedan preservados.
+
+### eval list
+
+```
+rag-lab eval list [--limit N]
+```
+
+Lista las ejecuciones anteriores en `data/eval_runs/`, ordenadas por fecha descendente.
+Muestra número de queries, errores, score medio y fecha de modificación.
+
+### eval show
+
+```
+rag-lab eval show <run_id>
+```
+
+Imprime un resumen de una ejecución: score medio, latencia media, distribución de trust
+levels y errores individuales si los hay. `<run_id>` puede ser el nombre completo del
+fichero o un prefijo.
+
+### Schema JSONL
+
+Cada línea del fichero de salida tiene este schema:
+
+```json
+{
+  "query_id": "q001",
+  "question": "What is SDMX?",
+  "language": "en",
+  "category": "glossary_definition",
+  "answer": "SDMX is...",
+  "contexts": ["chunk text 1", "chunk text 2"],
+  "context_metadata": [
+    {"chunk_id": "...", "doc_id": "SDMX_Glossary", "heading_path": "...", "rerank_score": 0.87}
+  ],
+  "citations": [{"chunk_id": "...", "doc_id": "...", "lines": "10-25", "status": "valid"}],
+  "trust_score": 0.87,
+  "trust_level": "HIGH",
+  "latency_ms": 245,
+  "expected_answer": null,
+  "expected_doc_ids": ["SDMX_Glossary"],
+  "doc_relevance": {"SDMX_Glossary": 3},
+  "error": null
+}
+```
+
+`error` es `null` en ejecuciones correctas; contiene el mensaje de excepción si la query falla.
+
+### Ejemplos
+
+```bash
+# Smoke test rápido: 5 queries
+rag-lab eval run --suite official --limit 5 --output /tmp/smoke.jsonl
+
+# Suite completa (baseline v1.21)
+rag-lab eval run --suite official --output data/eval_runs/v1.21_baseline.jsonl
+
+# Consultar resultados
+rag-lab eval list
+rag-lab eval show v1.21_baseline
+```
+
+---
+
 ## Flujos de trabajo habituales
 
 ### Incorporar un documento nuevo
@@ -832,4 +927,4 @@ rag-lab benchmark --suite official --no-cache --output nuevo_resultado.json
 
 ---
 
-*Versión: v1.19.1*
+*Versión: v1.21*
