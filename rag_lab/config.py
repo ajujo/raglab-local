@@ -19,6 +19,29 @@ import os
 from pathlib import Path
 
 # =============================================================================
+# 0. CARGA DE .env (antes que cualquier os.getenv)
+# =============================================================================
+
+def _load_dotenv() -> None:
+    """Load .env from the repo root if it exists. Never fails silently."""
+    env_path = Path(__file__).parent.parent / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # os.environ.setdefault: only set if not already in environment
+            # (shell exports take precedence over .env)
+            os.environ.setdefault(key, value)
+
+_load_dotenv()
+
+# =============================================================================
 # 1. RUTAS DEL PROYECTO
 # =============================================================================
 
