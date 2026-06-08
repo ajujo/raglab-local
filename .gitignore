@@ -54,3 +54,14 @@ data/query_cache.sqlite
 # Legacy sparse index (removed in v1.18.2 — SQLite BLOBs are canonical)
 storage/sparse_index.json
 CLAUDE.md
+
+# Local conda env snapshots
+environments/
+
+# Eval run JSONL outputs (large, reproducible on demand) — keep baselines
+data/eval_runs/*.jsonl
+!data/eval_runs/v1.21_baseline.jsonl
+
+# SQLite WAL/SHM journal files
+data/*.sqlite-shm
+data/*.sqlite-wal
