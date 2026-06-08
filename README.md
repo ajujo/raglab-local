@@ -62,6 +62,8 @@ Reference-free metrics — no annotated ground truth required.
 | `answer_relevancy` | **0.7624** | How directly the answer addresses the question asked |
 
 Full benchmark history and reproduction commands: [docs/BENCHMARK_HISTORY.md](docs/BENCHMARK_HISTORY.md)
+System status and improvement roadmap: [docs/BENCHMARK_STATUS.md](docs/BENCHMARK_STATUS.md)
+RAGAS usage guide: [docs/RAGAS_USAGE.md](docs/RAGAS_USAGE.md)
 
 ## Documentation
 
