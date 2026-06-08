@@ -42,6 +42,7 @@ from rag_lab.performance.timer import PhaseTimer
 from rag_lab.performance.report import generate_report, save_report_json
 from rag_lab.logging_config import setup_logging
 from rag_lab.cli_docs import docs_app, tags_app
+from rag_lab.cli_eval import eval_app
 from rag_lab.cli_ingest import ingest_app
 
 app = typer.Typer(
@@ -52,6 +53,7 @@ app = typer.Typer(
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(docs_app, name="docs")
 app.add_typer(tags_app, name="tags")
+app.add_typer(eval_app, name="eval")
 
 cache_app = typer.Typer(name="cache", help="Query cache management.")
 app.add_typer(cache_app, name="cache")
