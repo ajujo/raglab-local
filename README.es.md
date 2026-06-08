@@ -298,6 +298,17 @@ Suite: official | 65 queries | variante: full | sin cache | corpus: 610 chunks
 | Recall@30 | 0.978 |
 | MRR | 0.939 |
 | nDCG@10 | 0.837 |
+### Calidad de respuesta — RAGAS (v1.21, 65 queries, juez externo: DeepSeek v4 Flash)
+
+Métricas reference-free — no requieren respuestas de referencia anotadas.
+
+| Métrica | Valor | Qué mide |
+|---------|-------|----------|
+| `faithfulness` | **0.9123** | Fracción de afirmaciones respaldadas por los contextos recuperados (anti-alucinación) |
+| `answer_relevancy` | **0.7624** | Grado en que la respuesta aborda directamente la pregunta formulada |
+
+Historial completo: [docs/BENCHMARK_HISTORY.md](docs/BENCHMARK_HISTORY.md)
+
 | P50 latencia | 334 ms |
 | P95 latencia | 384 ms |
 

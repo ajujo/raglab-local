@@ -12,7 +12,7 @@ RAG-Lab is a local, CLI-only Retrieval-Augmented Generation system for querying 
 
 ## Current state
 
-Version **v1.20** — stable, in controlled local use. 1031 tests passing. Production corpus: 610 chunks.
+Version **v1.21** — stable, in controlled local use. 1058 tests passing. Production corpus: 610 chunks.
 
 ## Quick start
 
@@ -42,7 +42,7 @@ Run `rag-lab doctor` after setup to verify all components are healthy.
 
 ## Benchmark results
 
-Official suite, 65 queries, variant `full`, no cache. Baseline: v1.11.
+### Retrieval quality — official suite, 65 queries, variant `full`, no cache
 
 | Metric | Value |
 |--------|-------|
@@ -52,7 +52,16 @@ Official suite, 65 queries, variant `full`, no cache. Baseline: v1.11.
 | MRR | 0.939 |
 | nDCG@10 | 0.837 |
 
-These metrics measure retrieval quality, not full answer quality.
+### Answer quality — RAGAS (v1.21, 65 queries, external judge: DeepSeek v4 Flash)
+
+Reference-free metrics — no annotated ground truth required.
+
+| Metric | Value | What it measures |
+|--------|-------|-----------------|
+| `faithfulness` | **0.9123** | Fraction of answer statements supported by retrieved contexts (anti-hallucination) |
+| `answer_relevancy` | **0.7624** | How directly the answer addresses the question asked |
+
+Full benchmark history and reproduction commands: [docs/BENCHMARK_HISTORY.md](docs/BENCHMARK_HISTORY.md)
 
 ## Documentation
 
