@@ -331,7 +331,6 @@ v1.11 official baseline exactly.
 
 **Documentation updated:**
 
-- `CLAUDE.md`: commands section updated to `rag-lab` wrapper forms.
 - `docs/OPERATIONS.md`: doctor/reconcile/diagnose/benchmark sections updated to
   prefer `rag-lab <cmd>` with `python -m` as fallback alternative.
   Reconcile modes table updated to include `--repair-fts` and `--repair-metadata`.
