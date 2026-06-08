@@ -21,6 +21,9 @@ import os
 import sys
 from pathlib import Path
 
+# Force embeddings to CPU — GPU is occupied by the local LLM server
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
 
 def load_env() -> None:
     """Load .env from repo root if present."""
@@ -129,12 +132,16 @@ def main() -> None:
     dataset = build_ragas_dataset(ok_rows)
     print(f"Dataset: {len(dataset)} rows")
 
-    # Configure metrics with judge LLM
+    # Configure metrics with judge LLM + local embeddings (CPU)
     from ragas import evaluate
     from ragas.embeddings import HuggingfaceEmbeddings
 
+    embeddings = HuggingfaceEmbeddings(model="BAAI/bge-small-en-v1.5")
+
     for metric in metrics:
         metric.llm = judge
+        if hasattr(metric, "embeddings"):
+            metric.embeddings = embeddings
 
     print("\nRunning RAGAS evaluation...")
     result = evaluate(dataset, metrics=metrics)
