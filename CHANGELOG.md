@@ -45,12 +45,23 @@ covering happy paths, safety (regular brackets preserved), and edge cases.
 **Docs updated:** `RAGAS_USAGE.md`, `BENCHMARKS.en.md`, `BENCHMARKS.es.md`,
 `DEVELOPMENT_HISTORY.en.md`.
 
+### RAGAS results (answer_for_eval vs baseline)
+
+| Métrica | v1.21 baseline (raw) | v1.21 eval (clean) | Δ |
+|---------|---------------------|---------------------|---|
+| faithfulness | 0.9123 | **0.9296** | +0.0173 |
+| answer_relevancy | 0.7624 | **0.7775** | +0.0151 |
+
+Input: `data/eval_runs/v1.21_answer_for_eval.jsonl` (65 queries)
+Output: `data/eval_runs/v1.21_answer_for_eval_ragas.json`
+
 ### Verification
 
 - 1081 tests passing.
 - `rag-lab doctor` OK.
 - `rag-lab reconcile --check` OK.
 - Smoke eval (5 queries): JSONL contains both `answer` and `answer_for_eval`.
+- Full RAGAS run (65 queries): faithfulness=0.9296, answer_relevancy=0.7775.
 
 ---
 
