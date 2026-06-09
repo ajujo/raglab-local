@@ -11,6 +11,13 @@ la evaluación RAGAS (véase `docs/RAGAS_USAGE.md`), que mide `faithfulness` y
 La evaluación RAGAS usa el campo `answer_for_eval` — la respuesta sin citas inline —
 en lugar del campo `answer` completo. Ver RAGAS_USAGE.md §"answer vs answer_for_eval".
 
+**`answer_relevancy` no es válida para todas las queries.** 10 de las 65 queries oficiales
+están clasificadas como no aplicables (ambiguity_test, meta_synthesis, referencia estructurada
+no cubierta, limitación del evaluador RAGAS). La métrica principal recomendada es
+`answer_relevancy` sobre el **subconjunto aplicable (55 queries)**, no la media global.
+Las queries no aplicables permanecen en la suite — no se eliminan. Ver RAGAS_USAGE.md
+§"Applicability reporting".
+
 El benchmark sirve para dos usos principales:
 
 1. **Regression guard:** detectar degradaciones de calidad de retrieval antes de fusionar cambios.

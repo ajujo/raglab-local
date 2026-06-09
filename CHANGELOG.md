@@ -4,6 +4,71 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.21.1 — 2026-06-09 — RAGAS applicability reporting
+
+### Scope
+
+Eval metadata + reporting change. No changes to retrieval, ranking, prompts,
+ingest, production paths, or the retrieval benchmark.
+
+### Problem
+
+`answer_relevancy` global mean (0.7775 with `answer_for_eval`) is pulled down by 10
+queries where the metric is structurally not applicable: ambiguity_test design,
+meta-synthesis questions RAGAS can't score, and structured references not covered
+in the Markdown corpus. Reporting only the global mean misrepresents quality.
+
+### Changes
+
+**`rag_lab/evaluation/ragas_applicability.py`** (new) — loads
+`ragas.answer_relevancy_applicable` and `ragas.applicability_reason` per query from
+`benchmark_queries.yaml`. Provides `load_applicability_map`, `split_by_applicability`,
+`mean_score`, `build_applicability_report`. Validates reasons against `VALID_REASONS`
+and decisions against `VALID_DECISIONS`. Runs in `rag-lab` env; no ragas dependency.
+
+**`data/benchmark_queries.yaml`** — added `ragas:` block to 10 queries:
+
+| Query | reason | decision |
+|-------|--------|----------|
+| q013 | meta_synthesis | evaluator_limitation |
+| q032 | meta_synthesis | evaluator_limitation |
+| q038 | ragas_evaluator_limitation | evaluator_limitation |
+| q039 | structured_reference_missing_corpus | needs_corpus_expansion |
+| q041 | structured_reference_missing_corpus | needs_corpus_expansion |
+| q042 | structured_reference_missing_corpus | needs_corpus_expansion |
+| q048 | ambiguity_test | keep_as_stress_test |
+| q050 | ambiguity_test | keep_as_stress_test |
+| q054 | meta_synthesis | evaluator_limitation |
+| q065 | meta_synthesis | evaluator_limitation |
+
+**`scripts/ragas_eval.py`** — captures per-query scores via `result.to_pandas()`,
+loads applicability map from `benchmark_queries.yaml` (auto-detected), outputs split
+report (all / applicable / not-applicable) to console and JSON. Adds `--queries-yaml`
+flag. Output JSON now includes `per_query` rows and `applicability` report.
+
+**`tests/test_evaluation/test_ragas_applicability.py`** (new) — 23 tests covering
+load, validation (invalid reason/decision raise), split, scores-unchanged invariant,
+mean calculation, report structure, answer field passthrough, and real-YAML integration.
+
+**Docs updated:** `RAGAS_USAGE.md` (applicability reporting section), `BENCHMARKS.en.md`,
+`BENCHMARKS.es.md`.
+
+### Key invariants
+
+- Scores of not-applicable rows are **never modified**.
+- Not-applicable queries are **never removed** from the suite or from JSON output.
+- `answer` (visible to user) and `answer_for_eval` are **never touched**.
+- Production paths (`rag-lab query`, `rag-lab chat`, retrieval benchmark) are **unchanged**.
+
+### Verification
+
+- 1104 tests passing.
+- `rag-lab doctor` OK.
+- `rag-lab reconcile --check` OK.
+- Retrieval benchmark: R@5=0.821, MRR=0.939, nDCG@10=0.837 (unchanged from v1.11 baseline).
+
+---
+
 ## v1.21 eval — 2026-06-09 — Eval pipeline: answer_for_eval field
 
 ### Scope

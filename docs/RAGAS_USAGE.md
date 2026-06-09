@@ -217,7 +217,7 @@ score=0.9–1.0  █████████████████████
 
 Sin los 11 outliers: **media = 0.906** (por encima del objetivo de 0.85).
 
-### Causas de los 11 scores = 0.000
+### Causas de los 11 scores = 0.000 (diagnóstico v1.21)
 
 | Causa | Queries | Descripción |
 |-------|---------|-------------|
@@ -225,6 +225,9 @@ Sin los 11 outliers: **media = 0.906** (por encima del objetivo de 0.85).
 | Contaminación por citas | q056 | Sin citas: 0.000 → 0.831. Las citas dominan el texto y RAGAS genera preguntas sobre metadatos de fuente. |
 | Preguntas ambiguas | q048, q050 | `ambiguity_test` — diseñadas para ser polisémicas. El LLM cubre múltiples conceptos → RAGAS no converge. |
 | Incompatibilidad RAGAS | q013, q032, q038, q054, q065 | Preguntas meta, de síntesis amplia o de tablas. Respuestas correctas pero RAGAS no puede generar una pregunta sintética convergente. |
+
+q056 se resolvió con `answer_for_eval`. Los 10 restantes son **no aplicables estructuralmente**
+y están clasificados como tal en `data/benchmark_queries.yaml` desde v1.21.1.
 
 ### Por qué `answer_for_eval` mejora la métrica
 
@@ -237,3 +240,57 @@ model and what are its layers?".
 
 Con `answer_for_eval` (citas eliminadas): +0.028 de media global, y algunos casos como q056
 mejoran +0.83.
+
+---
+
+## Applicability reporting (v1.21.1)
+
+`answer_relevancy` no es una métrica válida para todas las queries de la suite oficial.
+**10 queries** tienen `ragas.answer_relevancy_applicable: false` en
+`data/benchmark_queries.yaml`. La métrica global (65 queries) es útil para comparaciones
+históricas, pero la **métrica aplicable (55 queries)** es el indicador principal de calidad.
+
+### Categorías de no-aplicabilidad
+
+| `applicability_reason` | Queries | Significado | `decision` |
+|------------------------|---------|-------------|------------|
+| `meta_synthesis` | q013, q032, q054, q065 | Pregunta de síntesis amplia o meta-pregunta; RAGAS no converge | `evaluator_limitation` |
+| `ragas_evaluator_limitation` | q038 | Respuesta correcta pero RAGAS no genera pregunta sintética convergente para tablas/enumeraciones | `evaluator_limitation` |
+| `structured_reference_missing_corpus` | q039, q041, q042 | La referencia estructurada (codelist, tabla de valores) no está accesible en el corpus Markdown | `needs_corpus_expansion` |
+| `ambiguity_test` | q048, q050 | Diseñadas para ser polisémicas; el LLM cubre múltiples sentidos → RAGAS no converge | `keep_as_stress_test` |
+
+### Métricas recomendadas
+
+| Métrica | Descripción | Cuándo usar |
+|---------|-------------|-------------|
+| `answer_relevancy_all` | Media sobre las 65 queries | Comparación histórica cross-version |
+| `answer_relevancy_applicable` | Media sobre las 55 queries aplicables | **Indicador principal de calidad** |
+| `faithfulness_all` | Media sobre las 65 queries | Faithfulness no tiene restricción de aplicabilidad |
+
+### Acciones futuras por grupo (no implementadas)
+
+- **`needs_corpus_expansion` (q039, q041, q042):** añadir documentos Markdown con codelists
+  SDMX estructurados (OBS_STATUS, header elements, namespace prefixes). Sin reingestión de
+  documentos existentes.
+- **`keep_as_stress_test` (q048, q050):** mantener como stress test de ambigüedad. Crear
+  variantes `candidate` con preguntas sin ambigüedad para medir esa dimensión limpiamente.
+- **`evaluator_limitation` (q013, q032, q038, q054, q065):** evaluar con rúbrica de
+  synthesis/completeness, no con `answer_relevancy`. Pendiente de diseño de rúbrica.
+
+### Ejecutar con informe de aplicabilidad
+
+```bash
+conda activate ragas
+python scripts/ragas_eval.py \
+  --input  data/eval_runs/v1.21.1_applicability.jsonl \
+  --metrics faithfulness,answer_relevancy \
+  --output data/eval_runs/v1.21.1_applicability_ragas.json
+```
+
+El script carga automáticamente `data/benchmark_queries.yaml` y muestra:
+- Tabla `ALL queries` (65)
+- Tabla `APPLICABLE only` (55) — **métrica principal**
+- Tabla `NOT APPLICABLE` (10) — scores preservados, visibles para referencia
+- Lista detallada de no-aplicables con `reason` y `decision`
+
+Para deshabilitar el splitting: `--queries-yaml none`.

@@ -248,6 +248,10 @@ queries:
       User Guide section 4.4.1.1.x defines six metadata target types (Full Target,
       Key Descriptor Values Target, Dataset Target, Report Period Target, Primary Measure
       Value Target, Metadata Attribute Value Target). Answer genuinely spans 3-6 chunks.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: meta_synthesis
+      decision: evaluator_limitation
 
   # --- technical_standard --------------------------------------------------
 
@@ -563,6 +567,10 @@ queries:
     notes: >
       Corpus verification: User_Guide #1-#2 + Training #3-#5 confirmed in top-5.
       Both sources reliably surface. Explicitly tests dual-document retrieval.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: meta_synthesis
+      decision: evaluator_limitation
 
   - id: q033
     text: "How is SDMX data validation described across the user guide and the technical notes?"
@@ -646,6 +654,10 @@ queries:
       Corpus verification: User_Guide #1-#2+#4, Notas #3+#5. User_Guide more dominant
       than expected; doc_relevance updated to reflect actual retrieval. Frequency codes
       table content confirmed in both documents.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: ragas_evaluator_limitation
+      decision: evaluator_limitation
 
   - id: q039
     text: "What are the allowed values for the SDMX observation status attribute?"
@@ -662,6 +674,10 @@ queries:
       Corpus verification: Notas #1 (attributes section with OBS_STATUS values).
       Confirmed as table-structured content in Notas. Observation status codelist
       values retrieved correctly.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: structured_reference_missing_corpus
+      decision: needs_corpus_expansion
 
   - id: q040
     text: "What time period formats does SDMX 2.1 support for representing dates?"
@@ -692,6 +708,10 @@ queries:
     notes: >
       Corpus verification: Notas #2-#5 confirmed in top-5. Message header elements
       (ID, Test, Prepared, Sender, Receiver) well-covered in Notas.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: structured_reference_missing_corpus
+      decision: needs_corpus_expansion
 
   - id: q042
     text: "What XML namespace prefixes are defined for SDMX 2.1 messages?"
@@ -706,6 +726,10 @@ queries:
     notes: >
       Corpus verification: Notas #1 (section 3.3.1 XML namespace prefixes). Very specific
       technical content confirmed in Notas. Single-source query as expected.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: structured_reference_missing_corpus
+      decision: needs_corpus_expansion
 
   # --- ambiguity_test (verified) -------------------------------------------
 
@@ -725,6 +749,10 @@ queries:
       Corpus verification: SDMX_Glossary_Test at #1, User_Guide with data-set context.
       Multiple interpretations confirmed — data key, key descriptor, key family all surface.
       SDMX_Glossary_Test graded 2 as it appeared prominently with relevant content.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: ambiguity_test
+      decision: keep_as_stress_test
 
   - id: q049
     text: "What is a group in SDMX?"
@@ -760,6 +788,10 @@ queries:
       Corpus verification: User_Guide (data set context) + Training confirmed in results.
       High-ambiguity query confirmed: retrieval surfaces multiple structural senses.
       Training added to doc_relevance as confirmed relevant.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: ambiguity_test
+      decision: keep_as_stress_test
 
   - id: q051
     text: "What does 'concept' mean in SDMX?"
@@ -826,6 +858,10 @@ queries:
       Corpus verification: Notas #1+#4+#5 (section 3.3.1 format) confirmed in top-5.
       Hard query because specific GenericData spec is in a single technical document.
       Multiple Notas chunks confirmed, showing the spec spans several sections.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: meta_synthesis
+      decision: evaluator_limitation
 
   - id: q055
     text: "How are annotations used in SDMX artefacts and what information can they carry?"
@@ -988,6 +1024,10 @@ queries:
       Corpus verification: Glossary #1 (SDMX Registry — related concept) + User_Guide
       #2+#3 in top-5. Glossary added to doc_relevance at 2 (Registry is related to web
       service structural queries). User_Guide confirmed as primary.
+    ragas:
+      answer_relevancy_applicable: false
+      applicability_reason: meta_synthesis
+      decision: evaluator_limitation
 
   - id: q066
     text: "What is the role of reference metadata in SDMX and how does it relate to statistical data?"
