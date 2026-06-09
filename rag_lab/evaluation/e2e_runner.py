@@ -24,6 +24,7 @@ from rag_lab.evaluation.config import (
     EVAL_TEMPERATURE,
     EVAL_TOP_K,
 )
+from rag_lab.evaluation.eval_utils import strip_inline_citations_for_eval
 from rag_lab.evaluation.types import EvalResult, EvalSample
 from rag_lab.exceptions import LLMConnectionError, RAGLabError
 from rag_lab.generation.llm_client import generate_response
@@ -188,6 +189,7 @@ class EvalRunner:
             return EvalResult(
                 sample=sample,
                 answer=answer,
+                answer_for_eval=strip_inline_citations_for_eval(answer),
                 contexts=contexts,
                 context_metadata=context_metadata,
                 citations=citations,

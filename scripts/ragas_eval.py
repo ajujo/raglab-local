@@ -71,14 +71,32 @@ def load_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def build_ragas_dataset(rows: list[dict]):
-    """Convert eval JSONL rows to a RAGAS Dataset."""
+def build_ragas_dataset(rows: list[dict], answer_field: str = "answer_for_eval"):
+    """Convert eval JSONL rows to a RAGAS Dataset.
+
+    Args:
+        rows: Parsed JSONL rows from `rag-lab eval run`.
+        answer_field: Which field to use as the answer for RAGAS metrics.
+            Defaults to ``answer_for_eval`` (inline citations stripped),
+            which gives cleaner answer_relevancy scores. Falls back to
+            ``answer`` when ``answer_for_eval`` is absent or empty (e.g.
+            JSONL files produced before this field was added).
+    """
     from datasets import Dataset
 
+    answers = []
+    for r in rows:
+        if answer_field == "answer_for_eval":
+            # Prefer answer_for_eval; fall back to answer for old JSONL
+            ans = r.get("answer_for_eval") or r.get("answer", "")
+        else:
+            ans = r.get(answer_field, r.get("answer", ""))
+        answers.append(ans)
+
     data = {
-        "question":  [r["question"] for r in rows],
-        "answer":    [r["answer"] for r in rows],
-        "contexts":  [r["contexts"] for r in rows],
+        "question": [r["question"] for r in rows],
+        "answer":   answers,
+        "contexts": [r["contexts"] for r in rows],
     }
     return Dataset.from_dict(data)
 
@@ -98,6 +116,16 @@ def main() -> None:
         help="Comma-separated metrics: faithfulness,answer_relevancy (default: faithfulness)",
     )
     parser.add_argument("--output", default=None, help="Save results JSON to this path")
+    parser.add_argument(
+        "--answer-field",
+        default="answer_for_eval",
+        choices=["answer", "answer_for_eval"],
+        help=(
+            "Which JSONL field to pass as the answer to RAGAS. "
+            "Default: answer_for_eval (inline citations stripped). "
+            "Use --answer-field answer to evaluate the raw answer with citations."
+        ),
+    )
     args = parser.parse_args()
 
     load_env()
@@ -129,7 +157,14 @@ def main() -> None:
     print(f"Judge: {model_name} via OpenRouter")
 
     # Build RAGAS dataset
-    dataset = build_ragas_dataset(ok_rows)
+    answer_field = args.answer_field
+    n_with_eval = sum(1 for r in ok_rows if r.get("answer_for_eval"))
+    if answer_field == "answer_for_eval" and n_with_eval == 0:
+        print("WARNING: answer_for_eval not found in any row — falling back to answer.")
+        print("         Run `rag-lab eval run` again to generate answer_for_eval fields.")
+    else:
+        print(f"Answer field: {answer_field} ({n_with_eval}/{len(ok_rows)} rows have answer_for_eval)")
+    dataset = build_ragas_dataset(ok_rows, answer_field=answer_field)
     print(f"Dataset: {len(dataset)} rows")
 
     # Configure metrics with judge LLM + local embeddings (CPU)
@@ -162,6 +197,7 @@ def main() -> None:
             "input": str(input_path),
             "n_queries": len(ok_rows),
             "judge_model": model_name,
+            "answer_field": answer_field,
             "scores": {name: float(result[name]) for name in metric_names},
         }
         with open(args.output, "w") as f:

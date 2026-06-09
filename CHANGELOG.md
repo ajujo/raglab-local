@@ -4,6 +4,56 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.21 eval — 2026-06-09 — Eval pipeline: answer_for_eval field
+
+### Scope
+
+Eval-only change. No changes to retrieval, ranking, prompts, ingest, or production paths.
+`rag-lab query`, `rag-lab chat`, and the retrieval benchmark are unaffected.
+
+### Problem
+
+RAGAS `answer_relevancy` diagnosis (65 queries, v1.21 baseline) showed that inline
+citation annotations — `[[N] Fuente: doc_id | Sección: ... | Líneas: X-Y]` — comprise
+~33% of answer text and contaminate the metric. RAGAS generates synthetic questions from
+the answer text; citation metadata skews those questions away from the actual topic.
+Worst case: q056 scores 0.000 raw, 0.831 with citations stripped (+0.831 delta).
+
+### Changes
+
+**`rag_lab/evaluation/eval_utils.py`** (new) — `strip_inline_citations_for_eval(text)`:
+strips `[[N] Fuente: ... | Líneas: ...]` annotations, normalises whitespace. Does not
+touch `[N]` or regular square brackets.
+
+**`rag_lab/evaluation/types.py`** — `EvalResult` gains `answer_for_eval: str = ""`
+field. `to_jsonl_dict()` now emits both `answer` and `answer_for_eval`.
+Backwards compatible: defaults to `""`, falls back to `answer` in the dict serialisation.
+
+**`rag_lab/evaluation/e2e_runner.py`** — `run_single()` populates `answer_for_eval`
+using `strip_inline_citations_for_eval(answer)` on every successful query.
+
+**`scripts/ragas_eval.py`** — defaults to `answer_for_eval` field. Falls back to
+`answer` if `answer_for_eval` is absent (old JSONL). Adds `--answer-field` flag.
+Output JSON now includes `answer_field` key.
+
+**`tests/test_evaluation/test_answer_for_eval.py`** (new) — 17 tests for the stripper
+covering happy paths, safety (regular brackets preserved), and edge cases.
+
+**`tests/test_evaluation/test_types.py`** — updated schema assertions.
+**`tests/test_evaluation/test_e2e_runner.py`** — updated schema assertions.
+
+**Docs updated:** `RAGAS_USAGE.md`, `BENCHMARKS.en.md`, `BENCHMARKS.es.md`,
+`DEVELOPMENT_HISTORY.en.md`.
+
+### Verification
+
+- 1081 tests passing.
+- `rag-lab doctor` OK.
+- `rag-lab reconcile --check` OK.
+- Smoke eval (5 queries): JSONL contains both `answer` and `answer_for_eval`.
+
+---
+
 ## v1.20 — 2026-05-25 — Bilingual GitHub Documentation Restructure
 
 ### Scope

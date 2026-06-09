@@ -50,7 +50,8 @@ Cada línea es un JSON con este esquema:
   "question":        "What is SDMX?",
   "language":        "en",
   "category":        "glossary_definition",
-  "answer":          "SDMX (Statistical Data and Metadata eXchange) is...",
+  "answer":          "SDMX es un estándar [[1] Fuente: SDMX_Glossary | Sección: Intro | Líneas: 1-10].",
+  "answer_for_eval": "SDMX es un estándar.",
   "contexts":        ["chunk text 1", "chunk text 2", "..."],
   "context_metadata": [
     {"chunk_id": "...", "doc_id": "SDMX_Glossary", "heading_path": "## Glossary", "rerank_score": 0.87}
@@ -65,6 +66,19 @@ Cada línea es un JSON con este esquema:
   "error":           null
 }
 ```
+
+**`answer` vs `answer_for_eval`:**
+
+- `answer` — respuesta completa tal como se muestra al usuario, incluyendo las citas inline
+  del tipo `[[N] Fuente: doc_id | Sección: ... | Líneas: X-Y]`. No se modifica.
+- `answer_for_eval` — respuesta sustantiva limpia, sin anotaciones de cita, usada
+  por `ragas_eval.py` para calcular métricas. Las citas inline suponen ~33% del texto
+  de una respuesta típica y pueden contaminar `answer_relevancy` porque RAGAS genera
+  preguntas sintéticas desde el texto de la respuesta — si ese texto incluye metadatos
+  de fuente, las preguntas se desvían de la pregunta original.
+
+`answer_for_eval` **no elimina las citas del usuario** — el usuario sigue viendo `answer`
+completo con todas sus fuentes. Solo afecta a la evaluación interna con RAGAS.
 
 `error` es `null` si la query fue correcta. Si falla (LLM caído, timeout), se registra
 el error y el runner continúa con la siguiente query — el fichero queda parcialmente lleno.
@@ -89,6 +103,11 @@ python scripts/ragas_eval.py \
 | `--input PATH` | requerido | Fichero JSONL producido por `rag-lab eval run`. |
 | `--metrics` | `faithfulness` | Métricas separadas por comas. Ver tabla de métricas. |
 | `--output PATH` | — | Si se especifica, guarda los resultados en JSON. |
+| `--answer-field` | `answer_for_eval` | Campo a pasar a RAGAS como respuesta. `answer_for_eval` (defecto) usa la respuesta limpia sin citas. `answer` usa la respuesta completa. Ver sección "answer vs answer_for_eval" arriba. |
+
+**Compatibilidad con JSONL antiguos:** si el fichero no contiene `answer_for_eval` (generado
+antes de v1.21 eval), `ragas_eval.py` cae automáticamente a usar `answer`. No hace falta
+pasar ningún flag extra.
 
 ### Métricas disponibles
 
@@ -176,3 +195,45 @@ pip install "ragas==0.1.21" langchain-openai sentence-transformers langchain-goo
 `from langchain_community.chat_models.vertexai import ChatVertexAI` que falla con
 `langchain-community>=0.2` (el módulo se movió a `langchain-google-vertexai`).
 La 0.1.21 importa limpio y tiene todas las métricas reference-free que necesitamos.
+
+**Testset generation no disponible:** RAGAS 0.1.21 no incluye generación de testsets sintéticos.
+Esta funcionalidad fue añadida en 0.2.x. No se actualiza RAGAS en esta rama para evitar
+romper la compatibilidad existente.
+
+---
+
+## Diagnóstico de `answer_relevancy`
+
+### Distribución real (v1.21 baseline, 65 queries)
+
+La distribución es bimodal — **no** es una calidad media baja uniforme:
+
+```
+score=0.000     ███████████  11 queries (17%)  ← outliers que hunden la media
+score=0.6–0.8  ████████████  12 queries (18%)
+score=0.8–0.9  ████████       8 queries (12%)
+score=0.9–1.0  ████████████████████████████████  34 queries (52%)
+```
+
+Sin los 11 outliers: **media = 0.906** (por encima del objetivo de 0.85).
+
+### Causas de los 11 scores = 0.000
+
+| Causa | Queries | Descripción |
+|-------|---------|-------------|
+| Corpus incompleto | q039, q041, q042 | LLM responde "No encuentro esta información". RAGAS no puede generar preguntas relevantes desde "No sé". |
+| Contaminación por citas | q056 | Sin citas: 0.000 → 0.831. Las citas dominan el texto y RAGAS genera preguntas sobre metadatos de fuente. |
+| Preguntas ambiguas | q048, q050 | `ambiguity_test` — diseñadas para ser polisémicas. El LLM cubre múltiples conceptos → RAGAS no converge. |
+| Incompatibilidad RAGAS | q013, q032, q038, q054, q065 | Preguntas meta, de síntesis amplia o de tablas. Respuestas correctas pero RAGAS no puede generar una pregunta sintética convergente. |
+
+### Por qué `answer_for_eval` mejora la métrica
+
+`answer_relevancy` funciona así: RAGAS genera N preguntas sintéticas desde el texto de la
+respuesta y mide su similitud con la pregunta original. Si la respuesta contiene texto de
+citas como `[[3] Fuente: SDMX_Glossary | Sección: SDMX Information Model | Líneas: 6283-6321]`,
+RAGAS puede generar preguntas como "¿Qué sección del SDMX_Glossary describe el Information
+Model?" — completamente irrelevante para la pregunta original "What is the SDMX information
+model and what are its layers?".
+
+Con `answer_for_eval` (citas eliminadas): +0.028 de media global, y algunos casos como q056
+mejoran +0.83.

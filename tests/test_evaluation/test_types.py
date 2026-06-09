@@ -75,7 +75,7 @@ class TestEvalResult:
 
         required_keys = {
             "query_id", "question", "language", "category",
-            "answer", "contexts", "context_metadata", "citations",
+            "answer", "answer_for_eval", "contexts", "context_metadata", "citations",
             "trust_score", "trust_level", "latency_ms",
             "expected_answer", "expected_doc_ids", "doc_relevance", "error",
         }
@@ -102,6 +102,37 @@ class TestEvalResult:
         line = result.to_jsonl_line()
         parsed = json.loads(line)
         assert parsed["query_id"] == "q001"
+
+    def test_answer_for_eval_populated_when_set(self):
+        result = EvalResult(
+            sample=self._make_sample(),
+            answer="SDMX is a standard [[1] Fuente: X | Sección: S | Líneas: 1-2].",
+            answer_for_eval="SDMX is a standard.",
+            contexts=[],
+            context_metadata=[],
+            citations=[],
+            trust_score=0.9,
+            trust_level="HIGH",
+            latency_ms=100,
+        )
+        d = result.to_jsonl_dict()
+        assert d["answer_for_eval"] == "SDMX is a standard."
+        assert d["answer"] != d["answer_for_eval"]
+
+    def test_answer_for_eval_falls_back_to_answer_when_empty(self):
+        result = EvalResult(
+            sample=self._make_sample(),
+            answer="SDMX is a standard.",
+            contexts=[],
+            context_metadata=[],
+            citations=[],
+            trust_score=0.9,
+            trust_level="HIGH",
+            latency_ms=100,
+        )
+        d = result.to_jsonl_dict()
+        # answer_for_eval defaults to "" → falls back to answer
+        assert d["answer_for_eval"] == "SDMX is a standard."
 
     def test_error_field_preserved(self):
         result = EvalResult(

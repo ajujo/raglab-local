@@ -437,6 +437,21 @@ for the current corpus size.
 A/B benchmark: 0 benefit in R@5/MRR/nDCG@10, latency ×2. The cost does not justify the zero
 benefit. Variants are implemented but disabled by default.
 
+### `answer_for_eval` field — eval-only, does not affect production (v1.21 eval branch)
+
+RAGAS `answer_relevancy` diagnosis revealed that inline citation annotations
+(`[[N] Fuente: doc_id | Sección: ... | Líneas: X-Y]`) comprise ~33% of the answer
+text and can mislead RAGAS's synthetic-question generator. For query q056, removing
+citations changed the score from 0.000 to 0.831.
+
+A dedicated `answer_for_eval` field was added to the evaluation JSONL — the answer with
+citations stripped. The user-visible `answer` field is unchanged. `ragas_eval.py` defaults
+to `answer_for_eval`; old JSONL without the field falls back to `answer` automatically.
+
+This change is limited to the eval pipeline (`rag-lab eval run` → JSONL →
+`ragas_eval.py`). It has no effect on `rag-lab query`, `rag-lab chat`, or any
+production path.
+
 ---
 
-*Last updated: v1.19.1*
+*Last updated: v1.21 eval*

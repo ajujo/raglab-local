@@ -151,7 +151,7 @@ class TestRunEval:
         row = json.loads(out.read_text().strip())
         required = {
             "query_id", "question", "language", "category",
-            "answer", "contexts", "context_metadata", "citations",
+            "answer", "answer_for_eval", "contexts", "context_metadata", "citations",
             "trust_score", "trust_level", "latency_ms",
             "expected_answer", "expected_doc_ids", "doc_relevance", "error",
         }

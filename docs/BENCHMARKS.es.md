@@ -4,7 +4,12 @@
 
 El benchmark de RAG-Lab mide la **calidad del retrieval**: qué tan bien el pipeline recupera los chunks relevantes para cada consulta, en qué posición aparecen y a qué velocidad.
 
-El benchmark **no mide** la calidad de la respuesta generada por el LLM. Para eso, existe la auditoría del verificador de respuestas (véase `docs/ANSWER_VERIFICATION.md`).
+El benchmark **no mide** la calidad de la respuesta generada por el LLM. Para eso existe
+la evaluación RAGAS (véase `docs/RAGAS_USAGE.md`), que mide `faithfulness` y
+`answer_relevancy` usando un juez LLM externo y un entorno `ragas` separado.
+
+La evaluación RAGAS usa el campo `answer_for_eval` — la respuesta sin citas inline —
+en lugar del campo `answer` completo. Ver RAGAS_USAGE.md §"answer vs answer_for_eval".
 
 El benchmark sirve para dos usos principales:
 

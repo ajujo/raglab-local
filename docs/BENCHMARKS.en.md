@@ -7,6 +7,14 @@ a curated set of SDMX queries with ground-truth relevance grades.
 **Important:** these benchmarks measure *retrieval quality*, not full answer quality.
 They do not evaluate LLM response accuracy, citation correctness, or user satisfaction.
 
+For answer quality metrics (faithfulness, answer_relevancy), see
+[docs/RAGAS_USAGE.md](RAGAS_USAGE.md). Those metrics are computed separately using
+RAGAS with an external LLM judge and a dedicated `ragas` conda environment.
+
+The RAGAS evaluation uses `answer_for_eval` — a version of the answer with inline
+citations stripped — rather than the raw `answer`. See RAGAS_USAGE.md §"answer vs
+answer_for_eval" for why this matters.
+
 See also: [docs/BENCHMARKS.es.md](BENCHMARKS.es.md) — versión en castellano.
 
 ---

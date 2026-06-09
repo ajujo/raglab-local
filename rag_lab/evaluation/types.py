@@ -48,6 +48,11 @@ class EvalResult:
     trust_level: str
     latency_ms: int
     error: str | None = None
+    # Substantive answer with inline citation annotations stripped.
+    # Used by ragas_eval.py instead of `answer` to avoid contamination of
+    # answer_relevancy by citation metadata text. Falls back to `answer`
+    # when empty (e.g. error rows, or JSONL produced before this field existed).
+    answer_for_eval: str = ""
 
     def to_jsonl_dict(self) -> dict:
         return {
@@ -56,6 +61,7 @@ class EvalResult:
             "language": self.sample.language,
             "category": self.sample.category,
             "answer": self.answer,
+            "answer_for_eval": self.answer_for_eval or self.answer,
             "contexts": self.contexts,
             "context_metadata": self.context_metadata,
             "citations": self.citations,
