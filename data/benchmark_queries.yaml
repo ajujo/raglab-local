@@ -8,7 +8,7 @@
 #                  table_or_structured_reference, negative_no_answer, ambiguity_test,
 #                  regression_known_hard
 #   language       en | es
-#   suite          official | candidate
+#   suite          official | candidate | negative
 #   validated      true | false
 #   expected_behavior  Brief description of expected retrieval outcome
 #   source_of_truth    Primary doc(s) expected to appear in results
@@ -27,8 +27,10 @@
 #                 empty doc_relevance would distort aggregate recall@k metrics)
 #
 # Current distribution (v1.8.1):
-#   official validated:true  = 65 (q001-q033, q035-q042, q048-q072 excluding negatives)
-#   candidate validated:true  = 4  (q043-q046 confirmed negatives)
+#   official validated:true  = 62 (q001-q033, q035-q038, q040-q041 REMOVED, q042 REMOVED,
+#                                   q048-q072 excluding q039/q041/q042 → moved to negative)
+#   negative validated:true  = 3  (q039, q041, q042 — confirmed no-answer abstention tests)
+#   candidate validated:true  = 4  (q043-q046 confirmed negatives, awaiting review)
 #   candidate validated:false = 3  (q034 MSD acronym, q047 migration, q062 custom type)
 #   Total = 72
 #
@@ -661,25 +663,28 @@ queries:
 
   - id: q039
     text: "What are the allowed values for the SDMX observation status attribute?"
-    category: table_or_structured_reference
+    category: negative_no_answer
     language: en
-    suite: official
+    suite: negative
     validated: true
-    expected_behavior: "OBS_STATUS codelist values (A, E, F, M, N, O, P, S...)"
-    source_of_truth: "SDMX Cross-Domain Concept Scheme / codelist specification"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 1
+    expected_behavior: abstain
+    source_of_truth: ""
+    doc_relevance: {}
+    possible_missing_sources:
+      - SDMX Cross-Domain Concept Scheme
+      - SDMX codelist specification documents
+    source_certainty: unverified
     notes: >
-      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas mentions
-      OBS_STATUS as a concept (sections 3.4.1.3, 3.4.2) but never lists codelist values.
-      The actual allowed values (A=Normal, E=Estimated, F=Forecast, M=Missing, etc.)
-      live in the SDMX Cross-Domain Concept Scheme, a separate document not in the
-      corpus. doc_relevance updated: Notas is marginally relevant (1), not primary (3).
-      Corpus expansion needed: ingest SDMX Cross-Domain Concept Scheme in Markdown.
+      Confirmed no-answer test (2026-06-09, direct document review). The Notas
+      Tecnicas mention OBS_STATUS as a concept (sections 3.4.1.3 and 3.4.2) but
+      never enumerate codelist values. The codelist values may live in the SDMX
+      Cross-Domain Concept Scheme or equivalent — sources unverified and not ingested.
+      Not a retrieval failure, not a chunking failure, not a generation failure.
+      The answer is absent from the current corpus. Pipeline should abstain.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: out_of_corpus
-      decision: needs_corpus_expansion
+      applicability_reason: answer_not_present_in_current_corpus
+      decision: keep_as_no_answer_test
 
   - id: q040
     text: "What time period formats does SDMX 2.1 support for representing dates?"
@@ -698,49 +703,54 @@ queries:
 
   - id: q041
     text: "What are the mandatory header elements in an SDMX data message?"
-    category: table_or_structured_reference
+    category: negative_no_answer
     language: en
-    suite: official
+    suite: negative
     validated: true
-    expected_behavior: "Header elements: Prepared, Sender, Receiver, ID, Test..."
-    source_of_truth: "SDMX-ML Schema and Documentation (Section 3A/3B)"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 1
-      SDMX_2-1_User_Guide_6: 1
+    expected_behavior: abstain
+    source_of_truth: ""
+    doc_relevance: {}
+    possible_missing_sources:
+      - SDMX-ML Schema and Documentation (Section 3A/3B)
+      - SDMX XML schemas
+    source_certainty: unverified
     notes: >
-      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas discusses
+      Confirmed no-answer test (2026-06-09, direct document review). Notas discusses
       SDMX-ML messages conceptually but does not define the header structure
-      (Prepared, Sender, Receiver, ID, Test). That specification lives in SDMX-ML
-      Schema and Documentation (Sections 3A/3B), not in the Technical Notes.
-      doc_relevance updated: both sources marginally relevant (1). Primary source
-      not in corpus. Corpus expansion needed: ingest SDMX-ML documentation.
+      (Prepared, Sender, Receiver, ID, Test). The normative header specification
+      may be in SDMX-ML Schema and Documentation Sections 3A/3B — sources unverified
+      and not ingested. Not a retrieval failure. The answer is absent from the
+      current corpus. Pipeline should abstain.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: out_of_corpus
-      decision: needs_corpus_expansion
+      applicability_reason: answer_not_present_in_current_corpus
+      decision: keep_as_no_answer_test
 
   - id: q042
     text: "What XML namespace prefixes are defined for SDMX 2.1 messages?"
-    category: table_or_structured_reference
+    category: negative_no_answer
     language: en
-    suite: official
+    suite: negative
     validated: true
-    expected_behavior: "Formal namespace table: structure:, common:, c:, g:, xsi:..."
-    source_of_truth: "SDMX 2.1 XSD schemas (normative namespace declarations)"
-    doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 1
+    expected_behavior: abstain
+    source_of_truth: ""
+    doc_relevance: {}
+    possible_missing_sources:
+      - SDMX 2.1 XSD schemas
+      - SDMX-ML namespace reference documentation
+    source_certainty: unverified
     notes: >
-      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas uses
+      Confirmed no-answer test (2026-06-09, direct document review). Notas uses
       namespace prefixes (structure:, common:, c:, g:) in XML code examples but
       never formally declares or tables them. The normative namespace declarations
-      live in the SDMX 2.1 XSD schemas, not in the Technical Notes. Converting
-      XSD schemas to queryable Markdown is non-trivial. Corpus expansion needed
-      but complex: requires a dedicated reference document listing URI-to-prefix
-      mappings, not a raw XSD dump.
+      may be in the SDMX 2.1 XSD schemas — sources unverified and not ingested.
+      Converting XSD schemas to queryable Markdown would require a dedicated
+      reference document. Not a retrieval failure. Answer absent from current corpus.
+      Pipeline should abstain.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: out_of_corpus
-      decision: needs_corpus_expansion
+      applicability_reason: answer_not_present_in_current_corpus
+      decision: keep_as_no_answer_test
 
   # --- ambiguity_test (verified) -------------------------------------------
 
@@ -1272,3 +1282,71 @@ queries:
       Corpus verification: Custom Type Scheme NOT well-represented in top-5 results.
       Item Scheme and Agency Scheme appeared instead (related artefact types). The corpus
       may not have a specific chunk about Custom Type Scheme. Keep as candidate.
+
+  # --- negative abstention tests (confirmed no-answer, suite:negative) ------
+
+  # --- candidate queries replacing q039/q041/q042 for the official suite ----
+  # These ask about the same topic domain but with answers present in the corpus.
+  # Enter as candidate first; promote to official after retrieval verification.
+
+  - id: q039b
+    text: "What is the observation status attribute in SDMX and why is it used in data reporting?"
+    category: technical_standard
+    language: en
+    suite: candidate
+    validated: false
+    expected_behavior: "Notas primary — OBS_STATUS concept and usage in sections 3.4.x"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 1
+    ragas:
+      answer_relevancy_applicable: true
+      applicability_reason: normal_in_corpus
+    notes: >
+      Candidate replacement for q039 (reclassified as negative). Asks about the
+      OBS_STATUS concept and purpose — answerable from Notas sections 3.4.1.3 and
+      3.4.2 which discuss the attribute as a design concept. Does NOT ask for the
+      codelist values (which are absent from the corpus).
+      Promote to official after verifying retrieval and answer quality.
+
+  - id: q041b
+    text: "What types of SDMX-ML data messages are defined in SDMX 2.1 and how do they differ?"
+    category: technical_standard
+    language: en
+    suite: candidate
+    validated: false
+    expected_behavior: "Notas primary — GenericData vs StructureSpecificData message types"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 1
+    ragas:
+      answer_relevancy_applicable: true
+      applicability_reason: normal_in_corpus
+    notes: >
+      Candidate replacement for q041 (reclassified as negative). Asks about the
+      types of SDMX-ML messages (GenericData, StructureSpecificData, etc.) — a
+      conceptual question answerable from Notas sections on message formats.
+      Does NOT ask for header element specification (absent from corpus).
+      Promote to official after verifying retrieval and answer quality.
+
+  - id: q042b
+    text: "How does SDMX 2.1 use XML to represent statistical data and what are the main SDMX-ML message formats?"
+    category: technical_standard
+    language: en
+    suite: candidate
+    validated: false
+    expected_behavior: "Notas primary for message formats; User Guide for broader XML context"
+    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    doc_relevance:
+      Notas_Tecnicas_SDMX_2.1: 3
+      SDMX_2-1_User_Guide_6: 2
+    ragas:
+      answer_relevancy_applicable: true
+      applicability_reason: normal_in_corpus
+    notes: >
+      Candidate replacement for q042 (reclassified as negative). Asks about the
+      role of XML and SDMX-ML formats at a conceptual level — answerable from
+      both Notas and User Guide. Does NOT ask for formal namespace declarations
+      (absent from corpus). Promote to official after verifying retrieval.

@@ -237,12 +237,24 @@ def main() -> None:
                 entry[name] = None
         per_query.append(entry)
 
-    # Build applicability report
+    # Build applicability report + no_answer_correctness
     if applicability_map:
-        from rag_lab.evaluation.ragas_applicability import build_applicability_report
+        from rag_lab.evaluation.ragas_applicability import (
+            build_applicability_report,
+            compute_no_answer_correctness,
+        )
         applicability_report = build_applicability_report(per_query, applicability_map, metric_names)
+        # no_answer_correctness uses the original ok_rows (need trust_score + answer)
+        ok_rows_by_id = {r.get("query_id", f"row_{i}"): r for i, r in enumerate(ok_rows)}
+        rows_with_answers = [
+            {**pq, "answer": ok_rows_by_id.get(pq["query_id"], {}).get("answer", ""),
+             "trust_score": ok_rows_by_id.get(pq["query_id"], {}).get("trust_score")}
+            for pq in per_query
+        ]
+        no_answer_report = compute_no_answer_correctness(rows_with_answers, applicability_map)
     else:
         applicability_report = None
+        no_answer_report = None
 
     # ── Console output ──────────────────────────────────────────────────────
     print("\n" + "=" * 60)
@@ -288,6 +300,24 @@ def main() -> None:
 
         print(f"\n  Recommended primary metric: answer_relevancy (applicable, n={n_a})")
 
+    if no_answer_report and no_answer_report["n_negative"] > 0:
+        n_neg = no_answer_report["n_negative"]
+        n_cor = no_answer_report["n_correct_abstentions"]
+        nac = no_answer_report["no_answer_correctness"]
+        print(f"\n{'=' * 60}")
+        print(f"no_answer_correctness  (n={n_neg} negative queries in input)")
+        print("=" * 60)
+        print(f"  correct abstentions: {n_cor}/{n_neg}   score: {_fmt(nac)}")
+        for q in no_answer_report["per_query"]:
+            mark = "✓" if q["abstained_correctly"] else "✗"
+            ts = q["trust_score"]
+            ts_str = f"{ts:.3f}" if ts is not None else " N/A"
+            print(f"  {mark} {q['query_id']:<8} trust={ts_str}  {q['answer_snippet'][:60]}")
+        print("=" * 60)
+    elif no_answer_report is not None:
+        print("\n  no_answer_correctness: no negative queries in this input (run --suite negative to evaluate)")
+
+
     # ── JSON output ─────────────────────────────────────────────────────────
     if args.output:
         out: dict = {
@@ -300,6 +330,8 @@ def main() -> None:
         }
         if applicability_report:
             out["applicability"] = applicability_report
+        if no_answer_report and no_answer_report["n_negative"] > 0:
+            out["no_answer_correctness"] = no_answer_report
 
         with open(args.output, "w") as f:
             json.dump(out, f, indent=2, ensure_ascii=False)

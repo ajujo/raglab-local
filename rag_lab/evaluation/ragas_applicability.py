@@ -24,6 +24,9 @@ VALID_REASONS: frozenset[str] = frozenset(
         "meta_synthesis",
         "structured_reference_missing_corpus",
         "ragas_evaluator_limitation",
+        # Answer provably absent from all ingested documents.
+        # Used for queries classified as negative abstention tests.
+        "answer_not_present_in_current_corpus",
     }
 )
 
@@ -33,6 +36,9 @@ VALID_DECISIONS: frozenset[str] = frozenset(
         "needs_corpus_expansion",
         "needs_query_rewrite",
         "evaluator_limitation",
+        # Query kept as a no-answer (abstention) correctness test.
+        # Corpus expansion is desirable but sources are unverified.
+        "keep_as_no_answer_test",
     }
 )
 
@@ -118,6 +124,64 @@ def mean_score(rows: list[dict], metric: str) -> float | None:
     if not vals:
         return None
     return sum(vals) / len(vals)
+
+
+def compute_no_answer_correctness(
+    rows: list[dict],
+    applicability_map: dict[str, ApplicabilityEntry],
+) -> dict:
+    """Compute no_answer_correctness for negative abstention queries.
+
+    For each row whose query is classified as ``keep_as_no_answer_test``,
+    checks whether the LLM correctly abstained rather than fabricating an
+    answer.  Uses ``is_abstention()`` from ``eval_utils``.
+
+    Args:
+        rows: Per-query eval JSONL rows (may contain any mix of suites).
+        applicability_map: Map loaded by ``load_applicability_map()``.
+
+    Returns:
+        Dict with keys:
+          - ``n_negative``: number of negative queries found in *rows*.
+          - ``n_correct_abstentions``: how many abstained correctly.
+          - ``no_answer_correctness``: fraction correct (None if n_negative=0).
+          - ``per_query``: list of per-query results.
+    """
+    from rag_lab.evaluation.eval_utils import is_abstention
+
+    negative_rows = [
+        row for row in rows
+        if applicability_map.get(
+            row.get("query_id", ""),
+            ApplicabilityEntry(True, "normal_in_corpus"),
+        ).decision == "keep_as_no_answer_test"
+    ]
+
+    per_query_results = []
+    n_correct = 0
+    for row in negative_rows:
+        answer = row.get("answer", "") or ""
+        trust = row.get("trust_score")
+        abstained = is_abstention(answer, trust)
+        if abstained:
+            n_correct += 1
+        per_query_results.append(
+            {
+                "query_id": row.get("query_id", ""),
+                "question": row.get("question", ""),
+                "abstained_correctly": abstained,
+                "trust_score": trust,
+                "answer_snippet": answer[:120].replace("\n", " "),
+            }
+        )
+
+    n = len(negative_rows)
+    return {
+        "n_negative": n,
+        "n_correct_abstentions": n_correct,
+        "no_answer_correctness": (n_correct / n) if n > 0 else None,
+        "per_query": per_query_results,
+    }
 
 
 def build_applicability_report(

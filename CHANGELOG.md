@@ -4,7 +4,7 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
-## v1.21.1 — 2026-06-09 — RAGAS applicability reporting
+## v1.21.1 — 2026-06-09 — RAGAS applicability reporting + negative suite
 
 ### Scope
 
@@ -15,43 +15,60 @@ ingest, production paths, or the retrieval benchmark.
 
 `answer_relevancy` global mean (0.7775 with `answer_for_eval`) is pulled down by 10
 queries where the metric is structurally not applicable: ambiguity_test design,
-meta-synthesis questions RAGAS can't score, and structured references not covered
-in the Markdown corpus. Reporting only the global mean misrepresents quality.
+meta-synthesis questions RAGAS can't score, and queries whose answers are absent
+from the current corpus. Reporting only the global mean misrepresents quality.
 
 ### Changes
 
 **`rag_lab/evaluation/ragas_applicability.py`** (new) — loads
 `ragas.answer_relevancy_applicable` and `ragas.applicability_reason` per query from
 `benchmark_queries.yaml`. Provides `load_applicability_map`, `split_by_applicability`,
-`mean_score`, `build_applicability_report`. Validates reasons against `VALID_REASONS`
-and decisions against `VALID_DECISIONS`. Runs in `rag-lab` env; no ragas dependency.
+`mean_score`, `build_applicability_report`, `compute_no_answer_correctness`. Validates
+reasons against `VALID_REASONS` and decisions against `VALID_DECISIONS`. Runs in
+`rag-lab` env; no ragas dependency.
 
-**`data/benchmark_queries.yaml`** — added `ragas:` block to 10 queries:
+**`rag_lab/evaluation/eval_utils.py`** — added `is_abstention(answer, trust_score)`
+heuristic using Spanish + English abstention phrase patterns and a trust_score < 0.25
+threshold. Used by `compute_no_answer_correctness`.
 
-| Query | reason | decision |
-|-------|--------|----------|
-| q013 | meta_synthesis | evaluator_limitation |
-| q032 | meta_synthesis | evaluator_limitation |
-| q038 | ragas_evaluator_limitation | evaluator_limitation |
-| q039 | structured_reference_missing_corpus | needs_corpus_expansion |
-| q041 | structured_reference_missing_corpus | needs_corpus_expansion |
-| q042 | structured_reference_missing_corpus | needs_corpus_expansion |
-| q048 | ambiguity_test | keep_as_stress_test |
-| q050 | ambiguity_test | keep_as_stress_test |
-| q054 | meta_synthesis | evaluator_limitation |
-| q065 | meta_synthesis | evaluator_limitation |
+**`data/benchmark_queries.yaml`** — added `ragas:` block to 10 queries. Final
+classification of all 10 not-applicable queries:
+
+| Query | suite | reason | decision |
+|-------|-------|--------|----------|
+| q013 | official | meta_synthesis | evaluator_limitation |
+| q032 | official | meta_synthesis | evaluator_limitation |
+| q038 | official | ragas_evaluator_limitation | evaluator_limitation |
+| q039 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q041 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q042 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q048 | official | ambiguity_test | keep_as_stress_test |
+| q050 | official | ambiguity_test | keep_as_stress_test |
+| q054 | official | meta_synthesis | evaluator_limitation |
+| q065 | official | meta_synthesis | evaluator_limitation |
+
+q039/q041/q042 reclassified from `suite: official` / `needs_corpus_expansion` to
+`suite: negative` / `keep_as_no_answer_test` after direct corpus review confirmed
+answers are absent. Sources listed as `possible_missing_sources` with
+`source_certainty: unverified`. Official suite reduced from 65 → **62** queries.
+Added q039b, q041b, q042b as `suite: candidate` (answerable from current corpus).
+
+New suite type **`negative`**: queries where the expected behaviour is to abstain.
+`--suite negative` works without code changes (dataset loader already filters by
+arbitrary suite value).
 
 **`scripts/ragas_eval.py`** — captures per-query scores via `result.to_pandas()`,
-loads applicability map from `benchmark_queries.yaml` (auto-detected), outputs split
-report (all / applicable / not-applicable) to console and JSON. Adds `--queries-yaml`
-flag. Output JSON now includes `per_query` rows and `applicability` report.
+loads applicability map, outputs split report (all / applicable / not-applicable) plus
+`no_answer_correctness` to console and JSON. Adds `--queries-yaml` flag.
 
-**`tests/test_evaluation/test_ragas_applicability.py`** (new) — 23 tests covering
-load, validation (invalid reason/decision raise), split, scores-unchanged invariant,
-mean calculation, report structure, answer field passthrough, and real-YAML integration.
+**`tests/test_evaluation/test_ragas_applicability.py`** — extended from 23 → 47 tests:
+new reason/decision constants, negative suite integration tests,
+`compute_no_answer_correctness` coverage.
 
-**Docs updated:** `RAGAS_USAGE.md` (applicability reporting section), `BENCHMARKS.en.md`,
-`BENCHMARKS.es.md`.
+**`tests/test_evaluation/test_answer_for_eval.py`** — added `TestIsAbstention` class
+(16 tests) covering empty/short answers, trust_score boundary, Spanish + English patterns.
+
+**Docs updated:** `RAGAS_USAGE.md`, `BENCHMARKS.en.md`, `BENCHMARKS.es.md`.
 
 ### Key invariants
 
@@ -59,6 +76,7 @@ mean calculation, report structure, answer field passthrough, and real-YAML inte
 - Not-applicable queries are **never removed** from the suite or from JSON output.
 - `answer` (visible to user) and `answer_for_eval` are **never touched**.
 - Production paths (`rag-lab query`, `rag-lab chat`, retrieval benchmark) are **unchanged**.
+- Sources for absent-answer queries recorded as `unverified`; no documentation added.
 
 ### RAGAS results (v1.21.1, answer_for_eval, with applicability split)
 
@@ -75,10 +93,10 @@ Output: `data/eval_runs/v1.21.1_applicability_ragas.json`
 
 ### Verification
 
-- 1104 tests passing.
+- 1132 tests passing.
 - `rag-lab doctor` OK.
 - `rag-lab reconcile --check` OK.
-- Retrieval benchmark: R@5=0.821, MRR=0.939, nDCG@10=0.837 (unchanged from v1.11 baseline).
+- Retrieval benchmark (62 official queries): R@5=0.812, MRR=0.944, nDCG@10=0.839 (stable; q039/q041/q042 removed from official set have no material effect).
 
 ---
 

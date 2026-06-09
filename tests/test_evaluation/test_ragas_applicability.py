@@ -10,6 +10,7 @@ import yaml
 from rag_lab.evaluation.ragas_applicability import (
     ApplicabilityEntry,
     build_applicability_report,
+    compute_no_answer_correctness,
     load_applicability_map,
     mean_score,
     split_by_applicability,
@@ -300,7 +301,7 @@ def test_real_yaml_has_ten_not_applicable():
 
 
 def test_real_yaml_official_suite_applicable_count():
-    """55 of the 65 official-suite queries must be applicable."""
+    """55 of the 62 official-suite queries must be applicable."""
     from rag_lab.evaluation.ragas_applicability import DEFAULT_BENCHMARK_YAML
     if not DEFAULT_BENCHMARK_YAML.exists():
         pytest.skip("benchmark_queries.yaml not found")
@@ -310,5 +311,159 @@ def test_real_yaml_official_suite_applicable_count():
     official = [q for q in data["queries"] if q.get("suite") == "official" and q.get("validated")]
     m = load_applicability_map()
     applicable_official = [q for q in official if m.get(q["id"], ApplicabilityEntry(True, "normal_in_corpus")).applicable]
-    assert len(official) == 65
+    assert len(official) == 62
     assert len(applicable_official) == 55
+
+
+def test_real_yaml_negative_suite_count():
+    """Exactly 3 validated negative-suite queries (q039, q041, q042)."""
+    from rag_lab.evaluation.ragas_applicability import DEFAULT_BENCHMARK_YAML
+    if not DEFAULT_BENCHMARK_YAML.exists():
+        pytest.skip("benchmark_queries.yaml not found")
+    import yaml as _yaml
+    with open(DEFAULT_BENCHMARK_YAML) as f:
+        data = _yaml.safe_load(f)
+    negative = [q for q in data["queries"] if q.get("suite") == "negative" and q.get("validated")]
+    assert len(negative) == 3
+    negative_ids = {q["id"] for q in negative}
+    assert negative_ids == {"q039", "q041", "q042"}
+
+
+def test_real_yaml_negative_queries_not_applicable():
+    """q039/q041/q042 must be in the applicability map with applicable=False."""
+    from rag_lab.evaluation.ragas_applicability import DEFAULT_BENCHMARK_YAML
+    if not DEFAULT_BENCHMARK_YAML.exists():
+        pytest.skip("benchmark_queries.yaml not found")
+    m = load_applicability_map()
+    for qid in ("q039", "q041", "q042"):
+        assert qid in m, f"{qid} missing from applicability map"
+        assert m[qid].applicable is False
+        assert m[qid].reason == "answer_not_present_in_current_corpus"
+        assert m[qid].decision == "keep_as_no_answer_test"
+
+
+# ── new reason/decision constants ────────────────────────────────────────────
+
+def test_answer_not_present_in_current_corpus_is_valid_reason(tmp_path):
+    block = textwrap.dedent("""\
+        ragas:
+          answer_relevancy_applicable: false
+          applicability_reason: answer_not_present_in_current_corpus
+          decision: keep_as_no_answer_test
+    """)
+    p = _yaml_file(tmp_path, "queries:\n" + _query_block("q039", block))
+    m = load_applicability_map(p)
+    assert m["q039"].applicable is False
+    assert m["q039"].reason == "answer_not_present_in_current_corpus"
+    assert m["q039"].decision == "keep_as_no_answer_test"
+
+
+def test_keep_as_no_answer_test_is_valid_decision(tmp_path):
+    block = textwrap.dedent("""\
+        ragas:
+          answer_relevancy_applicable: false
+          applicability_reason: out_of_corpus
+          decision: keep_as_no_answer_test
+    """)
+    p = _yaml_file(tmp_path, "queries:\n" + _query_block("q001", block))
+    m = load_applicability_map(p)
+    assert m["q001"].decision == "keep_as_no_answer_test"
+
+
+# ── compute_no_answer_correctness ─────────────────────────────────────────────
+
+def _make_negative_amap(*qids: str) -> dict:
+    return {
+        qid: ApplicabilityEntry(
+            applicable=False,
+            reason="answer_not_present_in_current_corpus",
+            decision="keep_as_no_answer_test",
+        )
+        for qid in qids
+    }
+
+
+def _row(qid: str, answer: str, trust: float | None = None) -> dict:
+    return {
+        "query_id": qid,
+        "question": f"Q {qid}",
+        "answer": answer,
+        "trust_score": trust,
+    }
+
+
+def test_no_answer_correctness_no_negative_queries():
+    amap = {"q001": ApplicabilityEntry(True, "normal_in_corpus")}
+    rows = [_row("q001", "Some answer about SDMX", 0.8)]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["n_negative"] == 0
+    assert result["n_correct_abstentions"] == 0
+    assert result["no_answer_correctness"] is None
+    assert result["per_query"] == []
+
+
+def test_no_answer_correctness_correct_abstention():
+    amap = _make_negative_amap("q039")
+    rows = [_row("q039", "No encuentro información sobre eso en el corpus.", 0.1)]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["n_negative"] == 1
+    assert result["n_correct_abstentions"] == 1
+    assert result["no_answer_correctness"] == 1.0
+    assert result["per_query"][0]["abstained_correctly"] is True
+
+
+def test_no_answer_correctness_wrong_answer_counted_as_failure():
+    amap = _make_negative_amap("q039")
+    rows = [_row("q039", "The allowed values are A, B, and C according to the SDMX standard.", 0.9)]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["n_negative"] == 1
+    assert result["n_correct_abstentions"] == 0
+    assert result["no_answer_correctness"] == 0.0
+    assert result["per_query"][0]["abstained_correctly"] is False
+
+
+def test_no_answer_correctness_partial_score():
+    amap = _make_negative_amap("q039", "q041", "q042")
+    rows = [
+        _row("q039", "No encuentro información sobre los valores permitidos.", 0.1),
+        _row("q041", "The context does not contain information about mandatory header elements.", 0.15),
+        _row("q042", "The XML namespace prefixes are urn:sdmx, xsi, and message prefix.", 0.85),
+    ]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["n_negative"] == 3
+    assert result["n_correct_abstentions"] == 2
+    assert abs(result["no_answer_correctness"] - 2 / 3) < 1e-9
+
+
+def test_no_answer_correctness_per_query_has_required_fields():
+    amap = _make_negative_amap("q039")
+    rows = [_row("q039", "No encuentro información sobre eso.", 0.05)]
+    result = compute_no_answer_correctness(rows, amap)
+    entry = result["per_query"][0]
+    assert "query_id" in entry
+    assert "question" in entry
+    assert "abstained_correctly" in entry
+    assert "trust_score" in entry
+    assert "answer_snippet" in entry
+
+
+def test_no_answer_correctness_empty_answer_is_abstention():
+    amap = _make_negative_amap("q039")
+    rows = [_row("q039", "", None)]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["per_query"][0]["abstained_correctly"] is True
+
+
+def test_no_answer_correctness_ignores_non_negative_rows():
+    """Rows not in the amap as keep_as_no_answer_test must be ignored."""
+    amap = {
+        "q001": ApplicabilityEntry(True, "normal_in_corpus"),
+        "q039": ApplicabilityEntry(False, "answer_not_present_in_current_corpus", "keep_as_no_answer_test"),
+    }
+    rows = [
+        _row("q001", "SDMX is a data standard.", 0.9),
+        _row("q039", "No encuentro información sobre eso.", 0.05),
+    ]
+    result = compute_no_answer_correctness(rows, amap)
+    assert result["n_negative"] == 1
+    assert result["per_query"][0]["query_id"] == "q039"

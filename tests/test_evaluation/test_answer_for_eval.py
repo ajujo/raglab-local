@@ -1,8 +1,8 @@
-"""Tests for strip_inline_citations_for_eval."""
+"""Tests for eval_utils: strip_inline_citations_for_eval and is_abstention."""
 
 import pytest
 
-from rag_lab.evaluation.eval_utils import strip_inline_citations_for_eval
+from rag_lab.evaluation.eval_utils import is_abstention, strip_inline_citations_for_eval
 
 
 class TestStripInlineCitationsForEval:
@@ -148,3 +148,67 @@ class TestStripInlineCitationsForEval:
         once = strip_inline_citations_for_eval(text)
         twice = strip_inline_citations_for_eval(once)
         assert once == twice
+
+
+class TestIsAbstention:
+
+    def test_empty_answer_is_abstention(self):
+        assert is_abstention("") is True
+
+    def test_none_like_blank_is_abstention(self):
+        assert is_abstention("   ") is True
+
+    def test_short_answer_is_abstention(self):
+        assert is_abstention("No sé.") is True
+
+    def test_exactly_30_chars_is_abstention(self):
+        assert is_abstention("A" * 30) is True
+
+    def test_31_chars_without_pattern_is_not_abstention(self):
+        assert is_abstention("A" * 31) is False
+
+    def test_low_trust_score_is_abstention(self):
+        assert is_abstention("SDMX is a data standard used worldwide.", 0.24) is True
+
+    def test_trust_score_exactly_025_is_not_abstention_alone(self):
+        # 0.25 is the boundary — NOT below it, so must not trigger by trust alone
+        assert is_abstention("SDMX is a data standard used worldwide.", 0.25) is False
+
+    def test_spanish_no_encuentro(self):
+        assert is_abstention("No encuentro información sobre los valores permitidos del atributo.", None) is True
+
+    def test_spanish_no_se_menciona(self):
+        assert is_abstention("Ese dato no se menciona en los documentos disponibles.", None) is True
+
+    def test_spanish_no_tengo_informacion(self):
+        assert is_abstention("No tengo información sobre ese elemento en el corpus actual.", None) is True
+
+    def test_spanish_no_esta_disponible(self):
+        assert is_abstention("La información requerida no está disponible en el contexto.", None) is True
+
+    def test_english_not_found(self):
+        assert is_abstention("The requested information is not found in the provided documents.", None) is True
+
+    def test_english_not_available(self):
+        assert is_abstention("This information is not available in the current corpus.", None) is True
+
+    def test_english_context_does_not_contain(self):
+        assert is_abstention("The context does not contain any information about the mandatory header elements.", None) is True
+
+    def test_english_cannot_find(self):
+        assert is_abstention("I cannot find any reference to this in the provided documents.", None) is True
+
+    def test_normal_sdmx_answer_is_not_abstention(self):
+        answer = (
+            "SDMX (Statistical Data and Metadata eXchange) is an ISO standard "
+            "designed to facilitate the exchange of statistical information."
+        )
+        assert is_abstention(answer, 0.85) is False
+
+    def test_answer_with_some_negation_not_abstention(self):
+        # "not only" is a common phrase that must not match
+        answer = (
+            "SDMX is not only used for data exchange but also for metadata management "
+            "across international statistical organizations."
+        )
+        assert is_abstention(answer, 0.75) is False
