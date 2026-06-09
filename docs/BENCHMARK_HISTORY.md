@@ -46,11 +46,13 @@ Suite oficial, 65 queries, juez externo DeepSeek v4 Flash vía OpenRouter.
 
 | Versión | faithfulness | answer_relevancy | n queries | juez | fecha | notas |
 |---|---|---|---|---|---|---|
-| **v1.21** | **0.9123** | **0.7624** | 65 | deepseek/deepseek-v4-flash | 2026-06-08 | Baseline |
+| **v1.21** | **0.9123** | **0.7624** | 65 | deepseek/deepseek-v4-flash | 2026-06-08 | Baseline. Campo `answer` completo con citas inline. |
 | v1.22-E1 | 0.9250 ↑ | 0.7673 ↑ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | RERANK_TOP_K=4. Leve mejora en ambas, latencia p50 empeora. |
 | v1.22-E2 | 0.9032 ↓ | 0.7408 ↓ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | System prompt directivo. Latencia p50 −22% pero ambas métricas RAGAS empeoran. |
 | v1.22-E3 | 0.8357 ↓↓ | 0.7192 ↓↓ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | User prompt concisión. Faithfulness colapsa, descartado. |
 | v1.22-E6 | 0.9147 | 0.7576 | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | Query rewriting activado. Plano, sin mejora significativa. |
+| **v1.21 eval** | **0.9296 ↑** | **0.7775 ↑** | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | Campo `answer_for_eval` (citas inline eliminadas). +1.7pp faith, +1.5pp relevancy vs baseline. Sin cambios en producción. |
+| **v1.21.1** | **0.9276** | **0.7676** (all) · **0.8529** (applicable) | 65 (55 aplic.) | deepseek/deepseek-v4-flash | 2026-06-09 | Applicability reporting. Métrica principal: `answer_relevancy_applicable=0.8529` sobre 55 queries. 10 queries no aplicables clasificadas en YAML. |
 
 ### Guía de interpretación
 

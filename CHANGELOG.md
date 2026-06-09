@@ -4,6 +4,163 @@ All notable changes to RAG-Lab are documented here.
 
 ---
 
+## v1.21.1 — 2026-06-09 — RAGAS applicability reporting + negative suite
+
+### Scope
+
+Eval metadata + reporting change. No changes to retrieval, ranking, prompts,
+ingest, production paths, or the retrieval benchmark.
+
+### Problem
+
+`answer_relevancy` global mean (0.7775 with `answer_for_eval`) is pulled down by 10
+queries where the metric is structurally not applicable: ambiguity_test design,
+meta-synthesis questions RAGAS can't score, and queries whose answers are absent
+from the current corpus. Reporting only the global mean misrepresents quality.
+
+### Changes
+
+**`rag_lab/evaluation/ragas_applicability.py`** (new) — loads
+`ragas.answer_relevancy_applicable` and `ragas.applicability_reason` per query from
+`benchmark_queries.yaml`. Provides `load_applicability_map`, `split_by_applicability`,
+`mean_score`, `build_applicability_report`, `compute_no_answer_correctness`. Validates
+reasons against `VALID_REASONS` and decisions against `VALID_DECISIONS`. Runs in
+`rag-lab` env; no ragas dependency.
+
+**`rag_lab/evaluation/eval_utils.py`** — added `is_abstention(answer, trust_score)`
+heuristic using Spanish + English abstention phrase patterns and a trust_score < 0.25
+threshold. Used by `compute_no_answer_correctness`.
+
+**`data/benchmark_queries.yaml`** — added `ragas:` block to 10 queries. Final
+classification of all 10 not-applicable queries:
+
+| Query | suite | reason | decision |
+|-------|-------|--------|----------|
+| q013 | official | meta_synthesis | evaluator_limitation |
+| q032 | official | meta_synthesis | evaluator_limitation |
+| q038 | official | ragas_evaluator_limitation | evaluator_limitation |
+| q039 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q041 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q042 | **negative** | answer_not_present_in_current_corpus | keep_as_no_answer_test |
+| q048 | official | ambiguity_test | keep_as_stress_test |
+| q050 | official | ambiguity_test | keep_as_stress_test |
+| q054 | official | meta_synthesis | evaluator_limitation |
+| q065 | official | meta_synthesis | evaluator_limitation |
+
+q039/q041/q042 reclassified from `suite: official` / `needs_corpus_expansion` to
+`suite: negative` / `keep_as_no_answer_test` after direct corpus review confirmed
+answers are absent. Sources listed as `possible_missing_sources` with
+`source_certainty: unverified`. Official suite reduced from 65 → **62** queries.
+Added q039b, q041b, q042b as `suite: candidate` (answerable from current corpus).
+
+New suite type **`negative`**: queries where the expected behaviour is to abstain.
+`--suite negative` works without code changes (dataset loader already filters by
+arbitrary suite value).
+
+**`scripts/ragas_eval.py`** — captures per-query scores via `result.to_pandas()`,
+loads applicability map, outputs split report (all / applicable / not-applicable) plus
+`no_answer_correctness` to console and JSON. Adds `--queries-yaml` flag.
+
+**`tests/test_evaluation/test_ragas_applicability.py`** — extended from 23 → 47 tests:
+new reason/decision constants, negative suite integration tests,
+`compute_no_answer_correctness` coverage.
+
+**`tests/test_evaluation/test_answer_for_eval.py`** — added `TestIsAbstention` class
+(16 tests) covering empty/short answers, trust_score boundary, Spanish + English patterns.
+
+**Docs updated:** `RAGAS_USAGE.md`, `BENCHMARKS.en.md`, `BENCHMARKS.es.md`.
+
+### Key invariants
+
+- Scores of not-applicable rows are **never modified**.
+- Not-applicable queries are **never removed** from the suite or from JSON output.
+- `answer` (visible to user) and `answer_for_eval` are **never touched**.
+- Production paths (`rag-lab query`, `rag-lab chat`, retrieval benchmark) are **unchanged**.
+- Sources for absent-answer queries recorded as `unverified`; no documentation added.
+
+### RAGAS results (v1.21.1, answer_for_eval, with applicability split)
+
+| Subset | faithfulness | answer_relevancy |
+|--------|-------------|------------------|
+| all (65 queries) | 0.9276 | 0.7676 |
+| **applicable (55 queries)** | **0.9659** | **0.8529** |
+| not applicable (10 queries) | 0.7173 | 0.2986 |
+
+**`answer_relevancy_applicable = 0.8529`** exceeds the 0.85 target.
+
+Input: `data/eval_runs/v1.21.1_applicability.jsonl`
+Output: `data/eval_runs/v1.21.1_applicability_ragas.json`
+
+### Verification
+
+- 1132 tests passing.
+- `rag-lab doctor` OK.
+- `rag-lab reconcile --check` OK.
+- Retrieval benchmark (62 official queries): R@5=0.812, MRR=0.944, nDCG@10=0.839 (stable; q039/q041/q042 removed from official set have no material effect).
+
+---
+
+## v1.21 eval — 2026-06-09 — Eval pipeline: answer_for_eval field
+
+### Scope
+
+Eval-only change. No changes to retrieval, ranking, prompts, ingest, or production paths.
+`rag-lab query`, `rag-lab chat`, and the retrieval benchmark are unaffected.
+
+### Problem
+
+RAGAS `answer_relevancy` diagnosis (65 queries, v1.21 baseline) showed that inline
+citation annotations — `[[N] Fuente: doc_id | Sección: ... | Líneas: X-Y]` — comprise
+~33% of answer text and contaminate the metric. RAGAS generates synthetic questions from
+the answer text; citation metadata skews those questions away from the actual topic.
+Worst case: q056 scores 0.000 raw, 0.831 with citations stripped (+0.831 delta).
+
+### Changes
+
+**`rag_lab/evaluation/eval_utils.py`** (new) — `strip_inline_citations_for_eval(text)`:
+strips `[[N] Fuente: ... | Líneas: ...]` annotations, normalises whitespace. Does not
+touch `[N]` or regular square brackets.
+
+**`rag_lab/evaluation/types.py`** — `EvalResult` gains `answer_for_eval: str = ""`
+field. `to_jsonl_dict()` now emits both `answer` and `answer_for_eval`.
+Backwards compatible: defaults to `""`, falls back to `answer` in the dict serialisation.
+
+**`rag_lab/evaluation/e2e_runner.py`** — `run_single()` populates `answer_for_eval`
+using `strip_inline_citations_for_eval(answer)` on every successful query.
+
+**`scripts/ragas_eval.py`** — defaults to `answer_for_eval` field. Falls back to
+`answer` if `answer_for_eval` is absent (old JSONL). Adds `--answer-field` flag.
+Output JSON now includes `answer_field` key.
+
+**`tests/test_evaluation/test_answer_for_eval.py`** (new) — 17 tests for the stripper
+covering happy paths, safety (regular brackets preserved), and edge cases.
+
+**`tests/test_evaluation/test_types.py`** — updated schema assertions.
+**`tests/test_evaluation/test_e2e_runner.py`** — updated schema assertions.
+
+**Docs updated:** `RAGAS_USAGE.md`, `BENCHMARKS.en.md`, `BENCHMARKS.es.md`,
+`DEVELOPMENT_HISTORY.en.md`.
+
+### RAGAS results (answer_for_eval vs baseline)
+
+| Métrica | v1.21 baseline (raw) | v1.21 eval (clean) | Δ |
+|---------|---------------------|---------------------|---|
+| faithfulness | 0.9123 | **0.9296** | +0.0173 |
+| answer_relevancy | 0.7624 | **0.7775** | +0.0151 |
+
+Input: `data/eval_runs/v1.21_answer_for_eval.jsonl` (65 queries)
+Output: `data/eval_runs/v1.21_answer_for_eval_ragas.json`
+
+### Verification
+
+- 1081 tests passing.
+- `rag-lab doctor` OK.
+- `rag-lab reconcile --check` OK.
+- Smoke eval (5 queries): JSONL contains both `answer` and `answer_for_eval`.
+- Full RAGAS run (65 queries): faithfulness=0.9296, answer_relevancy=0.7775.
+
+---
+
 ## v1.20 — 2026-05-25 — Bilingual GitHub Documentation Restructure
 
 ### Scope

@@ -32,7 +32,7 @@ rag-lab eval run \
 
 | Opción | Por defecto | Descripción |
 |--------|-------------|-------------|
-| `--suite SUITE` | `official` | Suite de queries. `official` = 65 queries validadas sobre SDMX. |
+| `--suite SUITE` | `official` | Suite de queries. `official` = 62 queries validadas sobre SDMX. `negative` = 3 queries donde la respuesta correcta es abstenerse. |
 | `--output PATH` | `data/eval_runs/<suite>_<timestamp>.jsonl` | Fichero de salida. Usar nombre con versión para comparaciones. |
 | `--limit N` | — | Evalúa solo las primeras N queries. Útil para smoke tests rápidos. |
 | `--queries q001,q002` | — | IDs concretos separados por comas. |
@@ -50,7 +50,8 @@ Cada línea es un JSON con este esquema:
   "question":        "What is SDMX?",
   "language":        "en",
   "category":        "glossary_definition",
-  "answer":          "SDMX (Statistical Data and Metadata eXchange) is...",
+  "answer":          "SDMX es un estándar [[1] Fuente: SDMX_Glossary | Sección: Intro | Líneas: 1-10].",
+  "answer_for_eval": "SDMX es un estándar.",
   "contexts":        ["chunk text 1", "chunk text 2", "..."],
   "context_metadata": [
     {"chunk_id": "...", "doc_id": "SDMX_Glossary", "heading_path": "## Glossary", "rerank_score": 0.87}
@@ -65,6 +66,19 @@ Cada línea es un JSON con este esquema:
   "error":           null
 }
 ```
+
+**`answer` vs `answer_for_eval`:**
+
+- `answer` — respuesta completa tal como se muestra al usuario, incluyendo las citas inline
+  del tipo `[[N] Fuente: doc_id | Sección: ... | Líneas: X-Y]`. No se modifica.
+- `answer_for_eval` — respuesta sustantiva limpia, sin anotaciones de cita, usada
+  por `ragas_eval.py` para calcular métricas. Las citas inline suponen ~33% del texto
+  de una respuesta típica y pueden contaminar `answer_relevancy` porque RAGAS genera
+  preguntas sintéticas desde el texto de la respuesta — si ese texto incluye metadatos
+  de fuente, las preguntas se desvían de la pregunta original.
+
+`answer_for_eval` **no elimina las citas del usuario** — el usuario sigue viendo `answer`
+completo con todas sus fuentes. Solo afecta a la evaluación interna con RAGAS.
 
 `error` es `null` si la query fue correcta. Si falla (LLM caído, timeout), se registra
 el error y el runner continúa con la siguiente query — el fichero queda parcialmente lleno.
@@ -89,6 +103,11 @@ python scripts/ragas_eval.py \
 | `--input PATH` | requerido | Fichero JSONL producido por `rag-lab eval run`. |
 | `--metrics` | `faithfulness` | Métricas separadas por comas. Ver tabla de métricas. |
 | `--output PATH` | — | Si se especifica, guarda los resultados en JSON. |
+| `--answer-field` | `answer_for_eval` | Campo a pasar a RAGAS como respuesta. `answer_for_eval` (defecto) usa la respuesta limpia sin citas. `answer` usa la respuesta completa. Ver sección "answer vs answer_for_eval" arriba. |
+
+**Compatibilidad con JSONL antiguos:** si el fichero no contiene `answer_for_eval` (generado
+antes de v1.21 eval), `ragas_eval.py` cae automáticamente a usar `answer`. No hace falta
+pasar ningún flag extra.
 
 ### Métricas disponibles
 
@@ -176,3 +195,155 @@ pip install "ragas==0.1.21" langchain-openai sentence-transformers langchain-goo
 `from langchain_community.chat_models.vertexai import ChatVertexAI` que falla con
 `langchain-community>=0.2` (el módulo se movió a `langchain-google-vertexai`).
 La 0.1.21 importa limpio y tiene todas las métricas reference-free que necesitamos.
+
+**Testset generation no disponible:** RAGAS 0.1.21 no incluye generación de testsets sintéticos.
+Esta funcionalidad fue añadida en 0.2.x. No se actualiza RAGAS en esta rama para evitar
+romper la compatibilidad existente.
+
+---
+
+## Diagnóstico de `answer_relevancy`
+
+### Distribución real (v1.21 baseline, 65 queries)
+
+La distribución es bimodal — **no** es una calidad media baja uniforme:
+
+```
+score=0.000     ███████████  11 queries (17%)  ← outliers que hunden la media
+score=0.6–0.8  ████████████  12 queries (18%)
+score=0.8–0.9  ████████       8 queries (12%)
+score=0.9–1.0  ████████████████████████████████  34 queries (52%)
+```
+
+Sin los 11 outliers: **media = 0.906** (por encima del objetivo de 0.85).
+
+### Causas de los 11 scores = 0.000 (diagnóstico v1.21)
+
+| Causa | Queries | Descripción |
+|-------|---------|-------------|
+| Respuesta ausente del corpus | q039, q041, q042 | LLM responde "No encuentro esta información". RAGAS no puede generar preguntas relevantes desde "No sé". Reclasificadas a `suite: negative` — abstención es la conducta correcta. |
+| Contaminación por citas | q056 | Sin citas: 0.000 → 0.831. Las citas dominan el texto y RAGAS genera preguntas sobre metadatos de fuente. |
+| Preguntas ambiguas | q048, q050 | `ambiguity_test` — diseñadas para ser polisémicas. El LLM cubre múltiples conceptos → RAGAS no converge. |
+| Incompatibilidad RAGAS | q013, q032, q038, q054, q065 | Preguntas meta, de síntesis amplia o de tablas. Respuestas correctas pero RAGAS no puede generar una pregunta sintética convergente. |
+
+q056 se resolvió con `answer_for_eval`. Los 10 restantes son **no aplicables estructuralmente**
+y están clasificados como tal en `data/benchmark_queries.yaml` desde v1.21.1.
+
+### Por qué `answer_for_eval` mejora la métrica
+
+`answer_relevancy` funciona así: RAGAS genera N preguntas sintéticas desde el texto de la
+respuesta y mide su similitud con la pregunta original. Si la respuesta contiene texto de
+citas como `[[3] Fuente: SDMX_Glossary | Sección: SDMX Information Model | Líneas: 6283-6321]`,
+RAGAS puede generar preguntas como "¿Qué sección del SDMX_Glossary describe el Information
+Model?" — completamente irrelevante para la pregunta original "What is the SDMX information
+model and what are its layers?".
+
+Con `answer_for_eval` (citas eliminadas): +0.028 de media global, y algunos casos como q056
+mejoran +0.83.
+
+---
+
+## Applicability reporting (v1.21.1)
+
+`answer_relevancy` no es una métrica válida para todas las queries de la suite oficial.
+**10 queries** tienen `ragas.answer_relevancy_applicable: false` en
+`data/benchmark_queries.yaml`. La métrica global (65 queries) es útil para comparaciones
+históricas, pero la **métrica aplicable (55 queries)** es el indicador principal de calidad.
+
+### Categorías de no-aplicabilidad
+
+| `applicability_reason` | Queries | Suite | Significado | `decision` |
+|------------------------|---------|-------|-------------|------------|
+| `meta_synthesis` | q013, q032, q054, q065 | official | Pregunta de síntesis amplia o meta-pregunta; RAGAS no converge | `evaluator_limitation` |
+| `ragas_evaluator_limitation` | q038 | official | Respuesta correcta pero RAGAS no genera pregunta sintética convergente para tablas/enumeraciones | `evaluator_limitation` |
+| `answer_not_present_in_current_corpus` | q039, q041, q042 | **negative** | Respuesta ausente del corpus actual (confirmado por revisión directa de documentos). Abstención es la conducta esperada. | `keep_as_no_answer_test` |
+| `ambiguity_test` | q048, q050 | official | Diseñadas para ser polisémicas; el LLM cubre múltiples sentidos → RAGAS no converge | `keep_as_stress_test` |
+
+### Métricas recomendadas
+
+| Métrica | Descripción | Cuándo usar |
+|---------|-------------|-------------|
+| `answer_relevancy_all` | Media sobre las 65 queries | Comparación histórica cross-version |
+| `answer_relevancy_applicable` | Media sobre las 55 queries aplicables | **Indicador principal de calidad** |
+| `faithfulness_all` | Media sobre las 65 queries | Faithfulness no tiene restricción de aplicabilidad |
+
+### Acciones futuras por grupo (no implementadas)
+
+- **`keep_as_no_answer_test` (q039, q041, q042):** mantener como tests de abstención. Añadir
+  q039b/q041b/q042b (ya en `suite: candidate`) al set oficial cuando se validen. Posible adición
+  futura de documentos SDMX con codelists — fuentes sin verificar, no urgente.
+- **`keep_as_stress_test` (q048, q050):** mantener como stress test de ambigüedad. Crear
+  variantes `candidate` con preguntas sin ambigüedad para medir esa dimensión limpiamente.
+- **`evaluator_limitation` (q013, q032, q038, q054, q065):** evaluar con rúbrica de
+  synthesis/completeness, no con `answer_relevancy`. Pendiente de diseño de rúbrica.
+
+### Ejecutar con informe de aplicabilidad
+
+```bash
+conda activate ragas
+python scripts/ragas_eval.py \
+  --input  data/eval_runs/v1.21.1_applicability.jsonl \
+  --metrics faithfulness,answer_relevancy \
+  --output data/eval_runs/v1.21.1_applicability_ragas.json
+```
+
+El script carga automáticamente `data/benchmark_queries.yaml` y muestra:
+- Tabla `ALL queries` (65)
+- Tabla `APPLICABLE only` (55) — **métrica principal**
+- Tabla `NOT APPLICABLE` (10) — scores preservados, visibles para referencia
+- Lista detallada de no-aplicables con `reason` y `decision`
+
+Para deshabilitar el splitting: `--queries-yaml none`.
+
+---
+
+## Suite negative — no_answer_correctness (v1.21.1)
+
+Queries donde la respuesta correcta es **abstenerse** porque la información está ausente
+del corpus actual. La suite `negative` no entra en `answer_relevancy` ni en el benchmark
+de retrieval — su único objetivo es verificar que el pipeline no fabrica respuestas.
+
+### Ejecutar suite negative
+
+```bash
+conda activate rag-lab
+
+# Paso 1: capturar salida
+rag-lab eval run \
+  --suite negative \
+  --output data/eval_runs/v1.21.1_negative.jsonl
+
+# Paso 2: calcular no_answer_correctness (sin RAGAS, sin coste externo)
+python3 -c "
+import json, sys
+sys.path.insert(0, '.')
+from rag_lab.evaluation.ragas_applicability import load_applicability_map, compute_no_answer_correctness
+
+rows = [json.loads(l) for l in open('data/eval_runs/v1.21.1_negative.jsonl') if l.strip()]
+report = compute_no_answer_correctness(rows, load_applicability_map())
+print(f'no_answer_correctness: {report[\"no_answer_correctness\"]} ({report[\"n_correct_abstentions\"]}/{report[\"n_negative\"]})')
+for q in report['per_query']:
+    mark = 'PASS' if q['abstained_correctly'] else 'FAIL'
+    print(f'  {mark} {q[\"query_id\"]}  trust={q[\"trust_score\"]:.2f}')
+"
+```
+
+`no_answer_correctness` se calcula con `is_abstention(answer, trust_score)`:
+heurístico basado en patrones de texto en español e inglés + `trust_score < 0.25`.
+No requiere juez externo ni coste API.
+
+### Resultado v1.21.1 (baseline)
+
+| Query | Pregunta | Abstención correcta | trust_score |
+|-------|----------|---------------------|-------------|
+| q039 | What are the allowed values for the SDMX observation status attribute? | PASS | 0.96 |
+| q041 | What are the mandatory header elements in an SDMX data message? | PASS | 0.56 |
+| q042 | What XML namespace prefixes are defined for SDMX 2.1 messages? | PASS | 0.66 |
+| **total** | | **no_answer_correctness = 1.000** | avg 0.727 |
+
+Las 3 responden: *"No encuentro esta información en los documentos proporcionados."*
+
+**Por qué esto importa:** un sistema RAG que inventa respuestas ante preguntas que no
+puede responder es más peligroso que uno que admite ignorancia. El `no_answer_correctness=1.0`
+confirma que el pipeline reconoce los límites del corpus cuando la información está
+genuinamente ausente, sin necesidad de ajuste de prompts ni de umbrales ad hoc.
