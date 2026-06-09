@@ -7,7 +7,7 @@ que cambie el pipeline de retrieval, generación o verificación.
 
 ## Versión actual
 
-**v1.21.1** · 2026-06-09 · 1104 tests · corpus: 610 chunks SDMX
+**v1.21.1** · 2026-06-09 · 1132 tests · corpus: 610 chunks SDMX
 
 ---
 
@@ -15,15 +15,19 @@ que cambie el pipeline de retrieval, generación o verificación.
 
 ### Retrieval (benchmark propio, reference-based)
 
-Suite oficial, 65 queries, variante `full`, sin caché. Baseline comparativo: v1.11.
+Suite oficial, **62 queries** (v1.21.1: q039/q041/q042 movidas a `suite: negative`),
+variante `full`, sin caché. Baseline comparativo: v1.11 (65 queries).
 
-| Métrica | v1.21 | Interpretación |
-|---------|-------|----------------|
-| R@5 | **0.821** | El 82% de las queries tienen el documento relevante en los 5 primeros chunks |
-| R@10 | **0.896** | El 90% lo tienen en los 10 primeros |
-| R@30 | **0.978** | El 98% lo tienen en los 30 primeros |
-| MRR | **0.939** | El documento relevante aparece de media en la posición 1.06 |
-| nDCG@10 | **0.837** | Calidad ordenada de los 10 primeros resultados |
+| Métrica | v1.21.1 (62q) | v1.11 ref (65q) | Interpretación |
+|---------|--------------|-----------------|----------------|
+| R@5 | **0.812** | 0.821 | El 81% de las queries tienen el documento relevante en los 5 primeros chunks |
+| R@10 | **0.891** | 0.896 | El 89% lo tienen en los 10 primeros |
+| R@30 | **0.977** | 0.978 | El 98% lo tienen en los 30 primeros |
+| MRR | **0.944** | 0.939 | El documento relevante aparece de media en la posición 1.06 |
+| nDCG@10 | **0.839** | 0.837 | Calidad ordenada de los 10 primeros resultados |
+
+Las diferencias vs. v1.11 son estadísticamente insignificantes — el cambio de
+65 → 62 queries elimina 3 queries sin `doc_relevance`, no un cambio de calidad.
 
 ### Calidad de respuesta (RAGAS, reference-free)
 
@@ -37,14 +41,29 @@ Suite oficial, 65 queries, variante `full`, sin caché. Baseline comparativo: v1
 
 **Métrica principal recomendada: `answer_relevancy_applicable = 0.8529`** (55 queries aplicables).
 
+### Abstención ante preguntas no respondibles (no_answer_correctness)
+
+`suite: negative`, 3 queries (q039, q041, q042). Medido con `rag-lab eval run --suite negative`
++ heurístico `is_abstention()` (patrones de abstención en español e inglés + trust_score < 0.25).
+
+| Métrica | v1.21.1 |
+|---------|---------|
+| `no_answer_correctness` | **1.000** (3/3) |
+
+Las 3 queries obtienen como respuesta "No encuentro esta información en los documentos
+proporcionados." — el pipeline abstiene correctamente ante preguntas cuya respuesta está
+ausente del corpus. Esta es la conducta deseada: **no fabricar una respuesta cuando no hay
+información fiable**. Trust scores: q039=0.96, q041=0.56, q042=0.66 (el sistema de
+verificación detecta ausencia de citas y reduce la confianza en q041 y q042).
+
 La métrica global (all) sigue siendo útil para comparaciones históricas, pero las 10 queries
 clasificadas como no aplicables (`answer_relevancy_applicable: false` en `benchmark_queries.yaml`)
 tienen causas estructurales que las hacen no evaluables con RAGAS:
-- q039, q041, q042: `structured_reference_missing_corpus` — referencia estructurada no accesible en Markdown
+- q039, q041, q042: `answer_not_present_in_current_corpus` — movidas a `suite: negative`; abstención correcta es la respuesta esperada
 - q048, q050: `ambiguity_test` — diseñadas para ser polisémicas
 - q013, q032, q038, q054, q065: `meta_synthesis` / `ragas_evaluator_limitation`
 
-Ver RAGAS_USAGE.md §"Applicability reporting" para el desglose completo.
+Ver RAGAS_USAGE.md §"Applicability reporting" y §"Suite negative" para el desglose completo.
 
 ### Pipeline interno (auto-evaluación)
 
@@ -217,4 +236,4 @@ tienden a ser más directos y menos verbosos), el cambio es un win neto en calid
 |-------|---------|--------|
 | 2026-06-08 | v1.21 | Primera versión del informe. Baseline RAGAS establecido. |
 | 2026-06-09 | v1.21 eval | Diagnóstico answer_relevancy (bimodal, 11 zeros). Nuevo campo answer_for_eval. Métricas actualizadas a clean answers. |
-| 2026-06-09 | v1.21.1 | Applicability reporting. answer_relevancy_applicable=0.8529 (55 queries). 10 queries clasificadas como no aplicables en YAML. |
+| 2026-06-09 | v1.21.1 | Applicability reporting. answer_relevancy_applicable=0.8529 (55 queries). 10 queries clasificadas como no aplicables en YAML. q039/q041/q042 reclasificadas a suite:negative (abstención correcta = conducta esperada). no_answer_correctness=1.0 (3/3). 1132 tests. |

@@ -11,12 +11,16 @@ la evaluación RAGAS (véase `docs/RAGAS_USAGE.md`), que mide `faithfulness` y
 La evaluación RAGAS usa el campo `answer_for_eval` — la respuesta sin citas inline —
 en lugar del campo `answer` completo. Ver RAGAS_USAGE.md §"answer vs answer_for_eval".
 
-**`answer_relevancy` no es válida para todas las queries.** 10 de las 65 queries oficiales
-están clasificadas como no aplicables (ambiguity_test, meta_synthesis, referencia estructurada
-no cubierta, limitación del evaluador RAGAS). La métrica principal recomendada es
+**`answer_relevancy` no es válida para todas las queries.** 10 de las 65 queries históricas
+están clasificadas como no aplicables (ambiguity_test, meta_synthesis, respuesta ausente del
+corpus, limitación del evaluador RAGAS). La métrica principal recomendada es
 `answer_relevancy` sobre el **subconjunto aplicable (55 queries)**, no la media global.
-Las queries no aplicables permanecen en la suite — no se eliminan. Ver RAGAS_USAGE.md
-§"Applicability reporting".
+Las queries no aplicables permanecen visibles en los resultados — no se eliminan.
+
+**La suite oficial (v1.21.1+) tiene 62 queries.** q039, q041, q042 se reclasificaron a
+`suite: negative` tras verificar directamente que sus respuestas están ausentes del corpus
+actual. Estas queries miden si el pipeline abstiene correctamente en lugar de fabricar una
+respuesta (`no_answer_correctness = 1.000`). Ver RAGAS_USAGE.md §"Suite negative".
 
 El benchmark sirve para dos usos principales:
 

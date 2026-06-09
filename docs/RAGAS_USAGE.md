@@ -32,7 +32,7 @@ rag-lab eval run \
 
 | Opción | Por defecto | Descripción |
 |--------|-------------|-------------|
-| `--suite SUITE` | `official` | Suite de queries. `official` = 65 queries validadas sobre SDMX. |
+| `--suite SUITE` | `official` | Suite de queries. `official` = 62 queries validadas sobre SDMX. `negative` = 3 queries donde la respuesta correcta es abstenerse. |
 | `--output PATH` | `data/eval_runs/<suite>_<timestamp>.jsonl` | Fichero de salida. Usar nombre con versión para comparaciones. |
 | `--limit N` | — | Evalúa solo las primeras N queries. Útil para smoke tests rápidos. |
 | `--queries q001,q002` | — | IDs concretos separados por comas. |
@@ -221,7 +221,7 @@ Sin los 11 outliers: **media = 0.906** (por encima del objetivo de 0.85).
 
 | Causa | Queries | Descripción |
 |-------|---------|-------------|
-| Corpus incompleto | q039, q041, q042 | LLM responde "No encuentro esta información". RAGAS no puede generar preguntas relevantes desde "No sé". |
+| Respuesta ausente del corpus | q039, q041, q042 | LLM responde "No encuentro esta información". RAGAS no puede generar preguntas relevantes desde "No sé". Reclasificadas a `suite: negative` — abstención es la conducta correcta. |
 | Contaminación por citas | q056 | Sin citas: 0.000 → 0.831. Las citas dominan el texto y RAGAS genera preguntas sobre metadatos de fuente. |
 | Preguntas ambiguas | q048, q050 | `ambiguity_test` — diseñadas para ser polisémicas. El LLM cubre múltiples conceptos → RAGAS no converge. |
 | Incompatibilidad RAGAS | q013, q032, q038, q054, q065 | Preguntas meta, de síntesis amplia o de tablas. Respuestas correctas pero RAGAS no puede generar una pregunta sintética convergente. |
@@ -252,12 +252,12 @@ históricas, pero la **métrica aplicable (55 queries)** es el indicador princip
 
 ### Categorías de no-aplicabilidad
 
-| `applicability_reason` | Queries | Significado | `decision` |
-|------------------------|---------|-------------|------------|
-| `meta_synthesis` | q013, q032, q054, q065 | Pregunta de síntesis amplia o meta-pregunta; RAGAS no converge | `evaluator_limitation` |
-| `ragas_evaluator_limitation` | q038 | Respuesta correcta pero RAGAS no genera pregunta sintética convergente para tablas/enumeraciones | `evaluator_limitation` |
-| `structured_reference_missing_corpus` | q039, q041, q042 | La referencia estructurada (codelist, tabla de valores) no está accesible en el corpus Markdown | `needs_corpus_expansion` |
-| `ambiguity_test` | q048, q050 | Diseñadas para ser polisémicas; el LLM cubre múltiples sentidos → RAGAS no converge | `keep_as_stress_test` |
+| `applicability_reason` | Queries | Suite | Significado | `decision` |
+|------------------------|---------|-------|-------------|------------|
+| `meta_synthesis` | q013, q032, q054, q065 | official | Pregunta de síntesis amplia o meta-pregunta; RAGAS no converge | `evaluator_limitation` |
+| `ragas_evaluator_limitation` | q038 | official | Respuesta correcta pero RAGAS no genera pregunta sintética convergente para tablas/enumeraciones | `evaluator_limitation` |
+| `answer_not_present_in_current_corpus` | q039, q041, q042 | **negative** | Respuesta ausente del corpus actual (confirmado por revisión directa de documentos). Abstención es la conducta esperada. | `keep_as_no_answer_test` |
+| `ambiguity_test` | q048, q050 | official | Diseñadas para ser polisémicas; el LLM cubre múltiples sentidos → RAGAS no converge | `keep_as_stress_test` |
 
 ### Métricas recomendadas
 
@@ -269,9 +269,9 @@ históricas, pero la **métrica aplicable (55 queries)** es el indicador princip
 
 ### Acciones futuras por grupo (no implementadas)
 
-- **`needs_corpus_expansion` (q039, q041, q042):** añadir documentos Markdown con codelists
-  SDMX estructurados (OBS_STATUS, header elements, namespace prefixes). Sin reingestión de
-  documentos existentes.
+- **`keep_as_no_answer_test` (q039, q041, q042):** mantener como tests de abstención. Añadir
+  q039b/q041b/q042b (ya en `suite: candidate`) al set oficial cuando se validen. Posible adición
+  futura de documentos SDMX con codelists — fuentes sin verificar, no urgente.
 - **`keep_as_stress_test` (q048, q050):** mantener como stress test de ambigüedad. Crear
   variantes `candidate` con preguntas sin ambigüedad para medir esa dimensión limpiamente.
 - **`evaluator_limitation` (q013, q032, q038, q054, q065):** evaluar con rúbrica de
@@ -294,3 +294,56 @@ El script carga automáticamente `data/benchmark_queries.yaml` y muestra:
 - Lista detallada de no-aplicables con `reason` y `decision`
 
 Para deshabilitar el splitting: `--queries-yaml none`.
+
+---
+
+## Suite negative — no_answer_correctness (v1.21.1)
+
+Queries donde la respuesta correcta es **abstenerse** porque la información está ausente
+del corpus actual. La suite `negative` no entra en `answer_relevancy` ni en el benchmark
+de retrieval — su único objetivo es verificar que el pipeline no fabrica respuestas.
+
+### Ejecutar suite negative
+
+```bash
+conda activate rag-lab
+
+# Paso 1: capturar salida
+rag-lab eval run \
+  --suite negative \
+  --output data/eval_runs/v1.21.1_negative.jsonl
+
+# Paso 2: calcular no_answer_correctness (sin RAGAS, sin coste externo)
+python3 -c "
+import json, sys
+sys.path.insert(0, '.')
+from rag_lab.evaluation.ragas_applicability import load_applicability_map, compute_no_answer_correctness
+
+rows = [json.loads(l) for l in open('data/eval_runs/v1.21.1_negative.jsonl') if l.strip()]
+report = compute_no_answer_correctness(rows, load_applicability_map())
+print(f'no_answer_correctness: {report[\"no_answer_correctness\"]} ({report[\"n_correct_abstentions\"]}/{report[\"n_negative\"]})')
+for q in report['per_query']:
+    mark = 'PASS' if q['abstained_correctly'] else 'FAIL'
+    print(f'  {mark} {q[\"query_id\"]}  trust={q[\"trust_score\"]:.2f}')
+"
+```
+
+`no_answer_correctness` se calcula con `is_abstention(answer, trust_score)`:
+heurístico basado en patrones de texto en español e inglés + `trust_score < 0.25`.
+No requiere juez externo ni coste API.
+
+### Resultado v1.21.1 (baseline)
+
+| Query | Pregunta | Abstención correcta | trust_score |
+|-------|----------|---------------------|-------------|
+| q039 | What are the allowed values for the SDMX observation status attribute? | PASS | 0.96 |
+| q041 | What are the mandatory header elements in an SDMX data message? | PASS | 0.56 |
+| q042 | What XML namespace prefixes are defined for SDMX 2.1 messages? | PASS | 0.66 |
+| **total** | | **no_answer_correctness = 1.000** | avg 0.727 |
+
+Las 3 responden: *"No encuentro esta información en los documentos proporcionados."*
+
+**Por qué esto importa:** un sistema RAG que inventa respuestas ante preguntas que no
+puede responder es más peligroso que uno que admite ignorancia. El `no_answer_correctness=1.0`
+confirma que el pipeline reconoce los límites del corpus cuando la información está
+genuinamente ausente, sin necesidad de ajuste de prompts ni de umbrales ad hoc.

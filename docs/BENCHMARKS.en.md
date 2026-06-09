@@ -15,12 +15,17 @@ The RAGAS evaluation uses `answer_for_eval` — a version of the answer with inl
 citations stripped — rather than the raw `answer`. See RAGAS_USAGE.md §"answer vs
 answer_for_eval" for why this matters.
 
-**`answer_relevancy` is not valid for all queries.** 10 of the 65 official queries
+**`answer_relevancy` is not valid for all queries.** 10 of the 65 historical queries
 are classified as not applicable for `answer_relevancy` (ambiguity_test, meta_synthesis,
-structured reference gaps, RAGAS evaluator limitation). The recommended primary metric
+absent-answer queries, RAGAS evaluator limitation). The recommended primary metric
 is `answer_relevancy` over the **applicable subset (55 queries)**, not the global mean.
-All queries remain in the suite — they are never deleted. See RAGAS_USAGE.md
-§"Applicability reporting" for the full breakdown.
+Not-applicable queries are never deleted — they remain visible in the JSON output.
+
+**Official suite (v1.21.1+) has 62 queries.** q039, q041, q042 were reclassified to
+`suite: negative` after direct corpus review confirmed their answers are absent from
+the current corpus. These queries test that the pipeline correctly *abstains* rather
+than fabricating an answer (`no_answer_correctness = 1.000`). See RAGAS_USAGE.md
+§"Applicability reporting" and §"Suite negative" for details.
 
 See also: [docs/BENCHMARKS.es.md](BENCHMARKS.es.md) — versión en castellano.
 
