@@ -44,9 +44,12 @@ rag-lab benchmark --suite official --variants full --no-cache
 Suite oficial, 65 queries, juez externo DeepSeek v4 Flash vía OpenRouter.
 **Reference-free** — no requiere respuestas de referencia.
 
-| Versión | faithfulness | answer_relevancy | n queries | juez | fecha |
-|---|---|---|---|---|---|
-| **v1.21** | **0.9123** | **0.7624** | 65 | deepseek/deepseek-v4-flash | 2026-06-08 |
+| Versión | faithfulness | answer_relevancy | n queries | juez | fecha | notas |
+|---|---|---|---|---|---|---|
+| **v1.21** | **0.9123** | **0.7624** | 65 | deepseek/deepseek-v4-flash | 2026-06-08 | Baseline |
+| v1.22-E1 | 0.9250 ↑ | 0.7673 ↑ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | RERANK_TOP_K=4. Leve mejora en ambas, latencia p50 empeora. |
+| v1.22-E2 | 0.9032 ↓ | 0.7408 ↓ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | System prompt directivo. Latencia p50 −22% pero ambas métricas RAGAS empeoran. |
+| v1.22-E3 | 0.8357 ↓↓ | 0.7192 ↓↓ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | User prompt concisión. Faithfulness colapsa, descartado. |
 
 ### Guía de interpretación
 
