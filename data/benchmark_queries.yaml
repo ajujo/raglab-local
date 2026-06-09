@@ -665,18 +665,20 @@ queries:
     language: en
     suite: official
     validated: true
-    expected_behavior: "Notas primary — OBS_STATUS codelist in technical notes"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    expected_behavior: "OBS_STATUS codelist values (A, E, F, M, N, O, P, S...)"
+    source_of_truth: "SDMX Cross-Domain Concept Scheme / codelist specification"
     doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
-      SDMX_Glossary: 1
+      Notas_Tecnicas_SDMX_2.1: 1
     notes: >
-      Corpus verification: Notas #1 (attributes section with OBS_STATUS values).
-      Confirmed as table-structured content in Notas. Observation status codelist
-      values retrieved correctly.
+      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas mentions
+      OBS_STATUS as a concept (sections 3.4.1.3, 3.4.2) but never lists codelist values.
+      The actual allowed values (A=Normal, E=Estimated, F=Forecast, M=Missing, etc.)
+      live in the SDMX Cross-Domain Concept Scheme, a separate document not in the
+      corpus. doc_relevance updated: Notas is marginally relevant (1), not primary (3).
+      Corpus expansion needed: ingest SDMX Cross-Domain Concept Scheme in Markdown.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: structured_reference_missing_corpus
+      applicability_reason: out_of_corpus
       decision: needs_corpus_expansion
 
   - id: q040
@@ -700,17 +702,21 @@ queries:
     language: en
     suite: official
     validated: true
-    expected_behavior: "Notas primary — message header specification"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    expected_behavior: "Header elements: Prepared, Sender, Receiver, ID, Test..."
+    source_of_truth: "SDMX-ML Schema and Documentation (Section 3A/3B)"
     doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
+      Notas_Tecnicas_SDMX_2.1: 1
       SDMX_2-1_User_Guide_6: 1
     notes: >
-      Corpus verification: Notas #2-#5 confirmed in top-5. Message header elements
-      (ID, Test, Prepared, Sender, Receiver) well-covered in Notas.
+      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas discusses
+      SDMX-ML messages conceptually but does not define the header structure
+      (Prepared, Sender, Receiver, ID, Test). That specification lives in SDMX-ML
+      Schema and Documentation (Sections 3A/3B), not in the Technical Notes.
+      doc_relevance updated: both sources marginally relevant (1). Primary source
+      not in corpus. Corpus expansion needed: ingest SDMX-ML documentation.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: structured_reference_missing_corpus
+      applicability_reason: out_of_corpus
       decision: needs_corpus_expansion
 
   - id: q042
@@ -719,16 +725,21 @@ queries:
     language: en
     suite: official
     validated: true
-    expected_behavior: "Notas primary — namespace declarations in message format section"
-    source_of_truth: "Notas_Tecnicas_SDMX_2.1"
+    expected_behavior: "Formal namespace table: structure:, common:, c:, g:, xsi:..."
+    source_of_truth: "SDMX 2.1 XSD schemas (normative namespace declarations)"
     doc_relevance:
-      Notas_Tecnicas_SDMX_2.1: 3
+      Notas_Tecnicas_SDMX_2.1: 1
     notes: >
-      Corpus verification: Notas #1 (section 3.3.1 XML namespace prefixes). Very specific
-      technical content confirmed in Notas. Single-source query as expected.
+      CONFIRMED OUT OF CORPUS (2026-06-09, direct document review). Notas uses
+      namespace prefixes (structure:, common:, c:, g:) in XML code examples but
+      never formally declares or tables them. The normative namespace declarations
+      live in the SDMX 2.1 XSD schemas, not in the Technical Notes. Converting
+      XSD schemas to queryable Markdown is non-trivial. Corpus expansion needed
+      but complex: requires a dedicated reference document listing URI-to-prefix
+      mappings, not a raw XSD dump.
     ragas:
       answer_relevancy_applicable: false
-      applicability_reason: structured_reference_missing_corpus
+      applicability_reason: out_of_corpus
       decision: needs_corpus_expansion
 
   # --- ambiguity_test (verified) -------------------------------------------
