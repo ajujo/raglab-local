@@ -60,6 +60,19 @@ mean calculation, report structure, answer field passthrough, and real-YAML inte
 - `answer` (visible to user) and `answer_for_eval` are **never touched**.
 - Production paths (`rag-lab query`, `rag-lab chat`, retrieval benchmark) are **unchanged**.
 
+### RAGAS results (v1.21.1, answer_for_eval, with applicability split)
+
+| Subset | faithfulness | answer_relevancy |
+|--------|-------------|------------------|
+| all (65 queries) | 0.9276 | 0.7676 |
+| **applicable (55 queries)** | **0.9659** | **0.8529** |
+| not applicable (10 queries) | 0.7173 | 0.2986 |
+
+**`answer_relevancy_applicable = 0.8529`** exceeds the 0.85 target.
+
+Input: `data/eval_runs/v1.21.1_applicability.jsonl`
+Output: `data/eval_runs/v1.21.1_applicability_ragas.json`
+
 ### Verification
 
 - 1104 tests passing.

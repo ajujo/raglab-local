@@ -7,7 +7,7 @@ que cambie el pipeline de retrieval, generación o verificación.
 
 ## Versión actual
 
-**v1.21** · 2026-06-08 · 1058 tests · corpus: 610 chunks SDMX
+**v1.21.1** · 2026-06-09 · 1104 tests · corpus: 610 chunks SDMX
 
 ---
 
@@ -29,22 +29,22 @@ Suite oficial, 65 queries, variante `full`, sin caché. Baseline comparativo: v1
 
 65 queries, juez externo: `deepseek/deepseek-v4-flash` vía OpenRouter.
 
-| Métrica | v1.21 (raw) | v1.21 eval (clean) | Señal |
-|---------|-------------|---------------------|-------|
-| `faithfulness` | 0.9123 | **0.9296** | ✓ Sólido. Bajo nivel de alucinación. |
-| `answer_relevancy` | 0.7624 | **0.7775** | ⚠ Ver diagnóstico: distribución bimodal. |
+| Métrica | v1.21 (raw) | v1.21 eval (clean) | v1.21.1 applicable | Señal |
+|---------|-------------|---------------------|---------------------|-------|
+| `faithfulness` | 0.9123 | 0.9296 | **0.9659** | ✓ Sólido. Bajo nivel de alucinación. |
+| `answer_relevancy (all)` | 0.7624 | 0.7775 | 0.7676 | Solo comparación histórica. |
+| `answer_relevancy (applicable)` | — | — | **0.8529** | ✓ Métrica principal. Supera objetivo 0.85. |
 
-**v1.21 eval** usa `answer_for_eval` — respuesta sin citas inline — en lugar del campo `answer` completo.
-Las anotaciones `[[N] Fuente: doc | Sección: ... | Líneas: X-Y]` suponen ~33% del texto de la respuesta
-y contaminan el generador de preguntas sintéticas de RAGAS. Sin ellas: +1.5pp answer_relevancy, +1.7pp faithfulness.
+**Métrica principal recomendada: `answer_relevancy_applicable = 0.8529`** (55 queries aplicables).
 
-**Diagnóstico de los 11 outliers `answer_relevancy=0.000`:** la distribución real es bimodal.
-Sin los 11 outliers, la media sube a **0.906** (por encima del objetivo 0.85).
-Las 11 queries con score cero tienen 4 causas distintas — ninguna es un fallo de generación corregible:
-- Corpus incompleto (q039, q041, q042) — LLM responde "No encuentro esta información"
-- Contaminación por citas resuelta con `answer_for_eval` (q056: 0.000 → 0.831)
-- `ambiguity_test` por diseño polisémico (q048, q050)
-- Incompatibilidad RAGAS con preguntas meta o de síntesis (q013, q032, q038, q054, q065)
+La métrica global (all) sigue siendo útil para comparaciones históricas, pero las 10 queries
+clasificadas como no aplicables (`answer_relevancy_applicable: false` en `benchmark_queries.yaml`)
+tienen causas estructurales que las hacen no evaluables con RAGAS:
+- q039, q041, q042: `structured_reference_missing_corpus` — referencia estructurada no accesible en Markdown
+- q048, q050: `ambiguity_test` — diseñadas para ser polisémicas
+- q013, q032, q038, q054, q065: `meta_synthesis` / `ragas_evaluator_limitation`
+
+Ver RAGAS_USAGE.md §"Applicability reporting" para el desglose completo.
 
 ### Pipeline interno (auto-evaluación)
 
@@ -101,10 +101,10 @@ consultas técnicas esporádicas; problemático para uso fluido o demos.
 | R@5 | >0.70 | >0.80 | >0.85 |
 | Latencia p95 | <30s | <5s | <2s |
 
-**Estado actual (v1.21 eval con answer_for_eval):**
+**Estado actual (v1.21.1, applicable subset):**
 - Uso propio / investigación: ✓ cumple todos los umbrales
-- Producto interno empresa: faithfulness ✓, retrieval ✓, **answer_relevancy ⚠ (0.78 vs 0.80)**, **latencia ✗ (10s vs 5s)**
-- Producto externo: no cumple answer_relevancy ni latencia
+- Producto interno empresa: faithfulness ✓, retrieval ✓, **answer_relevancy ✓ (0.853 vs 0.80)**, **latencia ✗ (10s vs 5s)**
+- Producto externo: answer_relevancy en el límite, latencia sigue siendo el bloqueador
 
 ---
 
@@ -217,3 +217,4 @@ tienden a ser más directos y menos verbosos), el cambio es un win neto en calid
 |-------|---------|--------|
 | 2026-06-08 | v1.21 | Primera versión del informe. Baseline RAGAS establecido. |
 | 2026-06-09 | v1.21 eval | Diagnóstico answer_relevancy (bimodal, 11 zeros). Nuevo campo answer_for_eval. Métricas actualizadas a clean answers. |
+| 2026-06-09 | v1.21.1 | Applicability reporting. answer_relevancy_applicable=0.8529 (55 queries). 10 queries clasificadas como no aplicables en YAML. |

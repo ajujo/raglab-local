@@ -1,0 +1,576 @@
+{
+  "input": "data/eval_runs/v1.21.1_applicability.jsonl",
+  "n_queries": 65,
+  "judge_model": "deepseek/deepseek-v4-flash",
+  "answer_field": "answer_for_eval",
+  "scores": {
+    "faithfulness": 0.9276313504973479,
+    "answer_relevancy": 0.7676446501145655
+  },
+  "per_query": [
+    {
+      "query_id": "q001",
+      "question": "What is SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8897900481799722
+    },
+    {
+      "query_id": "q003",
+      "question": "What is a Data Structure Definition in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8905058054296294
+    },
+    {
+      "query_id": "q005",
+      "question": "What is a code list in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8289109316248057
+    },
+    {
+      "query_id": "q007",
+      "question": "What is a concept scheme in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0000000000000002
+    },
+    {
+      "query_id": "q011",
+      "question": "What is a provision agreement in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 0.9473684210526315,
+      "answer_relevancy": 0.9818159166252844
+    },
+    {
+      "query_id": "q015",
+      "question": "What is the difference between an attachment constraint and a content constraint in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8520258686722402
+    },
+    {
+      "query_id": "q016",
+      "question": "What is a dataflow in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.933224540259411
+    },
+    {
+      "query_id": "q017",
+      "question": "What is an agency scheme in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 0.9444444444444444,
+      "answer_relevancy": 0.9999999999999998
+    },
+    {
+      "query_id": "q018",
+      "question": "What is a Metadata Structure Definition (MSD) in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0
+    },
+    {
+      "query_id": "q019",
+      "question": "What is a Data Provider Scheme in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0
+    },
+    {
+      "query_id": "q020",
+      "question": "What is a cross-domain codelist in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9492932848687425
+    },
+    {
+      "query_id": "q021",
+      "question": "What is a category scheme in SDMX and how is it used?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9881920671624029
+    },
+    {
+      "query_id": "q013",
+      "question": "What are the different types of metadata targets defined in SDMX 2.1?",
+      "category": "glossary_definition",
+      "faithfulness": 0.8333333333333334,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q002",
+      "question": "What data exchange formats does SDMX support?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9999999999999998
+    },
+    {
+      "query_id": "q004",
+      "question": "How are time series structured in SDMX?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7896189656455802
+    },
+    {
+      "query_id": "q006",
+      "question": "What organisations maintain the SDMX standard?",
+      "category": "technical_standard",
+      "faithfulness": 0.6666666666666666,
+      "answer_relevancy": 0.785969178540185
+    },
+    {
+      "query_id": "q009",
+      "question": "How does SDMX handle metadata reporting?",
+      "category": "technical_standard",
+      "faithfulness": 0.8888888888888888,
+      "answer_relevancy": 1.0
+    },
+    {
+      "query_id": "q010",
+      "question": "What are the SDMX reporting periods?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.850629620655746
+    },
+    {
+      "query_id": "q012",
+      "question": "How does SDMX 2.1 differ from previous versions?",
+      "category": "technical_standard",
+      "faithfulness": 0.925,
+      "answer_relevancy": 0.9614901392441487
+    },
+    {
+      "query_id": "q014",
+      "question": "How do you retrieve statistical data using the SDMX RESTful web services API?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9882796130553338
+    },
+    {
+      "query_id": "q022",
+      "question": "What character encoding and format requirements apply to SDMX-ML messages?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9952332840048039
+    },
+    {
+      "query_id": "q023",
+      "question": "What types of constraints can be applied to SDMX dataflows?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.6739682517783353
+    },
+    {
+      "query_id": "q024",
+      "question": "How does SDMX 2.1 define a Data Structure Definition and what are its mandatory components?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9176706906244525
+    },
+    {
+      "query_id": "q008",
+      "question": "What is SDMX-ML and how does it differ from SDMX-EDI?",
+      "category": "acronym_or_exact_term",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9781488084388291
+    },
+    {
+      "query_id": "q025",
+      "question": "List and describe all the structural metadata artefact types defined in SDMX",
+      "category": "multi_chunk_same_doc",
+      "faithfulness": 0.9347826086956522,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q026",
+      "question": "What components make up an SDMX Data Structure Definition and how are they organised?",
+      "category": "multi_chunk_same_doc",
+      "faithfulness": 0.9473684210526315,
+      "answer_relevancy": 0.8024993678571135
+    },
+    {
+      "query_id": "q027",
+      "question": "¿Qué es un flujo de datos en SDMX?",
+      "category": "cross_lingual_es_en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9459664153717832
+    },
+    {
+      "query_id": "q028",
+      "question": "¿Cómo se define una estructura de datos en SDMX y cuáles son sus componentes?",
+      "category": "cross_lingual_es_en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9975112212215057
+    },
+    {
+      "query_id": "q029",
+      "question": "How do the SDMX Glossary and SDMX technical notes differ in their treatment of the dimension concept?",
+      "category": "multi_doc_synthesis",
+      "faithfulness": 0.7647058823529411,
+      "answer_relevancy": 0.983037543346412
+    },
+    {
+      "query_id": "q030",
+      "question": "What is the role of the Maintenance Agency in SDMX and how is it used across different artefact types?",
+      "category": "multi_doc_synthesis",
+      "faithfulness": 0.9354838709677419,
+      "answer_relevancy": 0.9776283033431182
+    },
+    {
+      "query_id": "q031",
+      "question": "What are the similarities and differences between a codelist and a concept scheme in SDMX?",
+      "category": "multi_doc_synthesis",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0
+    },
+    {
+      "query_id": "q032",
+      "question": "How do training materials and the user guide complement each other in explaining the SDMX data model?",
+      "category": "multi_doc_synthesis",
+      "faithfulness": 0.8461538461538461,
+      "answer_relevancy": 0.9861604939956127
+    },
+    {
+      "query_id": "q033",
+      "question": "How is SDMX data validation described across the user guide and the technical notes?",
+      "category": "multi_doc_synthesis",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8898110452326579
+    },
+    {
+      "query_id": "q035",
+      "question": "What does DSD stand for in SDMX and why is it important?",
+      "category": "acronym_or_exact_term",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9783744676598125
+    },
+    {
+      "query_id": "q036",
+      "question": "What does EDI mean in the context of SDMX and what is SDMX-EDI used for?",
+      "category": "acronym_or_exact_term",
+      "faithfulness": 0.95,
+      "answer_relevancy": 0.9502217969310679
+    },
+    {
+      "query_id": "q037",
+      "question": "What is an HCL in SDMX terminology?",
+      "category": "acronym_or_exact_term",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8349947699905814
+    },
+    {
+      "query_id": "q038",
+      "question": "What are the standard frequency codes used in SDMX time series?",
+      "category": "table_or_structured_reference",
+      "faithfulness": 0.8571428571428571,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q039",
+      "question": "What are the allowed values for the SDMX observation status attribute?",
+      "category": "table_or_structured_reference",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q040",
+      "question": "What time period formats does SDMX 2.1 support for representing dates?",
+      "category": "table_or_structured_reference",
+      "faithfulness": 0.9642857142857143,
+      "answer_relevancy": 0.8070320387457155
+    },
+    {
+      "query_id": "q041",
+      "question": "What are the mandatory header elements in an SDMX data message?",
+      "category": "table_or_structured_reference",
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q042",
+      "question": "What XML namespace prefixes are defined for SDMX 2.1 messages?",
+      "category": "table_or_structured_reference",
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q048",
+      "question": "What is a key in SDMX?",
+      "category": "ambiguity_test",
+      "faithfulness": 0.6956521739130435,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q049",
+      "question": "What is a group in SDMX?",
+      "category": "ambiguity_test",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8997100257636845
+    },
+    {
+      "query_id": "q050",
+      "question": "What is a structure in SDMX?",
+      "category": "ambiguity_test",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9999999999999998
+    },
+    {
+      "query_id": "q051",
+      "question": "What does 'concept' mean in SDMX?",
+      "category": "ambiguity_test",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.957850212566251
+    },
+    {
+      "query_id": "q052",
+      "question": "What is an SDMX component?",
+      "category": "ambiguity_test",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0000000000000002
+    },
+    {
+      "query_id": "q053",
+      "question": "What is SDMX-EDI and what is its relationship to EDIFACT?",
+      "category": "regression_known_hard",
+      "faithfulness": 0.9166666666666666,
+      "answer_relevancy": 0.9951936370455715
+    },
+    {
+      "query_id": "q054",
+      "question": "What are the technical specifications for the SDMX GenericData message format?",
+      "category": "regression_known_hard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9999999999999999
+    },
+    {
+      "query_id": "q055",
+      "question": "How are annotations used in SDMX artefacts and what information can they carry?",
+      "category": "regression_known_hard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9362939478881502
+    },
+    {
+      "query_id": "q056",
+      "question": "What is the SDMX information model and what are its layers or tiers?",
+      "category": "regression_known_hard",
+      "faithfulness": 0.9090909090909091,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q057",
+      "question": "How does SDMX define a primary measure and how is it positioned within a DSD?",
+      "category": "regression_known_hard",
+      "faithfulness": 0.9375,
+      "answer_relevancy": 0.9397326614451255
+    },
+    {
+      "query_id": "q058",
+      "question": "What is a hierarchical codelist in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9423381828003625
+    },
+    {
+      "query_id": "q059",
+      "question": "What is a reporting taxonomy in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 1.0
+    },
+    {
+      "query_id": "q060",
+      "question": "What is a data consumer scheme in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9754897459436017
+    },
+    {
+      "query_id": "q061",
+      "question": "What is a measure dimension in SDMX?",
+      "category": "glossary_definition",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7133637750637933
+    },
+    {
+      "query_id": "q063",
+      "question": "What are the different types of SDMX data messages and how do they differ?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9987762661409854
+    },
+    {
+      "query_id": "q064",
+      "question": "How are dimensions and attributes defined within an SDMX Data Structure Definition?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.9337214692849557
+    },
+    {
+      "query_id": "q065",
+      "question": "What are the SDMX web service guidelines for requesting structural metadata?",
+      "category": "technical_standard",
+      "faithfulness": 0.9411764705882353,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q066",
+      "question": "What is the role of reference metadata in SDMX and how does it relate to statistical data?",
+      "category": "technical_standard",
+      "faithfulness": 0.8947368421052632,
+      "answer_relevancy": 0.9193333010584678
+    },
+    {
+      "query_id": "q067",
+      "question": "How does SDMX 2.1 support multiple language representations of metadata?",
+      "category": "technical_standard",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7949530476208067
+    },
+    {
+      "query_id": "q068",
+      "question": "¿Cuáles son los tipos de mensajes de datos SDMX?",
+      "category": "cross_lingual_es_en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.727004253390843
+    },
+    {
+      "query_id": "q069",
+      "question": "¿Qué es un esquema de conceptos en SDMX y para qué se utiliza?",
+      "category": "cross_lingual_es_en",
+      "faithfulness": 0.9473684210526315,
+      "answer_relevancy": 0.9366864332423509
+    },
+    {
+      "query_id": "q070",
+      "question": "¿Cómo se utilizan las restricciones en SDMX para limitar los datos válidos?",
+      "category": "cross_lingual_es_en",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8184508196865206
+    },
+    {
+      "query_id": "q071",
+      "question": "Explain all the different types of dimensions defined in SDMX",
+      "category": "multi_chunk_same_doc",
+      "faithfulness": 0.7391304347826086,
+      "answer_relevancy": 0.0
+    },
+    {
+      "query_id": "q072",
+      "question": "What role does the SDMX RESTful API play in accessing different types of metadata artefacts?",
+      "category": "multi_chunk_same_doc",
+      "faithfulness": 0.9090909090909091,
+      "answer_relevancy": 0.0
+    }
+  ],
+  "applicability": {
+    "n_all": 65,
+    "n_applicable": 55,
+    "n_not_applicable": 10,
+    "scores_all": {
+      "faithfulness": 0.9276313504973478,
+      "answer_relevancy": 0.7676446501145654
+    },
+    "scores_applicable": {
+      "faithfulness": 0.9658650745672052,
+      "answer_relevancy": 0.8529225775172934
+    },
+    "scores_not_applicable": {
+      "faithfulness": 0.7173458681131315,
+      "answer_relevancy": 0.2986160493995612
+    },
+    "not_applicable_queries": [
+      {
+        "query_id": "q013",
+        "question": "What are the different types of metadata targets defined in SDMX 2.1?",
+        "category": "glossary_definition",
+        "reason": "meta_synthesis",
+        "decision": "evaluator_limitation",
+        "faithfulness": 0.8333333333333334,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q032",
+        "question": "How do training materials and the user guide complement each other in explaining the SDMX data model?",
+        "category": "multi_doc_synthesis",
+        "reason": "meta_synthesis",
+        "decision": "evaluator_limitation",
+        "faithfulness": 0.8461538461538461,
+        "answer_relevancy": 0.9861604939956127
+      },
+      {
+        "query_id": "q038",
+        "question": "What are the standard frequency codes used in SDMX time series?",
+        "category": "table_or_structured_reference",
+        "reason": "ragas_evaluator_limitation",
+        "decision": "evaluator_limitation",
+        "faithfulness": 0.8571428571428571,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q039",
+        "question": "What are the allowed values for the SDMX observation status attribute?",
+        "category": "table_or_structured_reference",
+        "reason": "structured_reference_missing_corpus",
+        "decision": "needs_corpus_expansion",
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q041",
+        "question": "What are the mandatory header elements in an SDMX data message?",
+        "category": "table_or_structured_reference",
+        "reason": "structured_reference_missing_corpus",
+        "decision": "needs_corpus_expansion",
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q042",
+        "question": "What XML namespace prefixes are defined for SDMX 2.1 messages?",
+        "category": "table_or_structured_reference",
+        "reason": "structured_reference_missing_corpus",
+        "decision": "needs_corpus_expansion",
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q048",
+        "question": "What is a key in SDMX?",
+        "category": "ambiguity_test",
+        "reason": "ambiguity_test",
+        "decision": "keep_as_stress_test",
+        "faithfulness": 0.6956521739130435,
+        "answer_relevancy": 0.0
+      },
+      {
+        "query_id": "q050",
+        "question": "What is a structure in SDMX?",
+        "category": "ambiguity_test",
+        "reason": "ambiguity_test",
+        "decision": "keep_as_stress_test",
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9999999999999998
+      },
+      {
+        "query_id": "q054",
+        "question": "What are the technical specifications for the SDMX GenericData message format?",
+        "category": "regression_known_hard",
+        "reason": "meta_synthesis",
+        "decision": "evaluator_limitation",
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9999999999999999
+      },
+      {
+        "query_id": "q065",
+        "question": "What are the SDMX web service guidelines for requesting structural metadata?",
+        "category": "technical_standard",
+        "reason": "meta_synthesis",
+        "decision": "evaluator_limitation",
+        "faithfulness": 0.9411764705882353,
+        "answer_relevancy": 0.0
+      }
+    ]
+  }
+}

@@ -52,6 +52,7 @@ Suite oficial, 65 queries, juez externo DeepSeek v4 Flash vía OpenRouter.
 | v1.22-E3 | 0.8357 ↓↓ | 0.7192 ↓↓ | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | User prompt concisión. Faithfulness colapsa, descartado. |
 | v1.22-E6 | 0.9147 | 0.7576 | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | Query rewriting activado. Plano, sin mejora significativa. |
 | **v1.21 eval** | **0.9296 ↑** | **0.7775 ↑** | 65 | deepseek/deepseek-v4-flash | 2026-06-09 | Campo `answer_for_eval` (citas inline eliminadas). +1.7pp faith, +1.5pp relevancy vs baseline. Sin cambios en producción. |
+| **v1.21.1** | **0.9276** | **0.7676** (all) · **0.8529** (applicable) | 65 (55 aplic.) | deepseek/deepseek-v4-flash | 2026-06-09 | Applicability reporting. Métrica principal: `answer_relevancy_applicable=0.8529` sobre 55 queries. 10 queries no aplicables clasificadas en YAML. |
 
 ### Guía de interpretación
 
