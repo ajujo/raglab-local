@@ -54,6 +54,7 @@ class DocStore:
         self._migrate_v4()
         self._migrate_v5()
         self._migrate_v6()
+        self._migrate_v7()
         self._conn.commit()
         logger.info(f"Initialized docstore at {self.db_path}")
 
@@ -264,6 +265,27 @@ class DocStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_version_ops_state ON version_ops(state)"
         )
+
+    def _migrate_v7(self) -> None:
+        """Add a content-hash column bound to the confirmed version (P0B-01/04).
+
+        The hash is the source content hash of the *committed* version.  It is
+        authoritative for ownership checks and, unlike the mutable source file
+        or the advisory manifest, cannot be invalidated by a later revert.
+        """
+        for table, col in (
+            ("document_versions", "content_hash"),
+            ("version_snapshot_docs", "content_hash"),
+        ):
+            existing = {
+                row[1]
+                for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if col not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {col} TEXT DEFAULT ''"
+                )
+                logger.info(f"DocStore: added column {table}.{col}")
 
     # ------------------------------------------------------------------
     # Write

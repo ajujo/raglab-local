@@ -463,9 +463,18 @@ def test_same_content_other_path_is_allowed(batch_env):
     assert _run_batch_ingest(
         paths=[p1], doc_store=ds, vector_store=vs, force=False, device="cpu", strict=False,
     )["committed"] == 1
-    # Identical content is the same document, so it is allowed (or skipped).
+    # P0-C: identical content from another path is a NO-OP with no documental
+    # write and no generation bump, even with force=True.
+    gen_before = ds._conn.execute(
+        "SELECT generation FROM document_versions WHERE doc_id='shared-id'"
+    ).fetchone()[0]
     s2 = _run_batch_ingest(
         paths=[p2], doc_store=ds, vector_store=vs, force=True, device="cpu", strict=False,
     )
-    assert s2["committed"] == 1
+    assert s2["committed"] == 0
+    assert s2["skipped"] == 1
     assert s2["failed"] == 0
+    gen_after = ds._conn.execute(
+        "SELECT generation FROM document_versions WHERE doc_id='shared-id'"
+    ).fetchone()[0]
+    assert gen_after == gen_before

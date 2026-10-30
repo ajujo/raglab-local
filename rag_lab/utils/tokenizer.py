@@ -156,43 +156,36 @@ def _load_backend_tokenizer() -> Optional[Any]:
 
 
 def estimate_tokens(text: str) -> int:
-    """Conservative token estimate for the *generative* backend (RAG-08).
+    """Token estimate for the generative backend (RAG-08 / P0B-05).
 
-    The embedding tokenizer (BGE-M3 / XLM-RoBERTa) can collapse long or
-    non-text sequences (emoji, exotic symbols, base64) to very few tokens,
-    which makes it unreliable for budgeting the generative model's prompt.
-    This fallback therefore adds a byte-based penalty for non-ASCII content and
-    a full byte bound when the compression ratio is implausible.  Prefer
-    :func:`count_backend_tokens` with a configured backend tokenizer.
+    If a backend tokenizer is configured (``LLM_TOKENIZER_PATH`` or
+    ``LLM_TOKENIZER_MODEL``) it is used, subject to the conservative
+    ``LLM_TOKEN_ESTIMATE_FACTOR`` applied by the prompt builder.
+
+    Otherwise this returns a **guaranteed upper bound**: the number of UTF-8
+    bytes.  Every token produced by a byte-level BPE/Unigram tokenizer maps to
+    at least one byte, so the real token count can never exceed the byte count.
+    This is deliberately conservative (normal text is ~4 bytes/token) but it
+    cannot under-count, so the configured context window can never be exceeded
+    by an invalid request.  Configure the tokenizer to reclaim full context.
     """
-    if not text or not text.strip():
+    if text == "":
         return 1
-    count = count_tokens(text)
-    try:
-        raw = text.encode("utf-8")
-    except Exception:
-        raw = text.encode("utf-8", "ignore")
-    nbytes = len(raw)
-    non_ascii = sum(1 for b in raw if b >= 0x80)
-    if count <= 0:
-        return nbytes
-    # If the embedding tokenizer compresses the text implausibly, use the
-    # (guaranteed) byte length as an upper bound.
-    if nbytes / count > 5.0:
-        return max(count, nbytes)
-    # Otherwise add a byte-based penalty for non-ASCII content, the main source
-    # of embedding/generative tokenizer divergence.
-    return max(count, non_ascii)
-
-
-def count_backend_tokens(text: str) -> int:
-    """Token count using the generative backend's tokenizer when available."""
     tok = _load_backend_tokenizer()
     if tok is not None:
         try:
             return max(1, len(tok.encode(text, add_special_tokens=False)))
         except Exception:
             pass
+    try:
+        return max(1, len(text.encode("utf-8")))
+    except Exception:
+        return max(1, len(text))
+
+
+def count_backend_tokens(text: str) -> int:
+    """Token count for budgeting: backend tokenizer if available, else a
+    guaranteed byte-based upper bound."""
     return estimate_tokens(text)
 
 

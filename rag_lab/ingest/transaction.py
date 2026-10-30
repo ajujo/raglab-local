@@ -325,12 +325,13 @@ class IngestTransaction:
     """
 
     def __init__(self, doc_id: str, source_path, doc_store,
-                 vector_store=None, chunk_ids=None) -> None:
+                 vector_store=None, chunk_ids=None, content_hash=None) -> None:
         self.doc_id = doc_id
         self.source_path = str(source_path) if source_path else None
         self._ds = doc_store
         self._vs = vector_store
         self._new_chunk_ids: List[str] = list(chunk_ids) if chunk_ids else []
+        self._content_hash = content_hash
         self._handle = None
         self._run_store = IngestRunStore(doc_store._conn)
         self.run_id: Optional[str] = None
@@ -406,6 +407,7 @@ class IngestTransaction:
                 versioning.commit_replace(
                     self._handle, self._ds._conn, self._vs,
                     self.run_id, self._new_chunk_ids,
+                    content_hash=self._content_hash,
                 )
                 self._run_store.update(
                     self.run_id,

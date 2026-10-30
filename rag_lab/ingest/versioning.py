@@ -62,6 +62,7 @@ class VersionHandle:
     old_chunk_ids: List[str] = field(default_factory=list)
     had_previous: bool = False
     op_id: Optional[int] = None
+    attempt_run: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -296,10 +297,18 @@ def _snapshot_document(conn, doc_id: str, old_run_id: Optional[str], vector_stor
             "WHERE dt.doc_id=?",
             (doc_id,),
         )]
+    old_hash = ""
+    if _table_exists(conn, "document_versions"):
+        r = conn.execute(
+            "SELECT content_hash FROM document_versions WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if r and r[0]:
+            old_hash = r[0]
     conn.execute(
-        "INSERT OR REPLACE INTO version_snapshot_docs (doc_id, run_id, doc_json, tags_json, created_at) "
-        "VALUES (?,?,?,?,datetime('now'))",
-        (doc_id, old_run_id, doc_row, json.dumps(tags, ensure_ascii=False)),
+        "INSERT OR REPLACE INTO version_snapshot_docs "
+        "(doc_id, run_id, doc_json, tags_json, content_hash, created_at) "
+        "VALUES (?,?,?,?,?,datetime('now'))",
+        (doc_id, old_run_id, doc_row, json.dumps(tags, ensure_ascii=False), old_hash),
     )
     conn.commit()
 
@@ -375,10 +384,27 @@ def _supersede_other_ops(conn, doc_id: str, keep_op_id: Optional[int]) -> None:
         )
 
 
-def _set_op(conn, op_id: int, state: str, payload: dict) -> None:
+def _set_op(conn, op_id: int, state: str, fields: dict) -> None:
+    """Transition an existing op to a new state, merging payload fields.
+
+    Merging (rather than replacing) is essential: it preserves ``attempt_run``
+    captured by ``begin_replace`` across the RESTORING/COMMITTING transitions so
+    recovery can reconcile the run and batch rows (P0B-02).
+    """
+    row = conn.execute(
+        "SELECT payload_json FROM version_ops WHERE id=?", (op_id,)
+    ).fetchone()
+    try:
+        payload = json.loads(row[0]) if row and row[0] else {}
+    except (TypeError, ValueError):
+        payload = {}
+    payload.update(fields)
+    run_id = (
+        payload.get("new_run") or payload.get("old_run") or payload.get("attempt_run")
+    )
     conn.execute(
         "UPDATE version_ops SET state=?, payload_json=?, run_id=? WHERE id=?",
-        (state, json.dumps(payload), payload.get("new_run") or payload.get("old_run"), op_id),
+        (state, json.dumps(payload), run_id, op_id),
     )
     conn.commit()
 
@@ -398,7 +424,8 @@ def _new_op(conn, doc_id: str, state: str, payload: dict) -> int:
 
 def _apply_commit(conn, vector_store, doc_id: str, new_run_id: Optional[str],
                   new_ids: List[str], obsolete: List[str],
-                  generation: Optional[int] = None) -> None:
+                  generation: Optional[int] = None,
+                  content_hash: Optional[str] = None) -> None:
     new_ids = list(dict.fromkeys(new_ids or []))
     if obsolete:
         ph = ", ".join("?" * len(obsolete))
@@ -416,21 +443,18 @@ def _apply_commit(conn, vector_store, doc_id: str, new_run_id: Optional[str],
             generation = (_get_active(conn, doc_id) or {}).get("generation", 0) + 1
         conn.execute(
             "INSERT OR REPLACE INTO document_versions "
-            "(doc_id, active_run_id, generation, chunk_ids, updated_at) "
-            "VALUES (?,?,?,?,datetime('now'))",
-            (doc_id, new_run_id, generation, json.dumps(new_ids)),
+            "(doc_id, active_run_id, generation, chunk_ids, content_hash, updated_at) "
+            "VALUES (?,?,?,?,?,datetime('now'))",
+            (doc_id, new_run_id, generation, json.dumps(new_ids), content_hash or ""),
         )
     else:
         conn.execute("DELETE FROM document_versions WHERE doc_id=?", (doc_id,))
     conn.commit()
 
     if new_run_id and _table_exists(conn, "ingest_runs"):
-        conn.execute(
-            "UPDATE ingest_runs SET status='COMMITTED', finished_at=? "
-            "WHERE run_id=? AND status!='COMMITTED'",
-            (_now(), new_run_id),
-        )
-        conn.commit()
+        # Reconcile the run AND its linked batch row before the op is marked
+        # DONE, so a crash after DONE cannot leave control rows behind (PB-R3).
+        _mark_run(conn, new_run_id, "COMMITTED")
 
 
 def _apply_restore(conn, vector_store, doc_id: str,
@@ -438,12 +462,21 @@ def _apply_restore(conn, vector_store, doc_id: str,
     old_ids = list(old_ids or [])
     _restore_chunks(conn, doc_id)
     generation = (_get_active(conn, doc_id) or {}).get("generation", 0)
+    snap_hash = ""
+    try:
+        row = conn.execute(
+            "SELECT content_hash FROM version_snapshot_docs WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if row and row[0]:
+            snap_hash = row[0]
+    except Exception:
+        snap_hash = ""
     if old_run_id or old_ids:
         conn.execute(
             "INSERT OR REPLACE INTO document_versions "
-            "(doc_id, active_run_id, generation, chunk_ids, updated_at) "
-            "VALUES (?,?,?,?,datetime('now'))",
-            (doc_id, old_run_id, generation, json.dumps(old_ids)),
+            "(doc_id, active_run_id, generation, chunk_ids, content_hash, updated_at) "
+            "VALUES (?,?,?,?,?,datetime('now'))",
+            (doc_id, old_run_id, generation, json.dumps(old_ids), snap_hash),
         )
     else:
         conn.execute("DELETE FROM document_versions WHERE doc_id=?", (doc_id,))
@@ -490,11 +523,11 @@ def begin_replace(doc_id: str, conn, vector_store=None,
     )
     return VersionHandle(doc_id=doc_id, old_run_id=old_run,
                          old_chunk_ids=list(old_ids), had_previous=had_previous,
-                         op_id=op_id)
+                         op_id=op_id, attempt_run=run_id)
 
 
 def commit_replace(handle: VersionHandle, conn, vector_store, new_run_id: str,
-                   new_chunk_ids: List[str]) -> None:
+                   new_chunk_ids: List[str], content_hash: Optional[str] = None) -> None:
     """Finalize a replacement: drop obsolete chunks, publish the new version."""
     doc_id = handle.doc_id
     new_ids = list(dict.fromkeys(new_chunk_ids or []))
@@ -504,7 +537,7 @@ def commit_replace(handle: VersionHandle, conn, vector_store, new_run_id: str,
     payload = {
         "phase": "commit", "old_run": handle.old_run_id, "old_ids": handle.old_chunk_ids,
         "new_run": new_run_id, "new_ids": new_ids, "obsolete": obsolete,
-        "generation": generation,
+        "generation": generation, "content_hash": content_hash or "",
     }
     op_id = handle.op_id
     if op_id is None:
@@ -516,7 +549,7 @@ def commit_replace(handle: VersionHandle, conn, vector_store, new_run_id: str,
 
     try:
         _apply_commit(conn, vector_store, doc_id, new_run_id, new_ids, obsolete,
-                      generation=generation)
+                      generation=generation, content_hash=content_hash)
     except Exception:
         logger.exception("versioning: commit_replace failed for %r; left for recovery", doc_id)
         raise
@@ -530,7 +563,11 @@ def commit_replace(handle: VersionHandle, conn, vector_store, new_run_id: str,
 def rollback_replace(handle: VersionHandle, conn, vector_store) -> None:
     """Restore the pre-image captured by :func:`begin_replace` (idempotent)."""
     doc_id = handle.doc_id
-    payload = {"phase": "rollback", "old_run": handle.old_run_id, "old_ids": handle.old_chunk_ids}
+    payload = {
+        "phase": "rollback", "old_run": handle.old_run_id,
+        "old_ids": handle.old_chunk_ids,
+        "attempt_run": handle.attempt_run,
+    }
     op_id = handle.op_id
     if op_id is None:
         op_id = _new_op(conn, doc_id, "RESTORING", payload)
@@ -540,15 +577,27 @@ def rollback_replace(handle: VersionHandle, conn, vector_store) -> None:
     _supersede_other_ops(conn, doc_id, op_id)
     conn.commit()
 
+    # Resolve the aborted attempt's run id (preserved from begin/recovery).
+    row = conn.execute(
+        "SELECT payload_json FROM version_ops WHERE id=?", (op_id,)
+    ).fetchone()
+    try:
+        attempt_run = json.loads(row[0]).get("attempt_run") if row and row[0] else handle.attempt_run
+    except (TypeError, ValueError):
+        attempt_run = handle.attempt_run
+    attempt_run = attempt_run or handle.attempt_run
+
     try:
         _apply_restore(conn, vector_store, doc_id, handle.old_run_id, handle.old_chunk_ids)
+        # Reconcile the aborted run/control row BEFORE marking DONE (PB-R3/R4).
+        _mark_run(conn, attempt_run, "ROLLED_BACK")
     except Exception:
         logger.exception("versioning: rollback_replace failed for %r; left for recovery", doc_id)
         raise
     _set_op(conn, op_id, "DONE", payload)
     logger.warning(
-        "versioning: rollback_replace doc_id=%r restored_run=%s chunks=%d",
-        doc_id, handle.old_run_id, len(handle.old_chunk_ids),
+        "versioning: rollback_replace doc_id=%r restored_run=%s chunks=%d attempt_run=%s",
+        doc_id, handle.old_run_id, len(handle.old_chunk_ids), attempt_run,
     )
 
 
@@ -599,6 +648,7 @@ def admin_rollback(run_id: str, conn, vector_store) -> dict:
         old_chunk_ids=snap_ids,
         had_previous=bool(snap_ids or snap_doc),
         op_id=None,
+        attempt_run=run_id,
     )
     rollback_replace(handle, conn, vector_store)
     IngestRunStore(conn).update(run_id, status="ROLLED_BACK", finished_at=_now())
@@ -622,7 +672,8 @@ def _finish_op(conn, op_id: int, vector_store, doc_id: str, state: str, payload:
     elif state == "COMMITTING":
         _apply_commit(conn, vector_store, doc_id,
                       payload.get("new_run"), payload.get("new_ids", []),
-                      payload.get("obsolete", []), generation=payload.get("generation"))
+                      payload.get("obsolete", []), generation=payload.get("generation"),
+                      content_hash=payload.get("content_hash"))
         _mark_run(conn, payload.get("new_run"), "COMMITTED")
     elif state == "RESTORING":
         _apply_restore(conn, vector_store, doc_id,
