@@ -17,8 +17,18 @@ import logging
 import re
 from typing import Optional
 
-from rag_lab.config import LLM_BASE_URL, LLM_MODEL, LLM_MAX_TOKENS, LLM_TEMPERATURE
-from rag_lab.exceptions import LLMConnectionError
+from rag_lab.config import (
+    LLM_BASE_URL,
+    LLM_CONTEXT_SAFETY_MARGIN,
+    LLM_CONTEXT_WINDOW,
+    LLM_MAX_TOKENS,
+    LLM_MIN_OUTPUT_TOKENS,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    LLM_THINKING_TOKEN_MULTIPLIER,
+)
+from rag_lab.exceptions import LLMConnectionError, LLMContextOverflowError
+from rag_lab.utils.tokenizer import estimate_prompt_tokens
 
 logger = logging.getLogger("rag_lab")
 
@@ -26,7 +36,7 @@ logger = logging.getLogger("rag_lab")
 # With complex RAG prompts, reasoning can use 500-2000+ tokens before producing
 # the actual content. We multiply the configured max_tokens to ensure there's
 # room for both reasoning and the final answer.
-_THINKING_TOKEN_MULTIPLIER = 4
+_THINKING_TOKEN_MULTIPLIER = LLM_THINKING_TOKEN_MULTIPLIER
 
 
 def _get_client():
@@ -124,6 +134,9 @@ def generate_response(
     max_tokens: int = None,
     timeout: Optional[float] = None,
     force_no_thinking: bool = False,
+    prompt_tokens: int = None,
+    context_window: int = None,
+    total_max_tokens: int = None,
 ) -> str:
     """Generate a response from the LLM.
 
@@ -143,22 +156,57 @@ def generate_response(
         force_no_thinking: When True, skip the thinking token multiplier and
             always pass enable_thinking=False. Use for short-output calls
             (HyDE, query rewriting) where thinking is suppressed at the server.
+        prompt_tokens: Estimated prompt token count. When provided (RAG-08),
+            the output budget is capped so that prompt + output + safety margin
+            never exceeds ``context_window``. Prevents HTTP 400
+            ``exceed_context_size_error``.
+        context_window: Model context window (defaults to ``LLM_CONTEXT_WINDOW``).
+        total_max_tokens: Final output budget that already includes the
+            thinking multiplier (as produced by PromptPlan.output_tokens).
+            When set, it takes precedence over ``max_tokens`` and is still
+            capped against the window when ``prompt_tokens`` is given.
 
     Returns:
         The LLM's response as a string.
 
     Raises:
+        LLMContextOverflowError: if no valid output budget fits in the window.
         LLMConnectionError: If the LLM server is unavailable.
     """
     temperature = temperature if temperature is not None else LLM_TEMPERATURE
     desired_tokens = max_tokens or LLM_MAX_TOKENS
 
-    if force_no_thinking:
+    if total_max_tokens is not None:
+        # Already-multiplied budget from PromptPlan.
+        actual_max_tokens = total_max_tokens
+    elif force_no_thinking:
         # Thinking is suppressed — allocate exactly the desired token budget.
         actual_max_tokens = desired_tokens
     else:
         # Allocate extra budget for thinking tokens
         actual_max_tokens = desired_tokens * _THINKING_TOKEN_MULTIPLIER
+
+    # Budget the prompt centrally so no caller can bypass the check.  When the
+    # caller already budgeted with PromptPlan the value is passed in; otherwise
+    # estimate it here (covers consistency, HyDE, rewriting, etc.).  A supplied
+    # value can only *raise* the estimate, never lower it.
+    supplied = prompt_tokens or 0
+    estimated = estimate_prompt_tokens(system_prompt, user_prompt)
+    prompt_tokens = max(supplied, estimated)
+
+    window = context_window if context_window is not None else LLM_CONTEXT_WINDOW
+    available = window - prompt_tokens - LLM_CONTEXT_SAFETY_MARGIN
+    if available < LLM_MIN_OUTPUT_TOKENS:
+        raise LLMContextOverflowError(
+            "Not enough context window left for a minimum answer: "
+            f"prompt≈{prompt_tokens}, window={window}, "
+            f"margin={LLM_CONTEXT_SAFETY_MARGIN}. "
+            "Reduce the retrieved context or the question.",
+            required_tokens=prompt_tokens + LLM_MIN_OUTPUT_TOKENS,
+            budget_tokens=window - LLM_CONTEXT_SAFETY_MARGIN,
+            window=window,
+        )
+    actual_max_tokens = min(actual_max_tokens, available)
 
     try:
         client = _get_client()
@@ -200,7 +248,20 @@ def generate_response(
 
         return content
 
+    except LLMContextOverflowError:
+        raise
     except Exception as e:
+        msg = str(e)
+        low = msg.lower()
+        if (
+            "exceed_context_size" in low
+            or "exceeds the context" in low
+            or ("context" in low and ("exceed" in low or "too long" in low or "maximum" in low))
+            or "n_ctx" in low
+        ):
+            raise LLMContextOverflowError(
+                f"LLM backend rejected the prompt as exceeding its context window: {msg}",
+            ) from e
         raise LLMConnectionError(
             f"Failed to connect to LLM server at {LLM_BASE_URL}: {e}"
         )
@@ -232,6 +293,19 @@ def generate_response_with_thinking(
     temperature = temperature if temperature is not None else LLM_TEMPERATURE
     max_tokens = max_tokens or (LLM_MAX_TOKENS * _THINKING_TOKEN_MULTIPLIER)
 
+    # RAG-08: budget this entry point too, so it cannot bypass the window.
+    prompt_tokens = estimate_prompt_tokens(system_prompt, user_prompt)
+    available = LLM_CONTEXT_WINDOW - prompt_tokens - LLM_CONTEXT_SAFETY_MARGIN
+    if available < LLM_MIN_OUTPUT_TOKENS:
+        raise LLMContextOverflowError(
+            "Not enough context window left for a minimum answer: "
+            f"prompt≈{prompt_tokens}, window={LLM_CONTEXT_WINDOW}.",
+            required_tokens=prompt_tokens + LLM_MIN_OUTPUT_TOKENS,
+            budget_tokens=LLM_CONTEXT_WINDOW - LLM_CONTEXT_SAFETY_MARGIN,
+            window=LLM_CONTEXT_WINDOW,
+        )
+    max_tokens = min(max_tokens, available)
+
     try:
         client = _get_client()
 
@@ -259,7 +333,20 @@ def generate_response_with_thinking(
 
         return content, reasoning
 
+    except LLMContextOverflowError:
+        raise
     except Exception as e:
+        msg = str(e)
+        low = msg.lower()
+        if (
+            "exceed_context_size" in low
+            or "exceeds the context" in low
+            or ("context" in low and ("exceed" in low or "too long" in low or "maximum" in low))
+            or "n_ctx" in low
+        ):
+            raise LLMContextOverflowError(
+                f"LLM backend rejected the prompt as exceeding its context window: {msg}",
+            ) from e
         raise LLMConnectionError(
             f"Failed to connect to LLM server at {LLM_BASE_URL}: {e}"
         )

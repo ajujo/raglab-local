@@ -109,14 +109,21 @@ def _prepare_no_db(source_path: Path, strict: bool) -> _PrepResult:
         # Resolve title: frontmatter > H1 heading
         title = fm.title or extract_h1_title(raw_text)
 
+        # Stable document identity (RAG-05): prefer the declared frontmatter
+        # doc_id; fall back to the file stem for legacy documents without
+        # frontmatter (compatible with the existing corpus).
+        resolved_doc_id = doc_id
+        if fm.doc_id and fm.doc_id.strip():
+            resolved_doc_id = fm.doc_id.strip()
+
         cleaned_path = clean_document(source_path)
         cleaned_text = cleaned_path.read_text(encoding="utf-8")
         chunks = chunk_document(
-            cleaned_text, doc_id=doc_id,
+            cleaned_text, doc_id=resolved_doc_id,
             max_tokens=CHUNK_MAX_TOKENS, overlap=CHUNK_OVERLAP,
         )
         return _PrepResult(
-            source_path=source_path, doc_id=doc_id, content_hash=content_hash,
+            source_path=source_path, doc_id=resolved_doc_id, content_hash=content_hash,
             chunk_dicts=[c.to_dict() for c in chunks],
             validation_summary=validation_summary,
             ok=True,
@@ -168,12 +175,26 @@ def _run_batch_ingest(
         IngestBatchStore, IngestDocumentStore, IngestTransaction, _now,
     )
     from rag_lab.storage.metadata_store import MetadataStore
+    from rag_lab.ingest import versioning
 
     logger = logging.getLogger("rag_lab")
     t_start = time.time()
 
     batch_store = IngestBatchStore(doc_store._conn)
     idc_store = IngestDocumentStore(doc_store._conn)
+
+    # Finish any version operation interrupted by a previous crash (RAG-01/02).
+    try:
+        versioning.recover_pending_ops(doc_store._conn, vector_store)
+    except Exception as exc:
+        console.print(
+            f"[red]Aborting ingest: pending version operations could not be "
+            f"recovered:[/red] {exc}"
+        )
+        return {
+            "batch_id": None, "committed": 0, "skipped": 0,
+            "failed": len(paths), "total_chunks": 0, "elapsed_s": 0.0,
+        }
 
     # --- Create or resume batch ---
     if resume_batch_id:
@@ -242,10 +263,11 @@ def _run_batch_ingest(
         for sp in paths_to_process:
             prep_results[sp] = _prepare_no_db(sp, strict)
 
-    # --- Phase 2: DB status update + SKIPPED detection (main thread, single writer) ---
+    # --- Phase 2: identity + ownership + SKIPPED detection (single writer) ---
     validated_preps: List = []  # [(entry_id, _PrepResult)]
     skipped_count = 0
     failed_count = 0
+    _seen_doc_ids: dict = {}
 
     for sp in paths_to_process:
         entry_id = pending_ids[sp]
@@ -262,6 +284,39 @@ def _run_batch_ingest(
             console.print(f"  [red]FAILED[/red]   {sp.name}: {result.error}")
             continue
 
+        # R2-05: persist the resolved identity (frontmatter doc_id) BEFORE the
+        # skip checks, so SKIPPED rows reference the real document.
+        idc_store.update(
+            entry_id,
+            doc_id=result.doc_id,
+            content_hash=result.content_hash or None,
+        )
+
+        # R2-02/R2-05: enforce identity ownership BEFORE skip detection so a
+        # SKIPPED/unchanged path cannot bypass it.  Content-aware: the same
+        # content from a different path is the same document.
+        conflict = None
+        prior_path = _seen_doc_ids.get(result.doc_id)
+        if prior_path is not None and _norm_path(prior_path) != _norm_path(result.source_path):
+            conflict = (
+                f"duplicate doc_id {result.doc_id!r}: already claimed by "
+                f"{prior_path!r} in this batch"
+            )
+        if conflict is None:
+            conflict = _identity_owner_conflict(
+                doc_store._conn, result.doc_id, result.source_path, result.content_hash
+            )
+        if conflict is not None:
+            idc_store.set_status(
+                entry_id, "FAILED",
+                error_message=conflict,
+                finished_at=_now(),
+            )
+            failed_count += 1
+            console.print(f"  [red]FAILED[/red]   {sp.name}: {conflict}")
+            continue
+        _seen_doc_ids[result.doc_id] = str(result.source_path)
+
         # SKIPPED detection via ingest_documents (v1.16+) or manifest fallback
         if not force:
             if idc_store.find_committed(result.doc_id, result.content_hash):
@@ -275,7 +330,7 @@ def _run_batch_ingest(
                 console.print(f"  [dim]SKIPPED[/dim]  {sp.name} (content hash unchanged)")
                 continue
             # Fallback: check manifest file (backward compat for pre-v1.16 ingests)
-            if _manifest_has_hash(sp, result.content_hash):
+            if _manifest_has_hash(sp, result.content_hash, result.doc_id):
                 idc_store.set_status(
                     entry_id, "SKIPPED",
                     content_hash=result.content_hash,
@@ -341,7 +396,11 @@ def _run_batch_ingest(
         n_sparse = sum(1 for c in result.chunk_dicts if c.get("sparse_tokens") is not None)
 
         try:
-            with IngestTransaction(doc_id, result.source_path, doc_store) as txn:
+            chunk_ids = [c["chunk_id"] for c in result.chunk_dicts]
+            with IngestTransaction(
+                doc_id, result.source_path, doc_store,
+                vector_store=vector_store, chunk_ids=chunk_ids,
+            ) as txn:
                 # Link ingest_documents → ingest_runs for full traceability
                 idc_store.update(entry_id, run_id=txn.run_id)
 
@@ -366,6 +425,7 @@ def _run_batch_ingest(
                 ms.upsert_document(
                     doc_id,
                     path=str(result.source_path),
+                    content_hash=result.content_hash,
                     title=result.fm_title,
                     domain=result.fm_domain,
                     source_type=result.fm_source_type,
@@ -379,7 +439,7 @@ def _run_batch_ingest(
 
             # Update manifest for backward compatibility
             try:
-                create_manifest(result.source_path, force=True)
+                create_manifest(result.source_path, force=True, doc_id=doc_id)
             except Exception:
                 pass  # manifest is advisory; corpus is already committed
 
@@ -438,14 +498,97 @@ def _print_batch_summary(summary: dict) -> None:
         )
 
 
-def _manifest_has_hash(source_path: Path, content_hash: str) -> bool:
+def _norm_path(p) -> str:
+    """Best-effort normalised path string for ownership comparison."""
+    try:
+        return str(Path(p).resolve())
+    except Exception:
+        return str(p)
+
+
+def _owner_candidates(conn, doc_id: str):
+    """Collect (path, content_hash, source) ownership evidence for doc_id."""
+    candidates = []
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents'"
+    ).fetchone():
+        row = conn.execute(
+            "SELECT path, content_hash FROM documents WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if row and (row[0] or row[1]):
+            candidates.append((row[0], row[1], "documents"))
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ingest_documents'"
+    ).fetchone():
+        row = conn.execute(
+            "SELECT path, content_hash FROM ingest_documents "
+            "WHERE doc_id=? AND status IN ('COMMITTED','SKIPPED') "
+            "ORDER BY id DESC LIMIT 1", (doc_id,)
+        ).fetchone()
+        if row and (row[0] or row[1]):
+            candidates.append((row[0], row[1], "ingest_documents"))
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ingest_runs'"
+    ).fetchone():
+        row = conn.execute(
+            "SELECT source_path FROM ingest_runs WHERE doc_id=? AND source_path IS NOT NULL "
+            "ORDER BY rowid DESC LIMIT 1", (doc_id,)
+        ).fetchone()
+        if row and row[0]:
+            candidates.append((row[0], None, "ingest_runs"))
+    return candidates
+
+
+def _identity_owner_conflict(conn, doc_id: str, source_path, content_hash: str = None) -> Optional[str]:
+    """Return a conflict message if ``doc_id`` is owned by a different source.
+
+    Content-aware: a matching source path *or* a matching content hash means the
+    same document (e.g. a moved file or unchanged content), which is allowed.
+    Any other prior owner blocks the write.  With data present but no provable
+    owner, it fails closed.
+    """
+    try:
+        candidates = _owner_candidates(conn, doc_id)
+    except Exception as exc:
+        return f"cannot verify ownership for doc_id {doc_id!r} (fail-closed): {exc}"
+
+    cur = _norm_path(source_path)
+    for path, _h, _src in candidates:
+        if path and _norm_path(path) == cur:
+            return None
+    if content_hash:
+        for _p, h, _src in candidates:
+            if h and h == content_hash:
+                return None
+    if candidates:
+        path, _h, src = candidates[0]
+        return (
+            f"doc_id {doc_id!r} is already owned by {path!r} ({src}); "
+            "refusing to overwrite a different source"
+        )
+    # No ownership evidence at all: refuse if the document already has data.
+    try:
+        has_data = conn.execute(
+            "SELECT 1 FROM chunks WHERE doc_id=? LIMIT 1", (doc_id,)
+        ).fetchone()
+    except Exception as exc:
+        return f"cannot verify document data for {doc_id!r} (fail-closed): {exc}"
+    if has_data:
+        return (
+            f"doc_id {doc_id!r} already has data but no provable owner; "
+            "refusing to overwrite (fail-closed)"
+        )
+    return None
+
+
+def _manifest_has_hash(source_path: Path, content_hash: str, doc_id: str = None) -> bool:
     """Return True if source_path's doc_id is in the manifest with the given hash."""
     import json
     from rag_lab.config import DATA_DIR
     manifest_path = DATA_DIR / "ingested.jsonl"
     if not manifest_path.exists() or not content_hash:
         return False
-    doc_id = source_path.stem
+    doc_id = doc_id or source_path.stem
     try:
         with open(manifest_path, encoding="utf-8") as f:
             for line in f:
@@ -753,7 +896,9 @@ def ingest_rollback(
 ) -> None:
     """Roll back a FAILED or stale IN_PROGRESS run (compensation delete)."""
     from rag_lab.storage.docstore import DocStore
-    from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
+    from rag_lab.storage.vector_store import VectorStore
+    from rag_lab.ingest.transaction import IngestRunStore
+    from rag_lab.ingest import versioning
 
     ds = DocStore()
     ds.initialize()
@@ -771,13 +916,23 @@ def ingest_rollback(
         )
         raise typer.Exit(1)
 
-    txn = IngestTransaction(run["doc_id"], run["source_path"], ds)
-    txn.run_id = run_id
-    txn.rollback()
+    vs = VectorStore()
+    vs.initialize()
+    result = versioning.admin_rollback(run_id, ds._conn, vs)
     ds.close()
 
+    if result["status"] == "error":
+        console.print(f"[red]{result['reason']}[/red]")
+        raise typer.Exit(1)
+    if result["status"] == "refused":
+        # RAG-02: never destroy a newer committed version.
+        console.print(f"[yellow]{result['reason']}[/yellow]")
+        raise typer.Exit(1)
+
+    restored = result.get("restored_previous")
     console.print(
-        f"[green]Rolled back run {run_id} (doc_id={run['doc_id']!r})[/green]"
+        f"[green]Rolled back run {run_id} (doc_id={run['doc_id']!r}); "
+        f"restored_previous_version={restored}[/green]"
     )
 
 
@@ -798,7 +953,8 @@ def ingest_retry(
     from rag_lab.config import EMBEDDING_DEVICE
     from rag_lab.storage.docstore import DocStore
     from rag_lab.storage.vector_store import VectorStore
-    from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
+    from rag_lab.ingest.transaction import IngestRunStore
+    from rag_lab.ingest import versioning
     from rag_lab.logging_config import setup_logging
 
     setup_logging("INFO")
@@ -819,10 +975,14 @@ def ingest_retry(
         )
         raise typer.Exit(1)
 
+    vs = VectorStore()
+    vs.initialize()
+
     if run["status"] in ("FAILED", "IN_PROGRESS"):
-        txn = IngestTransaction(run["doc_id"], run["source_path"], ds)
-        txn.run_id = run_id
-        txn.rollback()
+        result = versioning.admin_rollback(run_id, ds._conn, vs)
+        if result["status"] == "refused":
+            # A newer version exists; do not destroy it, just retry the source.
+            console.print(f"[yellow]{result['reason']}[/yellow]")
 
     source_path = Path(run["source_path"]) if run["source_path"] else None
     if not source_path or not source_path.exists():
@@ -831,8 +991,6 @@ def ingest_retry(
         )
         raise typer.Exit(1)
 
-    vs = VectorStore()
-    vs.initialize()
     _ingest_one(
         source_path=source_path, doc_store=ds, vector_store=vs,
         force=True, device=device, strict=strict,
@@ -866,7 +1024,7 @@ def _ingest_one(
         EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION, SPARSE_FORMAT_VERSION,
     )
     from rag_lab.ingest.cleaner import clean_document
-    from rag_lab.ingest.manifest import create_manifest
+    from rag_lab.ingest.manifest import create_manifest, compute_md5
     from rag_lab.chunking.splitter import chunk_document
     from rag_lab.embedding.encoder import encode_chunks
     from rag_lab.ingest.transaction import IngestTransaction
@@ -911,11 +1069,11 @@ def _ingest_one(
     _fm_title = _fm.title or extract_h1_title(raw_text)
 
     cleaned_path = clean_document(source_path)
-    create_manifest(source_path, cleaned_path, force=force)
 
     cleaned_text = cleaned_path.read_text(encoding="utf-8")
+    _resolved_doc_id = _fm.doc_id.strip() if _fm.doc_id and _fm.doc_id.strip() else source_path.stem
     chunks = chunk_document(
-        cleaned_text, doc_id=source_path.stem,
+        cleaned_text, doc_id=_resolved_doc_id,
         max_tokens=CHUNK_MAX_TOKENS, overlap=CHUNK_OVERLAP,
     )
     logger.info(f"Created {len(chunks)} chunks from {source_path.name}")
@@ -941,10 +1099,20 @@ def _ingest_one(
         chunk_d["embedding_dim"] = EMBEDDING_DIM
         chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
 
-    doc_id = source_path.stem
+    doc_id = _resolved_doc_id
     n_sparse = sum(1 for c in chunk_dicts if c.get("sparse_tokens") is not None)
+    chunk_ids = [c.get("chunk_id", "") for c in chunk_dicts]
 
-    with IngestTransaction(doc_id, source_path, doc_store) as txn:
+    # RAG-05: refuse to overwrite a different source that already owns this id.
+    _conflict = _identity_owner_conflict(
+        doc_store._conn, doc_id, source_path, compute_md5(source_path)
+    )
+    if _conflict:
+        console.print(f"[red]Skipping {source_path.name}: {_conflict}[/red]")
+        return 0
+
+    with IngestTransaction(doc_id, source_path, doc_store,
+                           vector_store=vector_store, chunk_ids=chunk_ids) as txn:
         txn.update(chunks_expected=len(chunk_dicts))
 
         vector_store.add(
@@ -969,6 +1137,7 @@ def _ingest_one(
         _ms.upsert_document(
             doc_id,
             path=str(source_path),
+            content_hash=compute_md5(source_path),
             title=_fm_title,
             domain=_fm.domain,
             source_type=_fm.source_type,
@@ -978,6 +1147,12 @@ def _ingest_one(
         for tag in _fm.tags + _fm.derived_tags:
             _ms.assign_tag(doc_id, tag)
         txn.update(metadata_written=1)
+
+    # Manifest is advisory; update only after a successful commit (RAG-01).
+    try:
+        create_manifest(source_path, doc_id=doc_id, force=True)
+    except Exception:
+        pass
 
     console.print(
         f"[bold green]Ingested {len(chunk_dicts)} chunks from {source_path.name}[/bold green]"
@@ -1022,9 +1197,14 @@ def _handle_legacy_resume_retry(
         return
 
     for run in targets:
-        txn = IngestTransaction(run["doc_id"], run["source_path"], doc_store)
-        txn.run_id = run["run_id"]
-        txn.rollback()
+        from rag_lab.ingest import versioning
+        from rag_lab.storage.vector_store import VectorStore as _VS
+        _vs = vector_store or _VS()
+        try:
+            _vs.initialize()
+        except Exception:
+            pass
+        versioning.admin_rollback(run["run_id"], doc_store._conn, _vs)
 
         source_path = Path(run["source_path"]) if run["source_path"] else None
         if not source_path or not source_path.exists():

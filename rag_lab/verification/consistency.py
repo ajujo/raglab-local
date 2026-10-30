@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Callable, List
 
 from rag_lab.generation.llm_client import generate_response
+from rag_lab.exceptions import LLMContextOverflowError
 
 logger = logging.getLogger("rag_lab")
 
@@ -134,6 +135,12 @@ def run_consistency_check(
 
             logger.warning(f"Intento {attempt}: parseo fallido. Raw: {repr(raw[:200])}")
 
+        except LLMContextOverflowError:
+            logger.error(
+                "Consistency check: prompt exceeds the context window; "
+                "not retrying the same impossible prompt."
+            )
+            break
         except Exception as e:
             logger.warning(f"Intento {attempt}: error en LLM call: {e}")
 

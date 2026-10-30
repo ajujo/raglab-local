@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from rag_lab.storage.vector_store import VectorStore
+from rag_lab.exceptions import VersioningError
 
 logger = logging.getLogger("rag_lab")
 
@@ -323,16 +324,42 @@ class IngestTransaction:
                      the ingest_runs table.
     """
 
-    def __init__(self, doc_id: str, source_path, doc_store) -> None:
+    def __init__(self, doc_id: str, source_path, doc_store,
+                 vector_store=None, chunk_ids=None) -> None:
         self.doc_id = doc_id
         self.source_path = str(source_path) if source_path else None
         self._ds = doc_store
+        self._vs = vector_store
+        self._new_chunk_ids: List[str] = list(chunk_ids) if chunk_ids else []
+        self._handle = None
         self._run_store = IngestRunStore(doc_store._conn)
         self.run_id: Optional[str] = None
 
+    def register_chunks(self, chunk_ids: List[str]) -> None:
+        """Record the chunk ids this transaction is about to write."""
+        self._new_chunk_ids = list(chunk_ids)
+
     def __enter__(self) -> "IngestTransaction":
+        from rag_lab.ingest import versioning
+
         self.run_id = uuid.uuid4().hex[:12]
         self._run_store.create(self.run_id, self.doc_id, self.source_path)
+        try:
+            self._handle = versioning.begin_replace(
+                self.doc_id, self._ds._conn, self._vs, run_id=self.run_id
+            )
+        except Exception as exc:
+            # Fail closed: without a restorable snapshot we must not overwrite
+            # the existing version.
+            self._run_store.update(
+                self.run_id, status="FAILED", finished_at=_now(),
+                error_message=f"snapshot failed: {exc}"[:500],
+            )
+            logger.error(
+                "IngestTransaction: aborting before writes; cannot snapshot "
+                "previous version for %r: %s", self.doc_id, exc,
+            )
+            raise
         logger.info(
             f"IngestTransaction started: run_id={self.run_id} doc_id={self.doc_id!r}"
         )
@@ -344,57 +371,67 @@ class IngestTransaction:
             self._run_store.update(self.run_id, **fields)
 
     def rollback(self) -> None:
-        """Compensation rollback: delete all data written for this doc_id.
+        """Restore the pre-image captured at ``__enter__`` (idempotent).
 
-        Safe to call multiple times (idempotent DELETE WHERE).
-        Updates run status to ROLLED_BACK.
+        Fails closed: without a snapshot handle there is no way to restore the
+        previous version, so the rollback raises instead of deleting data.
         """
         logger.warning(
             f"Rolling back ingest: run_id={self.run_id} doc_id={self.doc_id!r}"
         )
-
-        # 1. ChromaDB compensation
-        try:
-            vs = VectorStore()
-            vs.initialize()
-            n = vs.delete_by_doc_id(self.doc_id)
-            logger.info(
-                f"Rollback: removed {n} ChromaDB vectors for doc_id={self.doc_id!r}"
+        if self._handle is None:
+            raise VersioningError(
+                "rollback requested without a snapshot handle; refusing to "
+                f"delete data for {self.doc_id!r} (fail-closed)"
             )
-        except Exception as e:
-            logger.error(f"Rollback: ChromaDB deletion error: {e}")
-
-        # 2. SQLite chunks + FTS5 + metadata
-        conn = self._ds._conn
-        try:
-            conn.execute("DELETE FROM chunks WHERE doc_id = ?", (self.doc_id,))
-            conn.execute("DELETE FROM chunks_fts WHERE doc_id = ?", (self.doc_id,))
-        except Exception as e:
-            logger.error(f"Rollback: chunks deletion error: {e}")
-        try:
-            conn.execute("DELETE FROM documents WHERE doc_id = ?", (self.doc_id,))
-        except Exception:
-            pass  # documents table may not exist
-
-        # 3. Mark run as ROLLED_BACK
+        from rag_lab.ingest import versioning
+        versioning.rollback_replace(self._handle, self._ds._conn, self._vs)
         if self.run_id:
             self._run_store.update(
                 self.run_id,
                 status="ROLLED_BACK",
                 finished_at=_now(),
             )
-
-        conn.commit()
         logger.info(f"Rollback complete: run_id={self.run_id}")
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        from rag_lab.ingest import versioning
+
         if exc_type is None:
-            self._run_store.update(
-                self.run_id,
-                status="COMMITTED",
-                finished_at=_now(),
-            )
-            logger.info(f"IngestTransaction committed: run_id={self.run_id}")
+            try:
+                if self._handle is None:
+                    raise VersioningError(
+                        "no snapshot handle; refusing to commit"
+                    )
+                versioning.commit_replace(
+                    self._handle, self._ds._conn, self._vs,
+                    self.run_id, self._new_chunk_ids,
+                )
+                self._run_store.update(
+                    self.run_id,
+                    status="COMMITTED",
+                    finished_at=_now(),
+                )
+                logger.info(f"IngestTransaction committed: run_id={self.run_id}")
+            except Exception as exc:
+                logger.error(
+                    f"IngestTransaction commit failed: run_id={self.run_id} "
+                    f"doc={self.doc_id!r} error={exc}"
+                )
+                self._run_store.update(
+                    self.run_id,
+                    status="FAILED",
+                    finished_at=_now(),
+                    error_message=str(exc)[:500],
+                )
+                try:
+                    self.rollback()
+                except Exception:
+                    logger.exception(
+                        "IngestTransaction: rollback after commit failure failed; "
+                        "operation left pending for recovery"
+                    )
+                raise
         else:
             self._run_store.update(
                 self.run_id,
@@ -406,5 +443,10 @@ class IngestTransaction:
                 f"IngestTransaction failed: run_id={self.run_id} "
                 f"doc={self.doc_id!r} error={exc_val}"
             )
-            self.rollback()
+            try:
+                self.rollback()
+            except Exception:
+                logger.exception(
+                    "IngestTransaction: rollback failed; operation left pending for recovery"
+                )
         return False  # always re-raise

@@ -36,6 +36,7 @@ def create_manifest(
     source_path: Path,
     cleaned_path: Path = None,
     force: bool = False,
+    doc_id: str = None,
 ) -> Path:
     """Create or update the ingested.jsonl manifest file.
 
@@ -43,6 +44,9 @@ def create_manifest(
         source_path: Path to the original source document.
         cleaned_path: Path to the cleaned document.
         force: If True, always regenerate even if already ingested.
+        doc_id: Stable document identifier. Defaults to ``source_path.stem``
+            for backward compatibility; callers that resolve identity from
+            frontmatter must pass it explicitly (RAG-05).
 
     Returns:
         Path to the manifest file.
@@ -65,22 +69,23 @@ def create_manifest(
                 if line:
                     try:
                         entry = json.loads(line)
-                        # Use doc_id as key
-                        doc_id = entry.get("doc_id", "")
-                        if doc_id:
-                            manifest[doc_id] = entry
+                        # Use doc_id as key (separate variable: do NOT shadow the
+                        # doc_id argument below).
+                        entry_doc_id = entry.get("doc_id", "")
+                        if entry_doc_id:
+                            manifest[entry_doc_id] = entry
                     except json.JSONDecodeError:
                         continue
 
     # Compute hash and metadata
-    doc_id = source_path.stem
+    resolved_doc_id = doc_id or source_path.stem
     file_hash = compute_md5(source_path)
 
     # Check if already ingested
-    if not force and doc_id in manifest:
-        existing = manifest[doc_id]
+    if not force and resolved_doc_id in manifest:
+        existing = manifest[resolved_doc_id]
         if existing.get("hash") == file_hash:
-            logger.info(f"Document already ingested: {doc_id}")
+            logger.info(f"Document already ingested: {resolved_doc_id}")
             return manifest_path
 
     # Create new entry
@@ -88,7 +93,7 @@ def create_manifest(
     ingested_at = datetime.now(timezone.utc).isoformat()
 
     entry = {
-        "doc_id": doc_id,
+        "doc_id": resolved_doc_id,
         "hash": file_hash,
         "path": str(source_path),
         "size": file_size,
@@ -98,13 +103,13 @@ def create_manifest(
     if cleaned_path:
         entry["cleaned_path"] = str(cleaned_path)
 
-    manifest[doc_id] = entry
+    manifest[resolved_doc_id] = entry
 
     # Write manifest
     with open(manifest_path, "w", encoding="utf-8") as f:
         for entry in manifest.values():
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    logger.info(f"Manifest updated: {doc_id} (hash: {file_hash[:8]}...)")
+    logger.info(f"Manifest updated: {resolved_doc_id} (hash: {file_hash[:8]}...)")
 
     return manifest_path

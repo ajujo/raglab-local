@@ -22,10 +22,16 @@ class FilterSpec:
     version: Optional[str] = None
 
     def is_empty(self) -> bool:
-        """Return True if no filter criteria are set."""
+        """Return True if no filter criteria are set.
+
+        An explicit ``doc_ids=[]`` is a *valid empty filter* (select no
+        documents), not "no filter" — see the RAG-03 invariant.  Only
+        ``doc_ids is None`` means no document restriction.
+        """
+        if self.doc_ids is not None:
+            return False
         return (
-            not self.doc_ids
-            and not self.tags_include
+            not self.tags_include
             and not self.tags_exclude
             and self.source_id is None
             and self.status is None
@@ -65,8 +71,9 @@ def resolve_filter(
         return None
 
     if not _table_exists(conn, "documents"):
-        # v3 tables not yet migrated; honour explicit doc_ids if given
-        return sorted(spec.doc_ids) if spec.doc_ids else None
+        # v3 tables not yet migrated; honour explicit doc_ids if given.
+        # An explicit empty list is a valid empty filter -> return [].
+        return sorted(spec.doc_ids) if spec.doc_ids is not None else None
 
     params: list = []
     joins: list = []

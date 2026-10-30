@@ -37,7 +37,8 @@ from rag_lab.config import (
 from rag_lab.embedding.encoder import encode_chunks
 from rag_lab.feedback.feedback_store import FeedbackEntry, save_feedback, init_db
 from rag_lab.generation.llm_client import generate_response
-from rag_lab.generation.prompt_builder import build_prompt
+from rag_lab.generation.prompt_builder import build_prompt, build_prompt_plan
+from rag_lab.exceptions import LLMContextOverflowError
 from rag_lab.retrieval.query_rewriter import rewrite_query
 from rag_lab.verification.pipeline import verify_and_score
 from rag_lab.performance.timer import PhaseTimer
@@ -154,25 +155,31 @@ class ChatSession:
         if not unique_results:
             return "No se encontraron resultados relevantes.", [], None, []
 
-        # Construir prompt con historial
-        system_prompt, user_prompt = build_prompt(question, unique_results[:self.rerank_top_k])
+        # Construir prompt con presupuesto de contexto (RAG-08)
+        plan = build_prompt_plan(question, unique_results[:self.rerank_top_k])
+        # Solo los fragmentos realmente enviados se usan aguas abajo.
+        effective_chunks = plan.used_chunks
 
-        # Generar respuesta
-        response = generate_response(system_prompt, user_prompt, temperature=self.temperature)
+        # Generar respuesta dentro de la ventana del modelo
+        response = generate_response(
+            plan.system, plan.user, temperature=self.temperature,
+            prompt_tokens=plan.prompt_tokens,
+            total_max_tokens=plan.output_tokens,
+        )
 
         # Extraer fuentes
-        sources = list({r.get("doc_id", "desconocido") for r in unique_results[:self.rerank_top_k]})
+        sources = list({r.get("doc_id", "desconocido") for r in effective_chunks})
 
         # Use rerank_score if available, fallback to retrieval score
-        retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in unique_results[:self.rerank_top_k]]
+        retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in effective_chunks]
         verification = verify_and_score(
             response or "No se pudo generar una respuesta.",
-            unique_results[:self.rerank_top_k],
+            effective_chunks,
             retrieval_scores,
             enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
         )
 
-        return verification.response, sources, verification, unique_results[:self.rerank_top_k]
+        return verification.response, sources, verification, effective_chunks
 
     def handle_command(self, command: str, *args) -> Optional[str]:
         """Manejar comandos internos."""
@@ -372,7 +379,11 @@ Comandos disponibles:
 
             # Consulta normal
             console.print("[dim]Buscando...[/dim]")
-            response, sources, verification, chunks = self._run_query(user_input)
+            try:
+                response, sources, verification, chunks = self._run_query(user_input)
+            except LLMContextOverflowError as exc:
+                console.print(f"[bold red]⚠️ Context Error:[/bold red] {exc}")
+                continue
 
             # Si no hay resultados, saltar feedback
             if verification is None:

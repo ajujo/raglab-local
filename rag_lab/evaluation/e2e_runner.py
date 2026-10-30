@@ -28,7 +28,7 @@ from rag_lab.evaluation.eval_utils import strip_inline_citations_for_eval
 from rag_lab.evaluation.types import EvalResult, EvalSample
 from rag_lab.exceptions import LLMConnectionError, RAGLabError
 from rag_lab.generation.llm_client import generate_response
-from rag_lab.generation.prompt_builder import build_prompt
+from rag_lab.generation.prompt_builder import build_prompt, build_prompt_plan
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.reranker import rerank
@@ -144,9 +144,14 @@ class EvalRunner:
             # 5. Generate
             answer = ""
             if top_chunks:
-                system_prompt, user_prompt = build_prompt(sample.question, top_chunks)
+                plan = build_prompt_plan(sample.question, top_chunks)
+                # Only the chunks actually sent to the model are used for
+                # verification and exported contexts (RAG-08).
+                top_chunks = plan.used_chunks
                 answer = generate_response(
-                    system_prompt, user_prompt, temperature=self.temperature
+                    plan.system, plan.user, temperature=self.temperature,
+                    prompt_tokens=plan.prompt_tokens,
+                    total_max_tokens=plan.output_tokens,
                 )
 
             # 6. Verify

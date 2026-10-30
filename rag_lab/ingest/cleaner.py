@@ -4,6 +4,7 @@ The source document contains ~28 pages with base64-encoded images that
 inflate the file 30x without adding retrievable text content.
 """
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -19,6 +20,20 @@ _BASE64_PATTERN = re.compile(
     r'!\[.*?\]\(data:image/[^;]*;base64,[A-Za-z0-9+/=]+\)',
     re.DOTALL,
 )
+
+
+def _safe_cleaned_dir(source_path: Path, output_dir: Path) -> Path:
+    """Return a per-source output directory to avoid basename collisions (RAG-05).
+
+    Two different source paths with the same basename would otherwise clobber
+    each other's cleaned Markdown.  A short hash of the resolved source path
+    disambiguates them deterministically while keeping the readable filename.
+    """
+    try:
+        key = hashlib.sha256(str(source_path.resolve()).encode("utf-8")).hexdigest()[:8]
+    except OSError:
+        key = hashlib.sha256(str(source_path).encode("utf-8")).hexdigest()[:8]
+    return output_dir / key
 
 
 def clean_document(
@@ -44,6 +59,7 @@ def clean_document(
         raise DocumentIngestionError(f"Unsupported file format: {source_path.suffix}")
 
     output_dir = output_dir or (DATA_DIR / "cleaned")
+    output_dir = _safe_cleaned_dir(source_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Cleaning document: {source_path.name}")

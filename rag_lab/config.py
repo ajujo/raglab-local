@@ -113,6 +113,36 @@ LLM_TEMPERATURE = 0.1
 # Tokens máximos para la respuesta del LLM
 LLM_MAX_TOKENS = 2048
 
+# --- Presupuesto de contexto (RAG-08) -------------------------------------
+# Ventana de contexto efectiva del modelo servido. El default coincide con la
+# del modelo cargado en la auditoría (qwen3-14b, 8192). Sobrescribible por env
+# sin tocar el servidor.
+LLM_CONTEXT_WINDOW: int = int(os.getenv("LLM_CONTEXT_WINDOW", "8192"))
+
+# Margen de seguridad (tokens) reservado para desviaciones de tokenización
+# entre el tokenizer local (BGE-M3/XLM-R) y el tokenizer real del backend.
+LLM_CONTEXT_SAFETY_MARGIN: int = 512
+
+# Presupuesto mínimo de salida por debajo del cual no se envía la consulta;
+# en su lugar se lanza un error explícito y recuperable.
+LLM_MIN_OUTPUT_TOKENS: int = 256
+
+# Los modelos Qwen 3.x consumen tokens de "thinking" antes del contenido.
+# El cliente multiplica el presupuesto de respuesta deseado por este factor.
+LLM_THINKING_TOKEN_MULTIPLIER: int = 4
+
+# Factor conservador aplicado a la estimación de tokens del prompt para
+# compensar diferencias de tokenización respecto al backend real.
+LLM_TOKEN_ESTIMATE_FACTOR: float = 1.15
+
+# Tokenizer del modelo servido para presupuestar el prompt (RAG-08).
+# Si se indica, se usa como fuente autoritativa del conteo de tokens del backend.
+# `LLM_TOKENIZER_PATH` apunta a un directorio local (offline); `LLM_TOKENIZER_MODEL`
+# a un id de HuggingFace en caché. Si ambos están vacíos, se usa un estimador
+# conservador (tokenizer de embeddings + cota por bytes no-ASCII).
+LLM_TOKENIZER_PATH: str = os.getenv("LLM_TOKENIZER_PATH", "")
+LLM_TOKENIZER_MODEL: str = os.getenv("LLM_TOKENIZER_MODEL", "")
+
 # =============================================================================
 # 5. CHUNKING
 # =============================================================================

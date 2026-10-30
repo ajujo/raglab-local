@@ -59,6 +59,11 @@ class FTSStore:
         if self._conn is None:
             self.initialize()
 
+        # doc_ids semantics (RAG-03 invariant):
+        #   None -> no filter; [] -> explicit empty filter -> zero results.
+        if doc_ids is not None and len(doc_ids) == 0:
+            return []
+
         escaped = self._escape_query(text)
         if not escaped:
             return []

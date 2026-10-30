@@ -21,7 +21,7 @@ from rag_lab.config import (
     RERANK_TOP_K,
     STORAGE_DIR,
 )
-from rag_lab.exceptions import RAGLabError, RetrievalError, LLMConnectionError
+from rag_lab.exceptions import RAGLabError, RetrievalError, LLMConnectionError, LLMContextOverflowError
 from rag_lab.embedding.encoder import encode_chunks, load_embedding_model
 from rag_lab.storage.vector_store import VectorStore
 from rag_lab.storage.fts_store import FTSStore
@@ -29,7 +29,7 @@ from rag_lab.storage.docstore import DocStore
 from rag_lab.retrieval.query_processor import process_query
 from rag_lab.retrieval.hybrid_search import hybrid_search
 from rag_lab.retrieval.reranker import rerank
-from rag_lab.generation.prompt_builder import build_prompt
+from rag_lab.generation.prompt_builder import build_prompt, build_prompt_plan
 from rag_lab.generation.llm_client import generate_response
 from rag_lab.verification.pipeline import verify_and_score
 from rag_lab.verification.scoring import ConfidenceLevel
@@ -206,18 +206,25 @@ def query(
 
     # Generate response
     if unique_results:
-        system_prompt, user_prompt = build_prompt(question, unique_results[:RERANK_TOP_K])
         try:
+            plan = build_prompt_plan(question, unique_results[:RERANK_TOP_K])
+            # RAG-08: only the chunks actually sent to the model may be used for
+            # verification, sources, feedback and exported context.
+            effective_chunks = plan.used_chunks
             if profile:
                 timer.start("llm_generation")
-            response = generate_response(system_prompt, user_prompt)
+            response = generate_response(
+                plan.system, plan.user,
+                prompt_tokens=plan.prompt_tokens,
+                total_max_tokens=plan.output_tokens,
+            )
             if profile:
                 timer.stop()
             if not response:
                 console.print("\n[bold yellow]⚠️ El LLM no devolvió respuesta.[/bold yellow]")
             else:
                 # Use rerank_score if available, fallback to retrieval score
-                retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in unique_results[:RERANK_TOP_K]]
+                retrieval_scores = [r.get("rerank_score", r.get("score", 0.5)) for r in effective_chunks]
 
                 # Run verification pipeline
                 from rag_lab.config import ENABLE_CONSISTENCY_CHECK
@@ -226,7 +233,7 @@ def query(
                         timer.start("verification")
                     verification = verify_and_score(
                         response,
-                        unique_results[:RERANK_TOP_K],
+                        effective_chunks,
                         retrieval_scores,
                         enable_consistency_check=ENABLE_CONSISTENCY_CHECK,
                     )
@@ -245,7 +252,7 @@ def query(
                     console.print(f"\n{verification.format_verification_block()}")
 
                     # Print chunk feedback hints
-                    _print_feedback_hints(question, unique_results[:RERANK_TOP_K], cache_hit, cache_key)
+                    _print_feedback_hints(question, effective_chunks, cache_hit, cache_key)
 
                     # Profile report
                     if profile:
@@ -258,7 +265,7 @@ def query(
                             question=question,
                             rewritten_query=None,
                             hyde_used=hyde,
-                            chunks=unique_results[:RERANK_TOP_K],
+                            chunks=effective_chunks,
                             final_score=verification.score_result.final_score,
                             score_level=verification.score_result.confidence_level.value,
                         )
@@ -270,6 +277,8 @@ def query(
 
         except LLMConnectionError as e:
             console.print(f"[bold red]LLM Error:[/bold red] {e}")
+        except LLMContextOverflowError as e:
+            console.print(f"[bold red]Context Error:[/bold red] {e}")
         except RAGLabError as e:
             console.print(f"[bold red]RAG-Lab Error:[/bold red] {e}")
         except Exception as e:
