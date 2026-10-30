@@ -481,6 +481,14 @@ def decide(state: PersistedState, incoming: IncomingState, *,
         if not state.hash_column_available:
             return Decision(DecisionKind.DENY_INCOHERENT,
                             "confirmed content-hash column unavailable")
+        # Two persisted hashes describing the same confirmed version cannot
+        # disagree.  This holds even when there are no batch rows to corrobo-
+        # rate against (the ``retry`` route creates a version and metadata
+        # without any ``ingest_documents`` row).  (P0C-SOL61-R2-F1)
+        if state.active_content_hash and state.documents_content_hash and \
+                state.active_content_hash != state.documents_content_hash:
+            return Decision(DecisionKind.DENY_INCOHERENT,
+                            "documents hash disagrees with the active version hash")
         if len(set(state.committed_hashes)) > 1:
             return Decision(DecisionKind.DENY_INCOHERENT,
                             "contradictory COMMITTED hashes in the active run")
@@ -535,6 +543,19 @@ def decide(state: PersistedState, incoming: IncomingState, *,
 
     # No confirmed version: legacy or a genuinely new document.
     if not state.has_any_chunks and not state.has_documents:
+        # "New" means nothing about the document exists in *any* store, not
+        # just in SQLite.  Orphan FTS rows / Chroma vectors (or an index whose
+        # coherence cannot be verified) make the state incoherent instead of
+        # authorizing a CREATE over it.  (P0C-SOL61-R2-F2)
+        if not state.fts_matches:
+            return Decision(DecisionKind.DENY_INCOHERENT,
+                            "FTS index disagrees with persisted chunks")
+        if not state.chroma_verifiable:
+            return Decision(DecisionKind.DENY_INCOHERENT,
+                            "SQL/Chroma consistency is not verifiable")
+        if not state.chroma_matches:
+            return Decision(DecisionKind.DENY_INCOHERENT,
+                            "Chroma index disagrees with persisted chunks")
         return Decision(DecisionKind.CREATE, "new document")
 
     if not state.owner_path:

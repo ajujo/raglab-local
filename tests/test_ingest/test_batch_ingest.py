@@ -99,18 +99,28 @@ def _make_mock_vs():
     vs._deleted_doc_ids: list = []
     vs._docs: dict = {}
 
-    def _add(ids, embeddings, documents, metadatas):
+    def _add(ids, embeddings=None, documents=None, metadatas=None):
+        ids = list(ids or [])
+        documents = list(documents or [])
+        metadatas = list(metadatas or [])
         vs._added_ids.extend(ids)
-        for cid, text in zip(ids, documents):
-            vs._docs[str(cid)] = text
+        for i, cid in enumerate(ids):
+            meta = metadatas[i] if i < len(metadatas) else {}
+            doc_id = str((meta or {}).get("doc_id", ""))
+            vs._docs[str(cid)] = (doc_id, documents[i] if i < len(documents) else None)
 
     def _delete(doc_id):
         vs._deleted_doc_ids.append(doc_id)
         return 0
 
     def _get_by_doc_id(doc_id):
-        return {"ids": list(vs._docs.keys()), "embeddings": None,
-                "documents": list(vs._docs.values()), "metadatas": []}
+        # Mirror VectorStore.get_by_doc_id: filter by the ``doc_id`` metadata.
+        # Returning every stored vector would fake orphan vectors for every
+        # document, which the ownership contract correctly rejects.
+        pairs = [(cid, text) for cid, (did, text) in vs._docs.items()
+                 if did == str(doc_id)]
+        return {"ids": [p[0] for p in pairs], "embeddings": None,
+                "documents": [p[1] for p in pairs], "metadatas": []}
 
     vs.add.side_effect = _add
     vs.delete_by_doc_id.side_effect = _delete
@@ -402,13 +412,15 @@ class TestSkippedDetection:
     @patch("rag_lab.cli_ingest._manifest_has_hash", return_value=True)
     @_patch_encode
     def test_manifest_alone_does_not_skip(
-        self, mock_enc, mock_manifest_hash, ds, tmp_path
+        self, mock_enc, mock_manifest_hash, ds, tmp_path, monkeypatch
     ):
         """P0-C: the advisory manifest alone never authorizes a skip.
 
         Without persisted confirmed evidence the document is created.  This is
         an intentional contract change (the manifest is not an authority).
         """
+        # Redirect the manifest away from production `data/` (test hygiene).
+        monkeypatch.setattr("rag_lab.ingest.manifest.DATA_DIR", tmp_path)
         p = _make_md(tmp_path, "manifest_doc")
         vs = _make_mock_vs()
         summary = _run_batch_ingest(

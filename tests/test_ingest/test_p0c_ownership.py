@@ -607,3 +607,123 @@ def test_incoherent_fts_text_denied(env):
     res = ingest(e, e.a)
     assert res["committed"] == 0 and res["failed"] == 1, res
     assert doc_state(e) == before
+
+
+# ---------------------------------------------------------------------------
+# R2-F1 — persisted-hash contradiction with no batch rows
+# ---------------------------------------------------------------------------
+
+def _seed_retry_contradiction(e):
+    """Seed through ``retry`` (no ``ingest_documents`` rows) and corrupt
+    only ``documents.content_hash`` so the two persisted hashes disagree.
+    """
+    assert ingest(e, e.a, "retry") > 0
+    c = e.d._conn
+    assert c.execute(
+        "SELECT COUNT(*) FROM ingest_documents WHERE doc_id='audit-three'"
+    ).fetchone()[0] == 0
+    c.execute("UPDATE documents SET content_hash=? WHERE doc_id='audit-three'",
+              (compute_md5(e.b),))
+    c.commit()
+    active = c.execute(
+        "SELECT content_hash FROM document_versions WHERE doc_id='audit-three'"
+    ).fetchone()[0]
+    docs = c.execute(
+        "SELECT content_hash FROM documents WHERE doc_id='audit-three'"
+    ).fetchone()[0]
+    assert active and docs and active != docs
+    assert generation(e) == 1
+
+
+@pytest.mark.parametrize("route", ["batch", "retry"])
+@pytest.mark.parametrize("force", [False, True])
+def test_contradictory_persisted_hashes_denied_without_batch_rows(env, route, force):
+    """P0C-SOL61-R2-F1: version hash vs documents hash must be contrasted even
+    when ``committed_hashes`` is empty (the normal state after ``retry``).
+    """
+    e = env
+    _seed_retry_contradiction(e)
+    before = doc_state(e)
+    gen = generation(e)
+    e.a.write_text(body("UPDATED"))
+    res = ingest(e, e.a, route, force=force)
+    if route == "batch":
+        assert res["committed"] == 0 and res["failed"] == 1, res
+    else:
+        assert res == 0
+    assert doc_state(e) == before
+    assert generation(e) == gen
+
+
+# ---------------------------------------------------------------------------
+# R2-F2 — CREATE must not run over orphan index entries
+# ---------------------------------------------------------------------------
+
+def _add_index_ghost(e, variant):
+    if variant == "fts":
+        e.d._conn.execute(
+            "INSERT INTO chunks_fts(chunk_id, doc_id, text) "
+            "VALUES ('ghost','audit-three','ghost')")
+        e.d._conn.commit()
+    else:
+        e.vs.add(ids=["ghost"],
+                 embeddings=np.ones((1, 1024), dtype=np.float32),
+                 documents=["ghost"],
+                 metadatas=[{"doc_id": "audit-three"}])
+    state = ownership.OwnershipStore(e.d._conn, e.vs).load("audit-three")
+    assert not state.has_any_chunks and not state.has_documents
+    assert not state.fts_matches or not state.chroma_matches
+
+
+@pytest.mark.parametrize("variant", ["fts", "chroma"])
+@pytest.mark.parametrize("route", ["batch", "retry"])
+@pytest.mark.parametrize("force", [False, True])
+def test_orphan_index_entry_blocks_create(env, variant, route, force):
+    """P0C-SOL61-R2-F2: a document is new only if nothing of it exists in any
+    store, not just in SQLite.
+    """
+    e = env
+    _add_index_ghost(e, variant)
+    before = doc_state(e)
+    assert generation(e) is None
+    res = ingest(e, e.a, route, force=force)
+    if route == "batch":
+        assert res["committed"] == 0 and res["failed"] == 1, res
+    else:
+        assert res == 0
+    assert doc_state(e) == before
+    assert generation(e) is None
+
+
+@pytest.mark.parametrize("route", ["batch", "retry"])
+def test_new_document_in_empty_stores_still_creates(env, route):
+    """Positive control: fail-closed CREATE must not break the legitimate case."""
+    e = env
+    decision = ownership.evaluate(
+        e.d._conn, e.vs, doc_id="audit-three", origin_path=e.a,
+        content_hash=compute_md5(e.a), chunk_dicts=[],
+        classification=ownership.classification_from_fields(
+            None, None, None, None, None, []),
+        force=False,
+    )
+    assert decision.kind is ownership.DecisionKind.CREATE, decision
+    res = ingest(e, e.a, route)
+    committed = res["committed"] if route == "batch" else (1 if res > 0 else 0)
+    assert committed == 1
+    assert generation(e) == 1
+
+
+def test_pure_core_r2_guards():
+    # R2-F1: contradiction is rejected without batch corroboration.
+    assert ownership.decide(
+        _state(committed_hashes=(), documents_content_hash="other"),
+        _incoming()).kind is ownership.DecisionKind.DENY_INCOHERENT
+    # R2-F2: CREATE only when every store is empty/coherent.
+    fresh = dict(has_version=False, has_documents=False, chunks=(),
+                 chunk_ids_version=(), classification=(None, None, None, None, None, ()))
+    assert ownership.decide(_state(**fresh), _incoming()).kind is \
+        ownership.DecisionKind.CREATE
+    for kw in (dict(fts_matches=False), dict(chroma_matches=False),
+               dict(chroma_verifiable=False)):
+        assert ownership.decide(_state(**fresh, **kw), _incoming()).kind is \
+            ownership.DecisionKind.DENY_INCOHERENT

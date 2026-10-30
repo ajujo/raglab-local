@@ -324,8 +324,10 @@ class TestIngestValidationGate:
         mock_add.assert_not_called()
         ds.close()
 
-    def test_ingest_continues_on_warn_normal_mode(self, tmp_path):
+    def test_ingest_continues_on_warn_normal_mode(self, tmp_path, monkeypatch):
         """Missing H1 → WARN → ingest proceeds past the validation gate."""
+        # Redirect the manifest away from production `data/` (test hygiene).
+        monkeypatch.setattr("rag_lab.ingest.manifest.DATA_DIR", tmp_path)
         from rag_lab.cli_ingest import _ingest_one
         from rag_lab.storage.docstore import DocStore
         from rag_lab.storage.vector_store import VectorStore

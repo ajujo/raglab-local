@@ -15,6 +15,21 @@ from rag_lab.exceptions import DocumentIngestionError
 
 logger = logging.getLogger("rag_lab")
 
+# `rag_lab.config.DATA_DIR` is the single source of truth and is resolved at
+# call time, so monkeypatching it redirects every manifest write (this is how
+# the test suite keeps its manifest out of the real `data/` directory).
+# The module-level `DATA_DIR` is kept for backwards compatibility: tests that
+# monkeypatch *this* attribute still take precedence.
+_DATA_DIR_AT_IMPORT = DATA_DIR
+
+
+def _data_dir() -> Path:
+    """Return the effective data directory (config wins unless patched here)."""
+    if DATA_DIR is not _DATA_DIR_AT_IMPORT:
+        return DATA_DIR
+    from rag_lab import config as _config
+    return _config.DATA_DIR
+
 
 def compute_md5(file_path: Path) -> str:
     """Compute MD5 hash of a file.
@@ -57,8 +72,8 @@ def create_manifest(
     if not source_path.exists():
         raise DocumentIngestionError(f"Source file not found: {source_path}")
 
-    manifest_path = DATA_DIR / "ingested.jsonl"
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    manifest_path = _data_dir() / "ingested.jsonl"
+    _data_dir().mkdir(parents=True, exist_ok=True)
 
     # Load existing manifest
     manifest = {}
