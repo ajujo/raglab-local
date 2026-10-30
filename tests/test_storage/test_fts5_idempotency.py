@@ -298,43 +298,25 @@ class TestBatchIngestFTS5Idempotency:
 
 class TestRollbackFTS5:
     def test_rollback_does_not_leave_fts5_rows(self, ds):
+        from rag_lab.ingest.transaction import IngestTransaction
+        # Fresh document: a failed ingest must leave no FTS5 rows.
+        txn = IngestTransaction("doc_rb", None, ds, chunk_ids=["rb1", "rb2"])
+        txn.__enter__()
         ds.add([_chunk("rb1", "doc_rb"), _chunk("rb2", "doc_rb")])
-        assert _fts_count_for_doc(ds, "doc_rb") == 2
-
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            from unittest.mock import MagicMock
-            inner_vs = MagicMock()
-            inner_vs.delete_by_doc_id.return_value = 0
-            mock_vs_cls.return_value = inner_vs
-
-            from rag_lab.ingest.transaction import IngestTransaction
-            from rag_lab.ingest.transaction import IngestRunStore
-            IngestRunStore(ds._conn).create("rb_run", "doc_rb", None)
-            txn = IngestTransaction("doc_rb", None, ds)
-            txn.run_id = "rb_run"
-            txn.rollback()
-
+        txn.rollback()
         assert _fts_count_for_doc(ds, "doc_rb") == 0
 
-    def test_rollback_after_reingest_cleans_all_fts5(self, ds):
-        """After a re-ingest, rollback must still leave FTS5 at 0."""
+    def test_rollback_after_reingest_restores_previous_fts5(self, ds):
+        """A failed replacement restores the previous FTS5 rows (no duplicates)."""
         chunks = [_chunk("rb3", "doc_rr"), _chunk("rb4", "doc_rr")]
         ds.add(chunks)
-        ds.add(chunks)  # before fix, this would leave 4 rows; after fix, still 2
-
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            from unittest.mock import MagicMock
-            inner_vs = MagicMock()
-            inner_vs.delete_by_doc_id.return_value = 0
-            mock_vs_cls.return_value = inner_vs
-
-            from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
-            IngestRunStore(ds._conn).create("rr_run", "doc_rr", None)
-            txn = IngestTransaction("doc_rr", None, ds)
-            txn.run_id = "rr_run"
-            txn.rollback()
-
-        assert _fts_count_for_doc(ds, "doc_rr") == 0
+        ds.add(chunks)  # idempotent, still 2
+        from rag_lab.ingest.transaction import IngestTransaction
+        txn = IngestTransaction("doc_rr", None, ds, chunk_ids=["rb5"])
+        txn.__enter__()
+        ds.add([_chunk("rb5", "doc_rr")])
+        txn.rollback()
+        assert _fts_count_for_doc(ds, "doc_rr") == 2
 
 
 # ---------------------------------------------------------------------------

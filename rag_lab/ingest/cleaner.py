@@ -4,6 +4,7 @@ The source document contains ~28 pages with base64-encoded images that
 inflate the file 30x without adding retrievable text content.
 """
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -13,12 +14,39 @@ from rag_lab.exceptions import DocumentIngestionError
 
 logger = logging.getLogger("rag_lab")
 
+# `rag_lab.config.DATA_DIR` is resolved at call time (single source of truth),
+# so monkeypatching it redirects cleaned output.  The module-level `DATA_DIR`
+# is kept for backwards compatibility and takes precedence when patched.
+_DATA_DIR_AT_IMPORT = DATA_DIR
+
+
+def _data_dir() -> Path:
+    """Return the effective data directory (config wins unless patched here)."""
+    if DATA_DIR is not _DATA_DIR_AT_IMPORT:
+        return DATA_DIR
+    from rag_lab import config as _config
+    return _config.DATA_DIR
+
 # Pattern to match base64 image data in Markdown files
 # Matches: ![alt](data:image/...;base64,VERY_LONG_STRING)
 _BASE64_PATTERN = re.compile(
     r'!\[.*?\]\(data:image/[^;]*;base64,[A-Za-z0-9+/=]+\)',
     re.DOTALL,
 )
+
+
+def _safe_cleaned_dir(source_path: Path, output_dir: Path) -> Path:
+    """Return a per-source output directory to avoid basename collisions (RAG-05).
+
+    Two different source paths with the same basename would otherwise clobber
+    each other's cleaned Markdown.  A short hash of the resolved source path
+    disambiguates them deterministically while keeping the readable filename.
+    """
+    try:
+        key = hashlib.sha256(str(source_path.resolve()).encode("utf-8")).hexdigest()[:8]
+    except OSError:
+        key = hashlib.sha256(str(source_path).encode("utf-8")).hexdigest()[:8]
+    return output_dir / key
 
 
 def clean_document(
@@ -43,7 +71,8 @@ def clean_document(
     if not source_path.suffix in (".md", ".mdown", ".markdown"):
         raise DocumentIngestionError(f"Unsupported file format: {source_path.suffix}")
 
-    output_dir = output_dir or (DATA_DIR / "cleaned")
+    output_dir = output_dir or (_data_dir() / "cleaned")
+    output_dir = _safe_cleaned_dir(source_path, output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Cleaning document: {source_path.name}")

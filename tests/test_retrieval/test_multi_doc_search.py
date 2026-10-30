@@ -44,8 +44,8 @@ class TestMultiDocSearch:
         params = list(sig.parameters.keys())
         assert "doc_ids" in params
 
-    def test_empty_doc_ids_returns_all(self, tmp_path):
-        """Test que doc_ids=None o [] devuelve todos los resultados."""
+    def test_empty_doc_ids_returns_nothing(self, tmp_path):
+        """RAG-03 invariant: doc_ids=None is unfiltered; doc_ids=[] selects nothing."""
         store = VectorStore(storage_path=tmp_path)
         store.initialize()
 
@@ -64,13 +64,13 @@ class TestMultiDocSearch:
         )
 
         query_emb = np.random.rand(1024)
-        # Sin filtro
+        # Sin filtro → todos
         results = store.query(query_emb, top_k=10, doc_ids=None)
         assert len(results["ids"]) == 4
 
-        # Con filtro vacío (debería devolver todos)
+        # Filtro explícito vacío → ninguno (RAG-03)
         results_empty = store.query(query_emb, top_k=10, doc_ids=[])
-        assert len(results_empty["ids"]) == 4
+        assert len(results_empty["ids"]) == 0
 
 
 class TestMultiDocCitations:

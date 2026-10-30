@@ -32,6 +32,11 @@ _HNSW_META_SEARCH_EF = "hnsw:search_ef"
 class VectorStore:
     """ChromaDB wrapper for dense vector storage."""
 
+    # Declares that this is a real store for document versioning.  Test doubles
+    # (MagicMock, etc.) do not set this, so versioning keeps best-effort vector
+    # handling for them while production fails closed.
+    supports_versioning = True
+
     def __init__(
         self,
         collection_name: str = "sdmx_rag",
@@ -208,6 +213,53 @@ class VectorStore:
         self._collection.upsert(**kwargs)
         logger.info(f"Added {len(ids)} vectors to {self.collection_name}")
 
+    def get_by_doc_id(self, doc_id: str) -> dict:
+        """Return all vectors for a document (ids, embeddings, documents, metadatas).
+
+        Used by document versioning to snapshot the previous version so it can
+        be restored if a replacement fails (RAG-01).
+        """
+        if self._collection is None:
+            self.initialize()
+        result = self._collection.get(
+            where={"doc_id": {"$eq": doc_id}},
+            include=["embeddings", "documents", "metadatas"],
+        )
+        return {
+            "ids": result.get("ids", []) or [],
+            "embeddings": result.get("embeddings"),
+            "documents": result.get("documents") or [],
+            "metadatas": result.get("metadatas") or [],
+        }
+
+    def delete_ids(self, ids: List[str]) -> int:
+        """Delete specific vector ids. Returns the number requested."""
+        if not ids:
+            return 0
+        if self._collection is None:
+            self.initialize()
+        self._collection.delete(ids=list(ids))
+        return len(ids)
+
+    def restore_vectors(
+        self,
+        ids: List[str],
+        embeddings,
+        documents: List[str],
+        metadatas: List[dict],
+    ) -> None:
+        """Re-insert previously snapshotted vectors (upsert semantics)."""
+        if not ids:
+            return
+        if self._collection is None:
+            self.initialize()
+        self._collection.upsert(
+            ids=list(ids),
+            embeddings=embeddings,
+            documents=list(documents),
+            metadatas=list(metadatas),
+        )
+
     def query(
         self,
         query_embedding: np.ndarray,
@@ -237,7 +289,18 @@ class VectorStore:
                 "metadatas": [],
             }
 
-        # Build where clause for doc_id filtering
+        # doc_ids semantics (RAG-03 invariant):
+        #   None  -> no filter (search everything)
+        #   []    -> explicit empty filter -> zero results (never "all")
+        #   [...] -> restrict to those doc_ids
+        if doc_ids is not None and len(doc_ids) == 0:
+            return {
+                "ids": [],
+                "distances": [],
+                "documents": [],
+                "metadatas": [],
+            }
+
         where_clause = None
         if doc_ids:
             where_clause = {"doc_id": {"$in": doc_ids}}

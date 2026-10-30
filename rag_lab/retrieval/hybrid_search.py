@@ -113,12 +113,30 @@ def hybrid_search(
     candidate_k = top_k * _CANDIDATE_MULTIPLIER
 
     # Resolve structured filter → effective doc_ids (filter_spec overrides raw doc_ids)
+    # RAG-03 invariant: None = no restriction; [] = explicit empty filter = no results.
     effective_doc_ids = doc_ids
-    if filter_spec is not None and not filter_spec.is_empty() and doc_store._conn is not None:
+    filter_active = doc_ids is not None
+    if filter_spec is not None and not filter_spec.is_empty():
+        # Never fail open: a requested filter must be applied.  DocStore may not
+        # have been opened yet (lazy init), so open it before resolving.
+        if doc_store._conn is None:
+            doc_store.initialize()
         resolved = resolve_filter(doc_store._conn, filter_spec)
         if resolved is not None:
             effective_doc_ids = resolved
+            filter_active = True
             logger.debug(f"filter_spec resolved to {len(resolved)} doc_ids")
+
+    # A valid filter that matches no documents must yield zero results, never
+    # silently fall back to an unfiltered search.
+    if filter_active and effective_doc_ids is not None and len(effective_doc_ids) == 0:
+        logger.info("Hybrid search: filter resolved to an empty document set; no results")
+        if _return_stats:
+            return [], {
+                "candidate_pool_size": 0, "n_dense": 0, "n_bm25": 0,
+                "n_sparse": 0, "sparse_used": False,
+            }
+        return []
 
     # ------------------------------------------------------------------
     # Stage 1a: Dense search

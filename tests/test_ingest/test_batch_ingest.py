@@ -88,20 +88,43 @@ def _fake_encode(chunk_dicts, batch_size=8, device="cpu"):
 
 
 def _make_mock_vs():
-    """Return a mock VectorStore that tracks added/deleted ids."""
+    """Return a mock VectorStore that tracks added/deleted ids.
+
+    P0-C: the ownership contract verifies SQL/FTS/Chroma consistency, so the
+    mock also keeps the persisted documents and implements ``get_by_doc_id``.
+    Reuse the same instance across re-ingests (as a real persistent store).
+    """
     vs = MagicMock()
     vs._added_ids: list = []
     vs._deleted_doc_ids: list = []
+    vs._docs: dict = {}
 
-    def _add(ids, embeddings, documents, metadatas):
+    def _add(ids, embeddings=None, documents=None, metadatas=None):
+        ids = list(ids or [])
+        documents = list(documents or [])
+        metadatas = list(metadatas or [])
         vs._added_ids.extend(ids)
+        for i, cid in enumerate(ids):
+            meta = metadatas[i] if i < len(metadatas) else {}
+            doc_id = str((meta or {}).get("doc_id", ""))
+            vs._docs[str(cid)] = (doc_id, documents[i] if i < len(documents) else None)
 
     def _delete(doc_id):
         vs._deleted_doc_ids.append(doc_id)
         return 0
 
+    def _get_by_doc_id(doc_id):
+        # Mirror VectorStore.get_by_doc_id: filter by the ``doc_id`` metadata.
+        # Returning every stored vector would fake orphan vectors for every
+        # document, which the ownership contract correctly rejects.
+        pairs = [(cid, text) for cid, (did, text) in vs._docs.items()
+                 if did == str(doc_id)]
+        return {"ids": [p[0] for p in pairs], "embeddings": None,
+                "documents": [p[1] for p in pairs], "metadatas": []}
+
     vs.add.side_effect = _add
     vs.delete_by_doc_id.side_effect = _delete
+    vs.get_by_doc_id.side_effect = _get_by_doc_id
     return vs
 
 
@@ -337,18 +360,18 @@ class TestSkippedDetection:
         )
         chunks_after_first = ds.count_chunks("skip_doc")
 
-        # Second ingest — same file, same hash → SKIPPED
-        vs2 = _make_mock_vs()
+        # Second ingest — same file, same result → NO-OP/SKIPPED on the SAME
+        # persistent store (P0-C verifies SQL/FTS/Chroma coherence).
+        added_before = len(vs._added_ids)
         summary2 = _run_batch_ingest(
-            paths=[p], doc_store=ds, vector_store=vs2,
+            paths=[p], doc_store=ds, vector_store=vs,
             force=False, device="cpu", strict=False,
         )
         assert summary2["skipped"] == 1
         assert summary2["committed"] == 0
-        # No new chunks written
+        # No new chunks written and no new vectors added
         assert ds.count_chunks("skip_doc") == chunks_after_first
-        # No additional add calls
-        assert len(vs2._added_ids) == 0
+        assert len(vs._added_ids) == added_before
 
     @_patch_manifest
     @_patch_encode
@@ -360,9 +383,8 @@ class TestSkippedDetection:
             force=False, device="cpu", strict=False,
         )
 
-        vs2 = _make_mock_vs()
         summary2 = _run_batch_ingest(
-            paths=[p], doc_store=ds, vector_store=vs2,
+            paths=[p], doc_store=ds, vector_store=vs1,
             force=True, device="cpu", strict=False,
         )
         assert summary2["committed"] == 1
@@ -380,9 +402,8 @@ class TestSkippedDetection:
 
         # Modify the file — content hash changes
         p.write_text(_VALID_MD_A + "\n\n## Section Three\n\nNew content added here.", encoding="utf-8")
-        vs2 = _make_mock_vs()
         summary2 = _run_batch_ingest(
-            paths=[p], doc_store=ds, vector_store=vs2,
+            paths=[p], doc_store=ds, vector_store=vs1,
             force=False, device="cpu", strict=False,
         )
         assert summary2["committed"] == 1
@@ -390,20 +411,24 @@ class TestSkippedDetection:
 
     @patch("rag_lab.cli_ingest._manifest_has_hash", return_value=True)
     @_patch_encode
-    def test_manifest_fallback_skips_when_hash_matches(
-        self, mock_enc, mock_manifest_hash, ds, tmp_path
+    def test_manifest_alone_does_not_skip(
+        self, mock_enc, mock_manifest_hash, ds, tmp_path, monkeypatch
     ):
-        """Manifest-based SKIPPED fires when ingest_documents has no COMMITTED row."""
+        """P0-C: the advisory manifest alone never authorizes a skip.
+
+        Without persisted confirmed evidence the document is created.  This is
+        an intentional contract change (the manifest is not an authority).
+        """
+        # Redirect the manifest away from production `data/` (test hygiene).
+        monkeypatch.setattr("rag_lab.ingest.manifest.DATA_DIR", tmp_path)
         p = _make_md(tmp_path, "manifest_doc")
         vs = _make_mock_vs()
-        # No prior ingest — ingest_documents is empty.
-        # _manifest_has_hash is patched to return True → SKIPPED via manifest.
         summary = _run_batch_ingest(
             paths=[p], doc_store=ds, vector_store=vs,
             force=False, device="cpu", strict=False,
         )
-        assert summary["skipped"] == 1
-        assert summary["committed"] == 0
+        assert summary["committed"] == 1
+        assert summary["skipped"] == 0
 
 
 # ---------------------------------------------------------------------------

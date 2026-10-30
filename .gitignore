@@ -65,3 +65,6 @@ data/eval_runs/*.jsonl
 # SQLite WAL/SHM journal files
 data/*.sqlite-shm
 data/*.sqlite-wal
+
+# Artefactos de ejecución (perfilado) — no versionar
+performance/metrics.json

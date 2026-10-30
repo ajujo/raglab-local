@@ -12,7 +12,18 @@ RAG-Lab is a local, CLI-only Retrieval-Augmented Generation system for querying 
 
 ## Current state
 
-Version **v1.21** — stable, in controlled local use. 1058 tests passing. Production corpus: 610 chunks.
+Version **v1.22 (P0-C cerrado)** — integridad de datos verificada por auditoría
+adversarial independiente. 1289 tests passing. Production corpus: 610 chunks,
+coherentes entre SQLite, FTS5 y ChromaDB.
+
+El contrato de propiedad documental (`rag_lab/ingest/ownership.py`) decide de
+forma determinista entre `CREATE`, `NOOP`, `REPLACE` y `DENY` a partir del run
+COMMITTED que confirma la versión activa. Reingerir un documento idéntico no
+escribe nada; una ruta distinta nunca obtiene propiedad por coincidencia de
+contenido; un estado contradictorio se rechaza en lugar de publicarse.
+
+Historial de cierre, evidencia y limitaciones conocidas:
+[docs/P0C_CIERRE.md](docs/P0C_CIERRE.md)
 
 ## Quick start
 

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from rag_lab.storage.docstore import DocStore
 from rag_lab.ingest.transaction import IngestTransaction, IngestRunStore, _now
+from rag_lab.exceptions import VersioningError
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +153,7 @@ class TestIngestTransaction:
         assert r["chunks_written_chroma"] == 5
 
     def test_exit_exception_marks_failed_and_rolls_back(self, ds):
-        """On exception, run is marked FAILED then ROLLED_BACK after compensation."""
+        """RAG-01: a failed replacement restores the previous committed version."""
         doc_id = "doc_fail_test"
         ds.add([_chunk("cx1", doc_id), _chunk("cx2", doc_id)])
         assert ds.count_chunks(doc_id) == 2
@@ -164,8 +165,12 @@ class TestIngestTransaction:
 
             run_id = None
             try:
-                with IngestTransaction(doc_id, None, ds) as txn:
+                with IngestTransaction(
+                    doc_id, None, ds,
+                    vector_store=mock_vs, chunk_ids=["new1", "new2"],
+                ) as txn:
                     run_id = txn.run_id
+                    ds.add([_chunk("new1", doc_id), _chunk("new2", doc_id)])
                     raise RuntimeError("Injected failure")
             except RuntimeError:
                 pass
@@ -173,8 +178,14 @@ class TestIngestTransaction:
         r = IngestRunStore(ds._conn).get(run_id)
         assert r["status"] == "ROLLED_BACK"
         assert "Injected failure" in (r["error_message"] or "")
-        # Chunks should be gone
-        assert ds.count_chunks(doc_id) == 0
+        # RAG-01: previous version preserved, failed new version removed.
+        ids = {
+            row[0]
+            for row in ds._conn.execute(
+                "SELECT chunk_id FROM chunks WHERE doc_id = ?", (doc_id,)
+            )
+        }
+        assert ids == {"cx1", "cx2"}
 
     def test_exception_is_reraised(self, ds):
         with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
@@ -197,103 +208,71 @@ class TestIngestTransaction:
 # ---------------------------------------------------------------------------
 
 class TestRollbackCompensation:
-    def test_rollback_deletes_chunks(self, ds):
+    def test_rollback_without_handle_fails_closed(self, ds):
+        """RAG-01: without a snapshot handle, rollback must NOT delete data."""
         doc_id = "doc_rb"
         ds.add([_chunk("rb1", doc_id), _chunk("rb2", doc_id)])
         assert ds.count_chunks(doc_id) == 2
 
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            mock_vs = MagicMock()
-            mock_vs.delete_by_doc_id.return_value = 2
-            mock_vs_cls.return_value = mock_vs
+        with pytest.raises(VersioningError):
+            IngestTransaction(doc_id, None, ds).rollback()
 
-            txn = IngestTransaction(doc_id, None, ds)
-            txn.run_id = "manual_test_run"
-            IngestRunStore(ds._conn).create("manual_test_run", doc_id, None)
-            txn.rollback()
+        assert ds.count_chunks(doc_id) == 2
 
-        assert ds.count_chunks(doc_id) == 0
-        mock_vs.delete_by_doc_id.assert_called_once_with(doc_id)
+    def test_versioned_rollback_restores_previous(self, ds):
+        """A failed replacement restores the previous committed version."""
+        doc_id = "doc_rb_restore"
+        ds.add([_chunk("old1", doc_id), _chunk("old2", doc_id)])
 
-    def test_rollback_marks_run_rolled_back(self, ds):
-        IngestRunStore(ds._conn).create("rb_run_01", "doc_rb_status", None)
+        txn = IngestTransaction(doc_id, None, ds, chunk_ids=["new1"])
+        txn.__enter__()
+        ds.add([_chunk("new1", doc_id)])
+        txn.rollback()
 
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            mock_vs = MagicMock()
-            mock_vs.delete_by_doc_id.return_value = 0
-            mock_vs_cls.return_value = mock_vs
-
-            txn = IngestTransaction("doc_rb_status", None, ds)
-            txn.run_id = "rb_run_01"
-            txn.rollback()
-
-        r = IngestRunStore(ds._conn).get("rb_run_01")
+        r = IngestRunStore(ds._conn).get(txn.run_id)
         assert r["status"] == "ROLLED_BACK"
+        ids = {
+            row[0]
+            for row in ds._conn.execute(
+                "SELECT chunk_id FROM chunks WHERE doc_id = ?", (doc_id,)
+            )
+        }
+        assert ids == {"old1", "old2"}
+        fts_ids = {
+            row[0]
+            for row in ds._conn.execute(
+                "SELECT chunk_id FROM chunks_fts WHERE doc_id = ?", (doc_id,)
+            )
+        }
+        assert fts_ids == {"old1", "old2"}
 
-    def test_rollback_is_idempotent(self, ds):
-        """Second rollback call is safe even when data is already gone."""
+    def test_versioned_rollback_is_idempotent(self, ds):
         doc_id = "doc_idem"
-        ds.add([_chunk("id1", doc_id)])
+        ds.add([_chunk("id_old", doc_id)])
+        txn = IngestTransaction(doc_id, None, ds, chunk_ids=["id_new"])
+        txn.__enter__()
+        ds.add([_chunk("id_new", doc_id)])
+        txn.rollback()
+        txn.rollback()  # second call must be safe
+        ids = {
+            row[0]
+            for row in ds._conn.execute(
+                "SELECT chunk_id FROM chunks WHERE doc_id = ?", (doc_id,)
+            )
+        }
+        assert ids == {"id_old"}
 
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            mock_vs = MagicMock()
-            mock_vs.delete_by_doc_id.return_value = 1
-            mock_vs_cls.return_value = mock_vs
-
-            IngestRunStore(ds._conn).create("rb_idem_run", doc_id, None)
-            txn = IngestTransaction(doc_id, None, ds)
-            txn.run_id = "rb_idem_run"
-
-            txn.rollback()  # first call
-            txn.rollback()  # second call — should not raise
-
+    def test_fresh_rollback_removes_new_data(self, ds):
+        """First ingest that fails leaves no chunks/FTS/documents."""
+        doc_id = "doc_fresh"
+        txn = IngestTransaction(doc_id, None, ds, chunk_ids=["f1", "f2"])
+        txn.__enter__()
+        ds.add([_chunk("f1", doc_id), _chunk("f2", doc_id)])
+        txn.rollback()
         assert ds.count_chunks(doc_id) == 0
-
-    def test_rollback_cleans_fts5(self, ds):
-        doc_id = "doc_fts_rb"
-        ds.add([_chunk("fts_rb_1", doc_id)])
-
-        fts_before = ds._conn.execute(
+        assert ds._conn.execute(
             "SELECT COUNT(*) FROM chunks_fts WHERE doc_id = ?", (doc_id,)
-        ).fetchone()[0]
-        assert fts_before == 1
-
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            mock_vs = MagicMock()
-            mock_vs.delete_by_doc_id.return_value = 1
-            mock_vs_cls.return_value = mock_vs
-
-            IngestRunStore(ds._conn).create("fts_rb_run", doc_id, None)
-            txn = IngestTransaction(doc_id, None, ds)
-            txn.run_id = "fts_rb_run"
-            txn.rollback()
-
-        fts_after = ds._conn.execute(
-            "SELECT COUNT(*) FROM chunks_fts WHERE doc_id = ?", (doc_id,)
-        ).fetchone()[0]
-        assert fts_after == 0
-
-    def test_rollback_also_cleans_documents_table(self, ds):
-        doc_id = "doc_meta_rb"
-        from rag_lab.storage.metadata_store import MetadataStore
-        MetadataStore(conn=ds._conn).upsert_document(doc_id)
-
-        exists = ds._conn.execute(
+        ).fetchone()[0] == 0
+        assert ds._conn.execute(
             "SELECT COUNT(*) FROM documents WHERE doc_id = ?", (doc_id,)
-        ).fetchone()[0]
-        assert exists == 1
-
-        with patch("rag_lab.ingest.transaction.VectorStore") as mock_vs_cls:
-            mock_vs = MagicMock()
-            mock_vs.delete_by_doc_id.return_value = 0
-            mock_vs_cls.return_value = mock_vs
-
-            IngestRunStore(ds._conn).create("meta_rb_run", doc_id, None)
-            txn = IngestTransaction(doc_id, None, ds)
-            txn.run_id = "meta_rb_run"
-            txn.rollback()
-
-        gone = ds._conn.execute(
-            "SELECT COUNT(*) FROM documents WHERE doc_id = ?", (doc_id,)
-        ).fetchone()[0]
-        assert gone == 0
+        ).fetchone()[0] == 0

@@ -56,6 +56,96 @@ except ImportError:
     pass
 
 
+# ---------------------------------------------------------------------------
+# Production-store isolation (session-wide)
+# ---------------------------------------------------------------------------
+# Los tests crean DocStore()/VectorStore() sin argumentos en bastantes sitios.
+# Esos constructores resuelven la ruta desde un binding de módulo capturado en
+# el import, así que apuntaban al almacén REAL de producción: la suite escribía
+# filas de ingest_runs y llegó a aplicar la migración de esquema sobre
+# storage/docstore.sqlite. Este fixture redirige esos bindings a un directorio
+# temporal de sesión antes de que ningún test construya un store.
+#
+# Se mantiene `rag_lab.config.DATA_DIR` intacto a propósito: los tests de
+# benchmark y evaluación leen `data/benchmark_queries.yaml` y ficheros de
+# referencia. Lo que sí se redirige es la ESCRITURA del manifiesto y del
+# directorio `cleaned`, que no se leen desde producción.
+
+_STORE_ATTRS = (
+    ("config", "STORAGE_DIR"),
+    ("config", "DOCDSTORE_SQLITE_PATH"),
+    ("config", "VECTOR_STORE_PATH"),
+    ("config", "FEEDBACK_DB_PATH"),
+    ("docstore", "DOCDSTORE_SQLITE_PATH"),
+    ("vector_store", "VECTOR_STORE_PATH"),
+    ("manifest", "DATA_DIR"),
+    ("cleaner", "DATA_DIR"),
+)
+
+
+@pytest.fixture(scope="session")
+def _store_tmpdir():
+    """Directorio temporal de sesión para los stores aislados."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    tmp = Path(tempfile.mkdtemp(prefix="rag-lab-tests-"))
+    (tmp / "data").mkdir()
+    (tmp / "storage").mkdir()
+    try:
+        yield tmp
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def isolate_production_stores(request, _store_tmpdir):
+    """Redirige los stores por defecto y las escrituras de data/ a un tmp de sesión.
+
+    Los tests marcados ``integration`` quedan exentos: están declarados como
+    lectores deliberados del corpus real (benchmarks sobre los 610 chunks), y
+    aislarlos los dejaría sin datos. Esos tests son de solo lectura.
+    """
+    import rag_lab.config as _config
+    import rag_lab.storage.docstore as _docstore
+    import rag_lab.storage.vector_store as _vector_store
+    import rag_lab.ingest.manifest as _manifest
+    import rag_lab.ingest.cleaner as _cleaner
+
+    if request.node.get_closest_marker("integration"):
+        yield
+        return
+
+    modules = {
+        "config": _config,
+        "docstore": _docstore,
+        "vector_store": _vector_store,
+        "manifest": _manifest,
+        "cleaner": _cleaner,
+    }
+
+    tmp = _store_tmpdir
+    data_dir = tmp / "data"
+    storage_dir = tmp / "storage"
+
+    saved = {key: getattr(modules[m], key) for m, key in _STORE_ATTRS}
+
+    _config.STORAGE_DIR = storage_dir
+    _config.DOCDSTORE_SQLITE_PATH = storage_dir / "docstore.sqlite"
+    _config.VECTOR_STORE_PATH = storage_dir / "chroma_db"
+    _config.FEEDBACK_DB_PATH = storage_dir / "docstore.sqlite"
+    _docstore.DOCDSTORE_SQLITE_PATH = _config.DOCDSTORE_SQLITE_PATH
+    _vector_store.VECTOR_STORE_PATH = _config.VECTOR_STORE_PATH
+    _manifest.DATA_DIR = data_dir
+    _cleaner.DATA_DIR = data_dir
+    try:
+        yield tmp
+    finally:
+        for m, key in _STORE_ATTRS:
+            setattr(modules[m], key, saved[key])
+
+
 @pytest.fixture(autouse=True)
 def reset_ml_caches():
     """Reset global model caches before each test.

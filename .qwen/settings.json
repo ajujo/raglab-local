@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(conda *)"
+      "Bash(conda *)",
+      "Agent(Explore)"
     ]
-  }
+  },
+  "$version": 4
 }

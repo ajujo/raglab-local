@@ -1,0 +1,11 @@
+# Dependencias directas de RAG-Lab.
+# CUDA/PyTorch se instala según el hardware.
+
+numpy
+FlagEmbedding
+transformers>=4.51,<5
+chromadb==1.5.5
+openai==1.109.1
+typer
+rich
+PyYAML

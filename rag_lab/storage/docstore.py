@@ -53,6 +53,8 @@ class DocStore:
         self._migrate_v3()
         self._migrate_v4()
         self._migrate_v5()
+        self._migrate_v6()
+        self._migrate_v7()
         self._conn.commit()
         logger.info(f"Initialized docstore at {self.db_path}")
 
@@ -183,6 +185,107 @@ class DocStore:
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_idocs_status ON ingest_documents(status)"
         )
+
+    def _migrate_v6(self) -> None:
+        """Version tracking + pre-image snapshots (P0: RAG-01/02/04).
+
+        One active version per ``doc_id`` plus a single-slot pre-image used to
+        restore the previous committed version if a replacement fails or is
+        rolled back.
+        """
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS document_versions (
+                doc_id        TEXT PRIMARY KEY,
+                active_run_id TEXT,
+                generation    INTEGER NOT NULL DEFAULT 0,
+                chunk_ids     TEXT NOT NULL DEFAULT '[]',
+                updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS version_snapshot_chunks (
+                chunk_id TEXT NOT NULL,
+                doc_id TEXT NOT NULL,
+                text TEXT,
+                heading_path TEXT,
+                tipo TEXT,
+                posicion_relativa REAL,
+                n_tokens INTEGER,
+                line_start INTEGER,
+                line_end INTEGER,
+                sparse_tokens BLOB,
+                sparse_weights BLOB,
+                embedding_model_name TEXT,
+                embedding_model_version TEXT,
+                embedding_dim INTEGER,
+                sparse_format_version INTEGER,
+                PRIMARY KEY (doc_id, chunk_id)
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS version_snapshot_vectors (
+                doc_id TEXT NOT NULL,
+                chunk_id TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                document TEXT,
+                metadata_json TEXT,
+                PRIMARY KEY (doc_id, chunk_id)
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS version_snapshot_docs (
+                doc_id TEXT PRIMARY KEY,
+                run_id TEXT,
+                doc_json TEXT,
+                tags_json TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS version_ops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doc_id TEXT NOT NULL,
+                op TEXT NOT NULL,
+                run_id TEXT,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                payload_json TEXT
+            )
+            """
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_version_ops_state ON version_ops(state)"
+        )
+
+    def _migrate_v7(self) -> None:
+        """Add a content-hash column bound to the confirmed version (P0B-01/04).
+
+        The hash is the source content hash of the *committed* version.  It is
+        authoritative for ownership checks and, unlike the mutable source file
+        or the advisory manifest, cannot be invalidated by a later revert.
+        """
+        for table, col in (
+            ("document_versions", "content_hash"),
+            ("version_snapshot_docs", "content_hash"),
+        ):
+            existing = {
+                row[1]
+                for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if col not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {col} TEXT DEFAULT ''"
+                )
+                logger.info(f"DocStore: added column {table}.{col}")
 
     # ------------------------------------------------------------------
     # Write

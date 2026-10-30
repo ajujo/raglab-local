@@ -21,6 +21,10 @@ _tokenizer: Optional[Any] = None
 _load_attempted: bool = False
 _fallback_warned: bool = False
 
+# Backend (generative) tokenizer cache — used for prompt budgeting (RAG-08).
+_backend_tokenizer: Optional[Any] = None
+_backend_attempted: bool = False
+
 
 def _load_tokenizer() -> Optional[Any]:
     """Lazy-load the tokenizer (tokenizer files only, not the full model).
@@ -108,6 +112,83 @@ def reset_tokenizer_cache() -> None:
     tokenizer or switch between TOKEN_COUNTING_MODE values.
     """
     global _tokenizer, _load_attempted, _fallback_warned
+    global _backend_tokenizer, _backend_attempted
     _tokenizer = None
     _load_attempted = False
     _fallback_warned = False
+    _backend_tokenizer = None
+    _backend_attempted = False
+
+
+def _load_backend_tokenizer() -> Optional[Any]:
+    """Load the generative backend's tokenizer if one is configured.
+
+    Uses ``LLM_TOKENIZER_PATH`` (local dir, offline) or ``LLM_TOKENIZER_MODEL``
+    (HF id in local cache).  Returns None when neither is configured or the
+    load fails, in which case :func:`count_backend_tokens` falls back to the
+    conservative estimator below.
+    """
+    global _backend_tokenizer, _backend_attempted
+    if _backend_attempted:
+        return _backend_tokenizer
+    _backend_attempted = True
+    try:
+        from rag_lab.config import LLM_TOKENIZER_PATH, LLM_TOKENIZER_MODEL
+    except ImportError:
+        return None
+    target = LLM_TOKENIZER_PATH or LLM_TOKENIZER_MODEL
+    if not target:
+        return None
+    try:
+        from transformers import AutoTokenizer
+        _backend_tokenizer = AutoTokenizer.from_pretrained(
+            target, use_fast=True, local_files_only=True,
+        )
+        logger.debug("prompt budgeting: loaded backend tokenizer '%s'", target)
+    except Exception as exc:
+        logger.warning(
+            "prompt budgeting: backend tokenizer '%s' unavailable (%s); "
+            "using conservative estimator",
+            target, exc,
+        )
+        _backend_tokenizer = None
+    return _backend_tokenizer
+
+
+def estimate_tokens(text: str) -> int:
+    """Token estimate for the generative backend (RAG-08 / P0B-05).
+
+    If a backend tokenizer is configured (``LLM_TOKENIZER_PATH`` or
+    ``LLM_TOKENIZER_MODEL``) it is used, subject to the conservative
+    ``LLM_TOKEN_ESTIMATE_FACTOR`` applied by the prompt builder.
+
+    Otherwise this returns a **guaranteed upper bound**: the number of UTF-8
+    bytes.  Every token produced by a byte-level BPE/Unigram tokenizer maps to
+    at least one byte, so the real token count can never exceed the byte count.
+    This is deliberately conservative (normal text is ~4 bytes/token) but it
+    cannot under-count, so the configured context window can never be exceeded
+    by an invalid request.  Configure the tokenizer to reclaim full context.
+    """
+    if text == "":
+        return 1
+    tok = _load_backend_tokenizer()
+    if tok is not None:
+        try:
+            return max(1, len(tok.encode(text, add_special_tokens=False)))
+        except Exception:
+            pass
+    try:
+        return max(1, len(text.encode("utf-8")))
+    except Exception:
+        return max(1, len(text))
+
+
+def count_backend_tokens(text: str) -> int:
+    """Token count for budgeting: backend tokenizer if available, else a
+    guaranteed byte-based upper bound."""
+    return estimate_tokens(text)
+
+
+def estimate_prompt_tokens(system_prompt: str, user_prompt: str) -> int:
+    """Token estimate for a full prompt (system + user)."""
+    return count_backend_tokens(system_prompt or "") + count_backend_tokens(user_prompt or "")

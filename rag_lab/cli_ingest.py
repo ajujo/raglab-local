@@ -109,14 +109,21 @@ def _prepare_no_db(source_path: Path, strict: bool) -> _PrepResult:
         # Resolve title: frontmatter > H1 heading
         title = fm.title or extract_h1_title(raw_text)
 
+        # Stable document identity (RAG-05): prefer the declared frontmatter
+        # doc_id; fall back to the file stem for legacy documents without
+        # frontmatter (compatible with the existing corpus).
+        resolved_doc_id = doc_id
+        if fm.doc_id and fm.doc_id.strip():
+            resolved_doc_id = fm.doc_id.strip()
+
         cleaned_path = clean_document(source_path)
         cleaned_text = cleaned_path.read_text(encoding="utf-8")
         chunks = chunk_document(
-            cleaned_text, doc_id=doc_id,
+            cleaned_text, doc_id=resolved_doc_id,
             max_tokens=CHUNK_MAX_TOKENS, overlap=CHUNK_OVERLAP,
         )
         return _PrepResult(
-            source_path=source_path, doc_id=doc_id, content_hash=content_hash,
+            source_path=source_path, doc_id=resolved_doc_id, content_hash=content_hash,
             chunk_dicts=[c.to_dict() for c in chunks],
             validation_summary=validation_summary,
             ok=True,
@@ -168,12 +175,27 @@ def _run_batch_ingest(
         IngestBatchStore, IngestDocumentStore, IngestTransaction, _now,
     )
     from rag_lab.storage.metadata_store import MetadataStore
+    from rag_lab.ingest import versioning
+    from rag_lab.ingest import ownership
 
     logger = logging.getLogger("rag_lab")
     t_start = time.time()
 
     batch_store = IngestBatchStore(doc_store._conn)
     idc_store = IngestDocumentStore(doc_store._conn)
+
+    # Finish any version operation interrupted by a previous crash (RAG-01/02).
+    try:
+        versioning.recover_pending_ops(doc_store._conn, vector_store)
+    except Exception as exc:
+        console.print(
+            f"[red]Aborting ingest: pending version operations could not be "
+            f"recovered:[/red] {exc}"
+        )
+        return {
+            "batch_id": None, "committed": 0, "skipped": 0,
+            "failed": len(paths), "total_chunks": 0, "elapsed_s": 0.0,
+        }
 
     # --- Create or resume batch ---
     if resume_batch_id:
@@ -242,10 +264,11 @@ def _run_batch_ingest(
         for sp in paths_to_process:
             prep_results[sp] = _prepare_no_db(sp, strict)
 
-    # --- Phase 2: DB status update + SKIPPED detection (main thread, single writer) ---
-    validated_preps: List = []  # [(entry_id, _PrepResult)]
+    # --- Phase 2: identity + ownership + SKIPPED detection (single writer) ---
+    validated_preps: List = []  # [(entry_id, _PrepResult, Decision)]
     skipped_count = 0
     failed_count = 0
+    _seen_doc_ids: dict = {}
 
     for sp in paths_to_process:
         entry_id = pending_ids[sp]
@@ -262,43 +285,81 @@ def _run_batch_ingest(
             console.print(f"  [red]FAILED[/red]   {sp.name}: {result.error}")
             continue
 
-        # SKIPPED detection via ingest_documents (v1.16+) or manifest fallback
-        if not force:
-            if idc_store.find_committed(result.doc_id, result.content_hash):
-                idc_store.set_status(
-                    entry_id, "SKIPPED",
-                    content_hash=result.content_hash,
-                    validation_summary=result.validation_summary,
-                    finished_at=_now(),
-                )
-                skipped_count += 1
-                console.print(f"  [dim]SKIPPED[/dim]  {sp.name} (content hash unchanged)")
-                continue
-            # Fallback: check manifest file (backward compat for pre-v1.16 ingests)
-            if _manifest_has_hash(sp, result.content_hash):
-                idc_store.set_status(
-                    entry_id, "SKIPPED",
-                    content_hash=result.content_hash,
-                    validation_summary=result.validation_summary,
-                    finished_at=_now(),
-                )
-                skipped_count += 1
-                console.print(
-                    f"  [dim]SKIPPED[/dim]  {sp.name} (manifest: content hash unchanged)"
-                )
-                continue
+        # R2-05: persist the resolved identity (frontmatter doc_id) BEFORE the
+        # skip checks, so SKIPPED rows reference the real document.
+        idc_store.update(
+            entry_id,
+            doc_id=result.doc_id,
+            content_hash=result.content_hash or None,
+        )
+
+        # P0C: deterministic ownership decision over the persisted confirmed
+        # version (replaces the loose-hash guard and the historical SKIPPED
+        # checks).  NO-OP of a different source writes no documental state.
+        conflict = None
+        prior_path = _seen_doc_ids.get(result.doc_id)
+        if prior_path is not None and _norm_path(prior_path) != _norm_path(result.source_path):
+            conflict = (
+                f"duplicate doc_id {result.doc_id!r}: already claimed by "
+                f"{prior_path!r} in this batch"
+            )
+        if conflict is not None:
+            idc_store.set_status(
+                entry_id, "FAILED",
+                error_message=conflict,
+                finished_at=_now(),
+            )
+            failed_count += 1
+            console.print(f"  [red]FAILED[/red]   {sp.name}: {conflict}")
+            continue
+        _seen_doc_ids[result.doc_id] = str(result.source_path)
+
+        decision = ownership.evaluate(
+            doc_store._conn, vector_store,
+            doc_id=result.doc_id,
+            origin_path=result.source_path,
+            content_hash=result.content_hash,
+            chunk_dicts=result.chunk_dicts,
+            classification=ownership.classification_from_fields(
+                result.fm_title, result.fm_domain, result.fm_source_type,
+                result.fm_language, result.fm_version,
+                result.fm_tags + result.fm_derived_tags,
+            ),
+            force=force,
+        )
+        if decision.is_denied():
+            idc_store.set_status(
+                entry_id, "FAILED",
+                error_message=f"{decision.kind.value}: {decision.reason}",
+                finished_at=_now(),
+            )
+            failed_count += 1
+            console.print(f"  [red]DENIED[/red]   {sp.name}: {decision.reason}")
+            continue
+        if decision.is_noop():
+            label = ("SKIPPED" if decision.kind is ownership.DecisionKind.NOOP_OWNER
+                     else "NOOP-EQUIV")
+            idc_store.set_status(
+                entry_id, "SKIPPED",
+                content_hash=result.content_hash,
+                validation_summary=f"{decision.kind.value}: {decision.reason}",
+                finished_at=_now(),
+            )
+            skipped_count += 1
+            console.print(f"  [dim]{label}[/dim]  {sp.name} ({decision.reason})")
+            continue
 
         idc_store.set_status(
             entry_id, "VALIDATED",
             content_hash=result.content_hash,
             validation_summary=result.validation_summary,
         )
-        validated_preps.append((entry_id, result))
+        validated_preps.append((entry_id, result, decision))
 
     # --- Phase 3: Sequential embedding (GPU/CPU model, not thread-safe) ---
-    embedded_preps: List = []  # [(entry_id, result, dense_embs)]
+    embedded_preps: List = []  # [(entry_id, result, dense_embs, Decision)]
 
-    for entry_id, result in validated_preps:
+    for entry_id, result, decision in validated_preps:
         idc_store.set_status(entry_id, "EMBEDDING")
         try:
             dense_embs, sparse_embs = encode_chunks(
@@ -320,7 +381,7 @@ def _run_batch_ingest(
                 chunk_d["embedding_dim"] = EMBEDDING_DIM
                 chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
 
-            embedded_preps.append((entry_id, result, dense_embs))
+            embedded_preps.append((entry_id, result, dense_embs, decision))
 
         except Exception as exc:
             idc_store.set_status(
@@ -335,13 +396,53 @@ def _run_batch_ingest(
     committed_count = 0
     total_chunks_written = 0
 
-    for entry_id, result, dense_embs in embedded_preps:
-        idc_store.set_status(entry_id, "WRITING")
+    for entry_id, result, dense_embs, decision in embedded_preps:
         doc_id = result.doc_id
+
+        # TOCTOU guard: revalidate the authorization immediately before the
+        # write.  The decision must be unchanged (same kind/run/generation)
+        # and still grant CREATE/REPLACE.  Single-writer process; multiprocess
+        # concurrency is documented as out of scope.
+        revalidate = ownership.evaluate(
+            doc_store._conn, vector_store,
+            doc_id=result.doc_id,
+            origin_path=result.source_path,
+            content_hash=result.content_hash,
+            chunk_dicts=result.chunk_dicts,
+            classification=ownership.classification_from_fields(
+                result.fm_title, result.fm_domain, result.fm_source_type,
+                result.fm_language, result.fm_version,
+                result.fm_tags + result.fm_derived_tags,
+            ),
+            force=force,
+        )
+        if (revalidate.is_denied() or revalidate.is_noop()
+                or revalidate.kind is not decision.kind
+                or revalidate.active_run_id != decision.active_run_id
+                or revalidate.generation != decision.generation):
+            idc_store.set_status(
+                entry_id, "FAILED",
+                error_message=("authorization changed before publish: "
+                               f"{revalidate.kind.value}: {revalidate.reason}"),
+                finished_at=_now(),
+            )
+            failed_count += 1
+            console.print(
+                f"  [red]REVALIDATION FAILED[/red] {result.source_path.name}: "
+                f"{revalidate.reason}"
+            )
+            continue
+
+        idc_store.set_status(entry_id, "WRITING")
         n_sparse = sum(1 for c in result.chunk_dicts if c.get("sparse_tokens") is not None)
 
         try:
-            with IngestTransaction(doc_id, result.source_path, doc_store) as txn:
+            chunk_ids = [c["chunk_id"] for c in result.chunk_dicts]
+            with IngestTransaction(
+                doc_id, result.source_path, doc_store,
+                vector_store=vector_store, chunk_ids=chunk_ids,
+                content_hash=result.content_hash,
+            ) as txn:
                 # Link ingest_documents → ingest_runs for full traceability
                 idc_store.update(entry_id, run_id=txn.run_id)
 
@@ -366,6 +467,7 @@ def _run_batch_ingest(
                 ms.upsert_document(
                     doc_id,
                     path=str(result.source_path),
+                    content_hash=result.content_hash,
                     title=result.fm_title,
                     domain=result.fm_domain,
                     source_type=result.fm_source_type,
@@ -379,7 +481,7 @@ def _run_batch_ingest(
 
             # Update manifest for backward compatibility
             try:
-                create_manifest(result.source_path, force=True)
+                create_manifest(result.source_path, force=True, doc_id=doc_id)
             except Exception:
                 pass  # manifest is advisory; corpus is already committed
 
@@ -438,14 +540,288 @@ def _print_batch_summary(summary: dict) -> None:
         )
 
 
-def _manifest_has_hash(source_path: Path, content_hash: str) -> bool:
+def _norm_path(p) -> str:
+    """Best-effort normalised path string for ownership comparison."""
+    try:
+        return str(Path(p).resolve())
+    except Exception:
+        return str(p)
+
+
+def _table_exists(conn, name: str) -> bool:
+    try:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone() is not None
+    except Exception:
+        return False
+
+
+def _active_run_id(conn, doc_id: str) -> Optional[str]:
+    if not _table_exists(conn, "document_versions"):
+        return None
+    row = conn.execute(
+        "SELECT active_run_id FROM document_versions WHERE doc_id=?", (doc_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _manifest_owner(doc_id: str):
+    """Return (path, hash) from the advisory manifest for doc_id, or None."""
+    import json
+    from rag_lab.config import DATA_DIR
+    p = DATA_DIR / "ingested.jsonl"
+    if not p.exists():
+        return None
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("doc_id") == doc_id:
+                return (entry.get("path"), entry.get("hash"))
+    except OSError:
+        return None
+    return None
+
+
+def _manifest_hash_for_path(doc_id: str, owner_path) -> Optional[str]:
+    """Historical hash from the manifest, only if its path matches the owner."""
+    man = _manifest_owner(doc_id)
+    if not man or not owner_path:
+        return None
+    man_path, man_hash = man
+    if man_hash and man_path and _norm_path(man_path) == _norm_path(owner_path):
+        return man_hash
+    return None
+
+
+def _stored_content_md5(conn, doc_id: str) -> Optional[str]:
+    """MD5 of the persisted confirmed content (ordered chunk texts)."""
+    import hashlib
+    try:
+        rows = conn.execute(
+            "SELECT text FROM chunks WHERE doc_id=? ORDER BY rowid", (doc_id,)
+        ).fetchall()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    h = hashlib.md5()
+    for (t,) in rows:
+        h.update((t or "").encode("utf-8"))
+    return h.hexdigest()
+
+
+def _incoming_chunk_set(conn, doc_id: str, source_path):
+    """Chunk the incoming source the same way ingest would, for legacy proof."""
+    try:
+        from rag_lab.ingest.cleaner import clean_document
+        from rag_lab.chunking.splitter import chunk_document
+        from rag_lab.config import CHUNK_MAX_TOKENS, CHUNK_OVERLAP
+        cleaned = clean_document(Path(source_path))
+        text = cleaned.read_text(encoding="utf-8")
+        chunks = chunk_document(text, doc_id=doc_id,
+                                max_tokens=CHUNK_MAX_TOKENS, overlap=CHUNK_OVERLAP)
+        return {c.chunk_id: c.text for c in chunks}
+    except Exception:
+        return None
+
+
+def _legacy_proof(conn, doc_id: str, owner_path, source_path=None) -> Optional[str]:
+    """Prove a legacy transfer against the *persisted* confirmed content.
+
+    The advisory manifest hash is trusted only when corroborated by the
+    persisted content: either as a whole blob (single-chunk legacy stores) or by
+    the incoming source reproducing the stored chunk set exactly.  Editing both
+    the manifest and the current source cannot pass this test (R2-F2).
+    """
+    man_hash = _manifest_hash_for_path(doc_id, owner_path)
+    if not man_hash:
+        return None
+    if _stored_content_md5(conn, doc_id) == man_hash:
+        return man_hash
+    incoming = _incoming_chunk_set(conn, doc_id, source_path) if source_path else None
+    if incoming:
+        try:
+            rows = conn.execute(
+                "SELECT chunk_id, text FROM chunks WHERE doc_id=? ORDER BY rowid", (doc_id,)
+            ).fetchall()
+        except Exception:
+            rows = []
+        stored = {r[0]: (r[1] or "") for r in rows}
+        incoming = {k: (v or "") for k, v in incoming.items()}
+        if stored and set(stored) == set(incoming) and stored == incoming:
+            return man_hash
+    return None
+
+
+def _confirmed_owner(conn, doc_id: str, source_path=None):
+    """Return (path, content_hash, source, coherent) of the confirmed owner.
+
+    All confirmed hashes bound to the same version must agree; otherwise the
+    evidence is incoherent and ownership fails closed (R2-F1).  The advisory
+    manifest never overrides a confirmed hash; it can only authorize a legacy
+    transfer when its hash also matches the persisted content (R2-F2).  Path
+    coherence is enforced against the active OR legacy COMMITTED run (R2-F3).
+    """
+    doc_path = doc_hash = None
+    if _table_exists(conn, "documents"):
+        row = conn.execute(
+            "SELECT path, content_hash FROM documents WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if row:
+            doc_path, doc_hash = row
+
+    active_run = _active_run_id(conn, doc_id)
+    active_hash = ""
+    if active_run and _table_exists(conn, "document_versions"):
+        r = conn.execute(
+            "SELECT content_hash FROM document_versions WHERE doc_id=?", (doc_id,)
+        ).fetchone()
+        if r and r[0]:
+            active_hash = r[0]
+
+    run_path = run_hash = None
+    if active_run and _table_exists(conn, "ingest_runs"):
+        row = conn.execute(
+            "SELECT source_path FROM ingest_runs WHERE run_id=?", (active_run,)
+        ).fetchone()
+        if row:
+            run_path = row[0]
+        if _table_exists(conn, "ingest_documents"):
+            row = conn.execute(
+                "SELECT content_hash FROM ingest_documents "
+                "WHERE run_id=? AND doc_id=? AND status='COMMITTED' LIMIT 1",
+                (active_run, doc_id),
+            ).fetchone()
+            if row:
+                run_hash = row[0]
+
+    legacy_path = legacy_hash = None
+    if active_run is None and _table_exists(conn, "ingest_runs"):
+        row = conn.execute(
+            "SELECT run_id, source_path FROM ingest_runs WHERE doc_id=? AND status='COMMITTED' "
+            "AND source_path IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+            (doc_id,),
+        ).fetchone()
+        if row:
+            legacy_path = row[1]
+            if _table_exists(conn, "ingest_documents"):
+                r2 = conn.execute(
+                    "SELECT content_hash FROM ingest_documents "
+                    "WHERE run_id=? AND doc_id=? AND status='COMMITTED' LIMIT 1",
+                    (row[0], doc_id),
+                ).fetchone()
+                if r2:
+                    legacy_hash = r2[0]
+
+    # Path coherence: documents must agree with the active OR legacy run path.
+    if doc_path and run_path and _norm_path(doc_path) != _norm_path(run_path):
+        return (None, None, "incoherent", False)
+    if active_run is None and doc_path and legacy_path and _norm_path(doc_path) != _norm_path(legacy_path):
+        return (None, None, "incoherent", False)
+
+    # Collect every confirmed hash bound to the confirmed owner; all must agree.
+    hashes = []
+    if active_run:
+        if active_hash:
+            hashes.append(active_hash)
+        if run_hash:
+            hashes.append(run_hash)
+        if doc_hash and (not doc_path or not run_path or _norm_path(doc_path) == _norm_path(run_path)):
+            hashes.append(doc_hash)
+        owner_path = run_path or doc_path
+        source = "active_run"
+    elif legacy_path:
+        if legacy_hash:
+            hashes.append(legacy_hash)
+        if doc_hash and doc_path and _norm_path(doc_path) == _norm_path(legacy_path):
+            hashes.append(doc_hash)
+        owner_path = legacy_path
+        source = "legacy_run"
+    elif doc_path:
+        if doc_hash:
+            hashes.append(doc_hash)
+        owner_path = doc_path
+        source = "documents"
+    else:
+        return None
+
+    hashes = [h for h in hashes if h]
+    if len(set(hashes)) > 1:
+        return (None, None, "incoherent", False)
+    if hashes:
+        return (owner_path, hashes[0], source, True)
+    # No confirmed hash: the advisory manifest may authorize only if it also
+    # matches the persisted content.
+    if owner_path:
+        return (owner_path, _legacy_proof(conn, doc_id, owner_path, source_path),
+                source, True)
+    return None
+
+
+def _has_document_data(conn, doc_id: str) -> bool:
+    try:
+        return conn.execute(
+            "SELECT 1 FROM chunks WHERE doc_id=? LIMIT 1", (doc_id,)
+        ).fetchone() is not None
+    except Exception:
+        # Fail closed: if we cannot check, assume data may exist.
+        return True
+
+
+def _identity_owner_conflict(conn, doc_id: str, source_path, content_hash: str = None) -> Optional[str]:
+    """Return a conflict message if ``doc_id`` is owned by a different source.
+
+    Authorization is only by the same source path or by a matching *historical*
+    content hash bound to the confirmed version.  Different path with no
+    trustworthy historical hash, contradictory evidence, or data with no
+    provable owner all fail closed.
+    """
+    try:
+        owner = _confirmed_owner(conn, doc_id, source_path)
+    except Exception as exc:
+        return f"cannot verify ownership for doc_id {doc_id!r} (fail-closed): {exc}"
+
+    cur = _norm_path(source_path)
+    if owner is None:
+        if _has_document_data(conn, doc_id):
+            return (
+                f"doc_id {doc_id!r} already has data but no provable confirmed "
+                "owner; refusing to overwrite (fail-closed)"
+            )
+        return None
+
+    owner_path, owner_hash, src, coherent = owner
+    if not coherent:
+        return (
+            f"doc_id {doc_id!r} has contradictory ownership evidence ({src}); "
+            "refusing to overwrite (fail-closed)"
+        )
+    if owner_path and _norm_path(owner_path) == cur:
+        return None
+    if content_hash and owner_hash and content_hash == owner_hash:
+        return None
+    return (
+        f"doc_id {doc_id!r} is already owned by {owner_path!r} ({src}); refusing "
+        "to overwrite a different source. If this is the same document moved or "
+        "re-exported, reconcile it explicitly (a historical content hash is required)."
+    )
+
+
+def _manifest_has_hash(source_path: Path, content_hash: str, doc_id: str = None) -> bool:
     """Return True if source_path's doc_id is in the manifest with the given hash."""
     import json
     from rag_lab.config import DATA_DIR
     manifest_path = DATA_DIR / "ingested.jsonl"
     if not manifest_path.exists() or not content_hash:
         return False
-    doc_id = source_path.stem
+    doc_id = doc_id or source_path.stem
     try:
         with open(manifest_path, encoding="utf-8") as f:
             for line in f:
@@ -532,6 +908,20 @@ def ingest_main(
     doc_store.initialize()
     vector_store = VectorStore()
     vector_store.initialize()
+
+    # P0B-03: recover interrupted version operations BEFORE selecting pending
+    # documents, so WRITING/RESTORING rows are reconciled (and become resumable)
+    # instead of being invisible to list_resumable().
+    from rag_lab.ingest import versioning
+    try:
+        versioning.recover_pending_ops(doc_store._conn, vector_store)
+    except Exception as exc:
+        console.print(
+            f"[red]Aborting ingest: pending version operations could not be "
+            f"recovered:[/red] {exc}"
+        )
+        doc_store.close()
+        raise typer.Exit(1)
 
     # --- Handle --resume ---
     if resume:
@@ -753,7 +1143,9 @@ def ingest_rollback(
 ) -> None:
     """Roll back a FAILED or stale IN_PROGRESS run (compensation delete)."""
     from rag_lab.storage.docstore import DocStore
-    from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
+    from rag_lab.storage.vector_store import VectorStore
+    from rag_lab.ingest.transaction import IngestRunStore
+    from rag_lab.ingest import versioning
 
     ds = DocStore()
     ds.initialize()
@@ -771,13 +1163,23 @@ def ingest_rollback(
         )
         raise typer.Exit(1)
 
-    txn = IngestTransaction(run["doc_id"], run["source_path"], ds)
-    txn.run_id = run_id
-    txn.rollback()
+    vs = VectorStore()
+    vs.initialize()
+    result = versioning.admin_rollback(run_id, ds._conn, vs)
     ds.close()
 
+    if result["status"] == "error":
+        console.print(f"[red]{result['reason']}[/red]")
+        raise typer.Exit(1)
+    if result["status"] == "refused":
+        # RAG-02: never destroy a newer committed version.
+        console.print(f"[yellow]{result['reason']}[/yellow]")
+        raise typer.Exit(1)
+
+    restored = result.get("restored_previous")
     console.print(
-        f"[green]Rolled back run {run_id} (doc_id={run['doc_id']!r})[/green]"
+        f"[green]Rolled back run {run_id} (doc_id={run['doc_id']!r}); "
+        f"restored_previous_version={restored}[/green]"
     )
 
 
@@ -798,7 +1200,8 @@ def ingest_retry(
     from rag_lab.config import EMBEDDING_DEVICE
     from rag_lab.storage.docstore import DocStore
     from rag_lab.storage.vector_store import VectorStore
-    from rag_lab.ingest.transaction import IngestRunStore, IngestTransaction
+    from rag_lab.ingest.transaction import IngestRunStore
+    from rag_lab.ingest import versioning
     from rag_lab.logging_config import setup_logging
 
     setup_logging("INFO")
@@ -819,10 +1222,14 @@ def ingest_retry(
         )
         raise typer.Exit(1)
 
+    vs = VectorStore()
+    vs.initialize()
+
     if run["status"] in ("FAILED", "IN_PROGRESS"):
-        txn = IngestTransaction(run["doc_id"], run["source_path"], ds)
-        txn.run_id = run_id
-        txn.rollback()
+        result = versioning.admin_rollback(run_id, ds._conn, vs)
+        if result["status"] == "refused":
+            # A newer version exists; do not destroy it, just retry the source.
+            console.print(f"[yellow]{result['reason']}[/yellow]")
 
     source_path = Path(run["source_path"]) if run["source_path"] else None
     if not source_path or not source_path.exists():
@@ -831,8 +1238,6 @@ def ingest_retry(
         )
         raise typer.Exit(1)
 
-    vs = VectorStore()
-    vs.initialize()
     _ingest_one(
         source_path=source_path, doc_store=ds, vector_store=vs,
         force=True, device=device, strict=strict,
@@ -866,11 +1271,12 @@ def _ingest_one(
         EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION, SPARSE_FORMAT_VERSION,
     )
     from rag_lab.ingest.cleaner import clean_document
-    from rag_lab.ingest.manifest import create_manifest
+    from rag_lab.ingest.manifest import create_manifest, compute_md5
     from rag_lab.chunking.splitter import chunk_document
     from rag_lab.embedding.encoder import encode_chunks
     from rag_lab.ingest.transaction import IngestTransaction
     from rag_lab.storage.metadata_store import MetadataStore
+    from rag_lab.ingest import ownership
 
     logger = logging.getLogger("rag_lab")
 
@@ -911,11 +1317,11 @@ def _ingest_one(
     _fm_title = _fm.title or extract_h1_title(raw_text)
 
     cleaned_path = clean_document(source_path)
-    create_manifest(source_path, cleaned_path, force=force)
 
     cleaned_text = cleaned_path.read_text(encoding="utf-8")
+    _resolved_doc_id = _fm.doc_id.strip() if _fm.doc_id and _fm.doc_id.strip() else source_path.stem
     chunks = chunk_document(
-        cleaned_text, doc_id=source_path.stem,
+        cleaned_text, doc_id=_resolved_doc_id,
         max_tokens=CHUNK_MAX_TOKENS, overlap=CHUNK_OVERLAP,
     )
     logger.info(f"Created {len(chunks)} chunks from {source_path.name}")
@@ -941,10 +1347,62 @@ def _ingest_one(
         chunk_d["embedding_dim"] = EMBEDDING_DIM
         chunk_d["sparse_format_version"] = SPARSE_FORMAT_VERSION
 
-    doc_id = source_path.stem
+    doc_id = _resolved_doc_id
     n_sparse = sum(1 for c in chunk_dicts if c.get("sparse_tokens") is not None)
+    chunk_ids = [c.get("chunk_id", "") for c in chunk_dicts]
+    _content_hash = compute_md5(source_path)
 
-    with IngestTransaction(doc_id, source_path, doc_store) as txn:
+    # P0C: deterministic ownership decision over the confirmed persisted
+    # version.  NO-OP (same owner or exact equivalence from another path)
+    # performs no documental write and does not bump the generation.
+    _decision = ownership.evaluate(
+        doc_store._conn, vector_store,
+        doc_id=doc_id,
+        origin_path=source_path,
+        content_hash=_content_hash,
+        chunk_dicts=chunk_dicts,
+        classification=ownership.classification_from_fields(
+            _fm_title, _fm.domain, _fm.source_type, _fm.language, _fm.version,
+            _fm.tags + _fm.derived_tags,
+        ),
+        force=force,
+    )
+    if _decision.is_denied():
+        console.print(
+            f"[red]Denied {source_path.name}: {_decision.reason}[/red]"
+        )
+        return 0
+    if _decision.is_noop():
+        label = ("NO-OP (owner)" if _decision.kind is ownership.DecisionKind.NOOP_OWNER
+                 else "NO-OP (equivalent other source)")
+        console.print(f"[dim]{label}: {source_path.name}[/dim]")
+        return 0
+
+    _revalidate = ownership.evaluate(
+        doc_store._conn, vector_store,
+        doc_id=doc_id,
+        origin_path=source_path,
+        content_hash=_content_hash,
+        chunk_dicts=chunk_dicts,
+        classification=ownership.classification_from_fields(
+            _fm_title, _fm.domain, _fm.source_type, _fm.language, _fm.version,
+            _fm.tags + _fm.derived_tags,
+        ),
+        force=force,
+    )
+    if (_revalidate.is_denied() or _revalidate.is_noop()
+            or _revalidate.kind is not _decision.kind
+            or _revalidate.active_run_id != _decision.active_run_id
+            or _revalidate.generation != _decision.generation):
+        console.print(
+            f"[red]Authorization changed before publish: "
+            f"{_revalidate.reason}[/red]"
+        )
+        return 0
+
+    with IngestTransaction(doc_id, source_path, doc_store,
+                           vector_store=vector_store, chunk_ids=chunk_ids,
+                           content_hash=_content_hash) as txn:
         txn.update(chunks_expected=len(chunk_dicts))
 
         vector_store.add(
@@ -969,6 +1427,7 @@ def _ingest_one(
         _ms.upsert_document(
             doc_id,
             path=str(source_path),
+            content_hash=compute_md5(source_path),
             title=_fm_title,
             domain=_fm.domain,
             source_type=_fm.source_type,
@@ -978,6 +1437,12 @@ def _ingest_one(
         for tag in _fm.tags + _fm.derived_tags:
             _ms.assign_tag(doc_id, tag)
         txn.update(metadata_written=1)
+
+    # Manifest is advisory; update only after a successful commit (RAG-01).
+    try:
+        create_manifest(source_path, doc_id=doc_id, force=True)
+    except Exception:
+        pass
 
     console.print(
         f"[bold green]Ingested {len(chunk_dicts)} chunks from {source_path.name}[/bold green]"
@@ -1022,9 +1487,14 @@ def _handle_legacy_resume_retry(
         return
 
     for run in targets:
-        txn = IngestTransaction(run["doc_id"], run["source_path"], doc_store)
-        txn.run_id = run["run_id"]
-        txn.rollback()
+        from rag_lab.ingest import versioning
+        from rag_lab.storage.vector_store import VectorStore as _VS
+        _vs = vector_store or _VS()
+        try:
+            _vs.initialize()
+        except Exception:
+            pass
+        versioning.admin_rollback(run["run_id"], doc_store._conn, _vs)
 
         source_path = Path(run["source_path"]) if run["source_path"] else None
         if not source_path or not source_path.exists():

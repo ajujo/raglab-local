@@ -126,7 +126,11 @@ class TestFailAfterChromaBeforeDocStore:
             vs_cls.return_value = mock_vector_store
 
             try:
-                with IngestTransaction(doc_id, "/fake/path.md", ds) as txn:
+                with IngestTransaction(
+                    doc_id, "/fake/path.md", ds,
+                    vector_store=mock_vector_store,
+                    chunk_ids=[c["chunk_id"] for c in chunk_dicts],
+                ) as txn:
                     txn.update(chunks_expected=len(chunk_dicts))
                     # ChromaDB "succeeds"
                     mock_vector_store.add(ids=[c["chunk_id"] for c in chunk_dicts],
@@ -137,7 +141,7 @@ class TestFailAfterChromaBeforeDocStore:
             except RuntimeError:
                 pass
 
-        # Verify ChromaDB rollback was called
+        # Verify ChromaDB rollback was called (failed version removed)
         mock_vector_store.delete_by_doc_id.assert_called_with(doc_id)
 
         # Verify DocStore is clean (nothing was written before the exception)
@@ -163,7 +167,11 @@ class TestFailAfterDocStoreBeforeMetadata:
             vs_cls.return_value = mock_vector_store
 
             try:
-                with IngestTransaction(doc_id, "/fake/path.md", ds) as txn:
+                with IngestTransaction(
+                    doc_id, "/fake/path.md", ds,
+                    vector_store=mock_vector_store,
+                    chunk_ids=[c["chunk_id"] for c in chunk_dicts],
+                ) as txn:
                     txn.update(chunks_expected=len(chunk_dicts))
                     # ChromaDB succeeds (no-op mock)
                     mock_vector_store.add()
