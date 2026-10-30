@@ -537,10 +537,6 @@ def cmd_diagnose(ctx: typer.Context) -> None:
     raise typer.Exit(_main(ctx.args))
 
 
-if __name__ == "__main__":
-    app()
-
-
 def _print_feedback_hints(
     question: str,
     chunks: list[dict],
@@ -626,3 +622,6 @@ def _collect_feedback(
     else:
         # Enter or unrecognized — skip
         pass
+
+if __name__ == "__main__":
+    app()
