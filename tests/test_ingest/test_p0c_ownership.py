@@ -727,3 +727,88 @@ def test_pure_core_r2_guards():
                dict(chroma_verifiable=False)):
         assert ownership.decide(_state(**fresh, **kw), _incoming()).kind is \
             ownership.DecisionKind.DENY_INCOHERENT
+
+
+# ---------------------------------------------------------------------------
+# CLOSURE-F1 — legacy branch must corroborate the documentary hash
+# ---------------------------------------------------------------------------
+
+def _demote_to_legacy(e):
+    """Turn a versioned document into a supported legacy state.
+
+    Drops only the ``document_versions`` row: the document, its chunks, the
+    COMMITTED run and its batch rows survive, which is exactly the pre-v6
+    shape the legacy branch is meant to handle.
+    """
+    c = e.d._conn
+    c.execute("DELETE FROM document_versions WHERE doc_id='audit-three'")
+    c.commit()
+    assert generation(e) is None
+    assert c.execute(
+        "SELECT COUNT(*) FROM ingest_documents WHERE doc_id='audit-three' "
+        "AND status='COMMITTED'").fetchone()[0] >= 1
+
+
+@pytest.mark.parametrize("route", ["batch", "retry"])
+@pytest.mark.parametrize("force", [False, True])
+def test_legacy_contradictory_documents_hash_denied(env, route, force):
+    """CLOSURE-F1: in the legacy branch, ``documents.content_hash`` contradicting
+    the COMMITTED owner run must DENY, not publish over the contradiction.
+    """
+    e = env
+    seed(e)                       # versioned commit through batch
+    _demote_to_legacy(e)
+    c = e.d._conn
+    c.execute("UPDATE documents SET content_hash=? WHERE doc_id='audit-three'",
+              (compute_md5(e.b),))
+    c.commit()
+
+    st = ownership.OwnershipStore(c, e.vs).load("audit-three")
+    assert not st.has_version
+    assert st.committed_hashes, st
+    assert st.documents_content_hash not in st.committed_hashes
+
+    before = doc_state(e)
+    e.a.write_text(body("UPDATED"))
+    res = ingest(e, e.a, route, force=force)
+    if route == "batch":
+        assert res["committed"] == 0 and res["failed"] == 1, res
+    else:
+        assert res == 0
+    assert doc_state(e) == before
+    assert generation(e) is None
+
+
+def test_legacy_coherent_still_replaces(env):
+    """Control positivo: a coherent legacy owner can still update its document."""
+    e = env
+    seed(e)
+    _demote_to_legacy(e)
+    c = e.d._conn
+    # Keep documents.content_hash consistent with the COMMITTED run.
+    run_hash = c.execute(
+        "SELECT content_hash FROM ingest_documents WHERE doc_id='audit-three' "
+        "AND status='COMMITTED' LIMIT 1").fetchone()[0]
+    c.execute("UPDATE documents SET content_hash=? WHERE doc_id='audit-three'",
+              (run_hash,))
+    c.commit()
+
+    e.a.write_text(body("UPDATED"))
+    res = ingest(e, e.a)
+    assert res["committed"] == 1, res
+    assert generation(e) == 1
+
+
+def test_pure_core_legacy_hash_guard():
+    legacy = dict(has_version=False, owner_path="/ruta/a.md",
+                  documents_path="/ruta/a.md", committed_hashes=("h1",),
+                  documents_content_hash="h2", fts_matches=True,
+                  chroma_matches=True, chroma_verifiable=True,
+                  embedding_incoherent=False, pending_ops=False)
+    incoming = _incoming(origin_path="/ruta/a.md")
+    assert ownership.decide(_state(**legacy), incoming).kind is \
+        ownership.DecisionKind.DENY_INCOHERENT
+    # Corroborated documentary hash keeps the legitimate path open.
+    ok = dict(legacy, documents_content_hash="h1")
+    assert ownership.decide(_state(**ok), incoming).kind is \
+        ownership.DecisionKind.NOOP_OWNER

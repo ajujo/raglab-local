@@ -568,6 +568,16 @@ def decide(state: PersistedState, incoming: IncomingState, *,
             normalize_path(state.documents_path) != normalize_path(state.owner_path):
         return Decision(DecisionKind.DENY_INCOHERENT,
                         "documents.path disagrees with the legacy owner run")
+    # CLOSURE-F1: the documentary hash must be corroborated by the confirmed
+    # legacy owner run.  Uniform batch hashes alone are not enough: a documents
+    # row that contradicts them means the persisted evidence disagrees with
+    # itself, and publishing over it would hide the contradiction instead of
+    # rejecting it (same class of defect as R2-F1, without a version row).
+    if state.documents_content_hash and state.committed_hashes and \
+            state.documents_content_hash not in state.committed_hashes:
+        return Decision(DecisionKind.DENY_INCOHERENT,
+                        "legacy documents hash is not corroborated by the "
+                        "COMMITTED owner run")
     if state.embedding_incoherent:
         return Decision(DecisionKind.DENY_INCOHERENT,
                         "incoherent embedding metadata across chunks")
