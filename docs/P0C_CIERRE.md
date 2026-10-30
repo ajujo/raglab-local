@@ -211,24 +211,30 @@ SHA combinado: 00dedc73d9e68f91cbba7b437069eeab8ac1bd58e080a54d29a924b10f584cea
 
 ## 8. Riesgos y limitaciones
 
-1. **`Notas_Tecnicas_SDMX_2.1` está congelado para actualizaciones.** Su
-   propietario registrado (`/home/ajujo/Lab/Projectos/RAG-Lab/…`) ya no existe, y
-   el fichero actual produce 86 chunks frente a los 115 indexados: el sistema no
-   puede demostrar identidad y **deniega** el reemplazo. Consultarlo funciona.
-   Para actualizarlo hace falta una decisión explícita del propietario del corpus
-   (`scripts/adopt_owner.py`, opción `--adopt-unverified`) o una reindexación
-   desde cero.
-2. **La migración v7 se aplicó a producción como efecto colateral de un test**
-   que abre `DocStore()` por defecto, antes de la ejecución deliberada. Es
-   aditiva (columnas anulables), no altera datos, y la copia de seguridad previa
-   está íntegra. Los tests siguen abriendo el `DocStore` real: es un defecto de
-   aislamiento conocido, no resuelto aquí.
-3. **Concurrencia multiproceso no cubierta.** El contrato asume escritor único;
+1. **`Notas_Tecnicas_SDMX_2.1` — RESUELTO (2026-10-30).** Estaba congelado para
+   actualizaciones: su propietario registrado apuntaba a una ruta inexistente y el
+   fichero producía 86 chunks frente a los 115 indexados. Se exportaron los 115
+   trozos a `evidence/pre-delete-Notas_chunks.jsonl`, se borró con
+   `rag-lab docs delete` (sin restos de versión ni tags) y se reingerió desde el
+   fichero actual. Resultado: 86 chunks, generación 1, `content_hash` ligado a la
+   versión y `documents.path` apuntando a la ruta real. Corpus: 581 chunks
+   coherentes en SQLite/FTS5/Chroma, sparse 100 %.
+2. **Aislamiento de stores en tests — RESUELTO (2026-10-30).** La migración v7 se
+   había aplicado a producción como efecto colateral de un test que abre
+   `DocStore()` por defecto. Nuevo fixture autouse en `tests/conftest.py` que
+   redirige los *bindings de módulo* a un temporal de sesión (eximiendo por
+   marcador los tests `integration`, que leen el corpus a propósito). Verificado:
+   sha256 de `storage/docstore.sqlite` y `data/ingested.jsonl` idéntico antes y
+   después de la suite completa, y la suite baja de 665 s a 305 s.
+
+### Limitaciones que persisten
+
+1. **Concurrencia multiproceso no cubierta.** El contrato asume escritor único;
    la revalidación TOCTOU protege dentro de un proceso.
-4. **Embeddings legacy desconocidos** se tratan como no comparables.
-5. **Filas de control `SKIPPED`** se escriben en `ingest_documents` para registrar
+2. **Embeddings legacy desconocidos** se tratan como no comparables.
+3. **Filas de control `SKIPPED`** se escriben en `ingest_documents` para registrar
    un NO-OP; están fuera del estado documental.
-6. **P1 sin abordar** (calidad, no pérdida de datos): `RAG-06`/`RAG-07` (caché no
+4. **P1 sin abordar** (calidad, no pérdida de datos): `RAG-06`/`RAG-07` (caché no
    invalida por run real ni distingue modos), `RAG-13` (48/62 preguntas sin hits
    BM25 por AND implícito), `RAG-14` (33 chunks >1024 tokens truncados para el
    embedding), `RAG-15` (citas fuera de rango aceptadas).
